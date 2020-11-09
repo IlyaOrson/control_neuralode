@@ -1,0 +1,14 @@
+name = "DiscrepancyNeuralODE"
+uuid = "43796e44-9168-426f-8631-80c2c8cc7fef"
+authors = ["Ilya Orson Sandoval <ilya.orson@gmail.com>"]
+version = "0.1.0"
+
+[deps]
+DiffEqFlux = "aae7a2af-3d4f-5e19-a356-7da93b79d9d0"
+Flux = "587475ba-b771-5e3f-ad9e-33799f191a9c"
+Optim = "429524aa-4258-5aef-a3af-852621145aeb"
+OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
+UnicodePlots = "b8865327-cd53-5732-bb35-84acbb429228"
+
+[compat]
+julia = "1.5"
