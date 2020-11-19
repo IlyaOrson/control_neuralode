@@ -2,32 +2,59 @@
 
 module DiscrepancyNeuralODE
 
+# using Sundials
 using DiffEqFlux, Flux, Optim, OrdinaryDiffEq, Zygote
 using UnicodePlots: lineplot, lineplot!
 using ClearStacktrace  # nicer stacktraces (unnecesary in julia 1.6)
 
 # handy terminal plots
-function unicode_plotter(states, controls)
+function unicode_plotter(states, controls, just=nothing)
 
-    ylim = Iterators.flatten((states, controls)) |> extrema
-    plt = lineplot(
-        states[1,:],
-        title = "State and Control Evolution",
-        name = "x1",
-        xlabel = "step",
-        ylim = ylim,
-    )
-    for (i, s) in enumerate(eachrow(states[2:end,:]))
-        lineplot!(plt, collect(s), name = "x$(i+1)")
-    end
-    for (i, c) in enumerate(eachrow(controls))
-        lineplot!(plt, collect(c), name = "c$i")
+    if just == :states
+        ylim = states |> extrema
+        plt = lineplot(
+            states[1,:],
+            title = "State Evolution",
+            name = "x1",
+            xlabel = "step",
+            ylim = ylim,
+        )
+        for (i, s) in enumerate(eachrow(states[2:end,:]))
+            lineplot!(plt, collect(s), name = "x$(i+1)")
+        end
+    elseif  just == :controls
+        ylim = controls |> extrema
+        plt = lineplot(
+            controls[1,:],
+            title = "Control Evolution",
+            name = "c1",
+            xlabel = "step",
+            ylim = ylim,
+        )
+        for (i, s) in enumerate(eachrow(controls[2:end,:]))
+            lineplot!(plt, collect(s), name = "c$(i+1)")
+        end
+    else
+        ylim = Iterators.flatten((states, controls)) |> extrema
+        plt = lineplot(
+            states[1,:],
+            title = "State and Control Evolution",
+            name = "x1",
+            xlabel = "step",
+            ylim = ylim,
+        )
+        for (i, s) in enumerate(eachrow(states[2:end,:]))
+            lineplot!(plt, collect(s), name = "x$(i+1)")
+        end
+        for (i, c) in enumerate(eachrow(controls))
+            lineplot!(plt, collect(c), name = "c$i")
+        end
     end
     return plt
 end
 
 # simulate evolution at each iteration and plot it
-function plot_simulation(params, loss, prob, tsteps)
+function plot_simulation(params, loss, prob, tsteps, just=nothing)
     @info "Objective" loss
     solution = solve(prob, Tsit5(), p = params, saveat = tsteps)
 
@@ -44,7 +71,7 @@ function plot_simulation(params, loss, prob, tsteps)
     for (step, state) in enumerate(solution.u)
         controls[:, step] = controller(state, params)
     end
-    display(unicode_plotter(states, controls))
+    display(unicode_plotter(states, controls, just))
     return false  # if return true, then optimization stops
 end
 
