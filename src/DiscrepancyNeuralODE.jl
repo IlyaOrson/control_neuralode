@@ -8,9 +8,9 @@ using UnicodePlots: lineplot, lineplot!
 using ClearStacktrace  # nicer stacktraces (unnecesary in julia 1.6)
 
 # handy terminal plots
-function unicode_plotter(states, controls, just=nothing)
+function unicode_plotter(states, controls; only=nothing)
 
-    if just == :states
+    if only == :states
         ylim = states |> extrema
         plt = lineplot(
             states[1,:],
@@ -22,7 +22,7 @@ function unicode_plotter(states, controls, just=nothing)
         for (i, s) in enumerate(eachrow(states[2:end,:]))
             lineplot!(plt, collect(s), name = "x$(i+1)")
         end
-    elseif  just == :controls
+    elseif  only == :controls
         ylim = controls |> extrema
         plt = lineplot(
             controls[1,:],
@@ -54,7 +54,7 @@ function unicode_plotter(states, controls, just=nothing)
 end
 
 # simulate evolution at each iteration and plot it
-function plot_simulation(params, loss, prob, tsteps, just=nothing)
+function plot_simulation(params, loss, prob, tsteps; only=nothing)
     @info "Objective" loss
     solution = solve(prob, Tsit5(), p = params, saveat = tsteps)
 
@@ -71,7 +71,7 @@ function plot_simulation(params, loss, prob, tsteps, just=nothing)
     for (step, state) in enumerate(solution.u)
         controls[:, step] = controller(state, params)
     end
-    display(unicode_plotter(states, controls, just))
+    display(unicode_plotter(states, controls; only))
     return false  # if return true, then optimization stops
 end
 

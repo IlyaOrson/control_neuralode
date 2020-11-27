@@ -54,8 +54,9 @@ end
 # initial conditions and timepoints
 t0 = 0f0
 tf = 4f0
-Δt = 0.004f0
-CA0 = 10f0; CB0 = 10f0; CC0 = 10f0; T0=290f0; V0 = 10f0
+Δt = 0.4f0
+# TODO: verify intial conditions
+CA0 = 10f0; CB0 = 10f0; CC0 = 10f0; T0=290f0; V0 = 100f0
 u0 = [CA0, CB0, CC0, T0, V0]
 tspan = (t0, tf)
 tsteps = t0:Δt:tf
@@ -63,8 +64,7 @@ tsteps = t0:Δt:tf
 # set arquitecture of neural network controller
 controller = FastChain(
     FastDense(5, 20, tanh),
-    # FastDense(20, 20, tanh),
-    # FastDense(20, 20, tanh),
+    FastDense(20, 20, tanh),
     FastDense(20, 2),
     (x, p) -> relu.(x),
 )
@@ -82,7 +82,7 @@ prob = ODEProblem(dudt!, u0, tspan, θ)
 
 # closures to comply with required interface
 loss(params) = loss(params, prob, tsteps)
-plotting_callback(params, loss) = plot_simulation(params, loss, prob, tsteps, :controls)
+plotting_callback(params, loss) = plot_simulation(params, loss, prob, tsteps; only=:states)
 
 # Hic sunt dracones
 result = DiffEqFlux.sciml_train(
@@ -91,19 +91,8 @@ result = DiffEqFlux.sciml_train(
     # NelderMead(),
     # BFGS(initial_stepnorm = 0.01),
     LBFGS(),
-    # maxiters=5,
+    # ADAM(),
+    # maxiters=20,
     cb = plotting_callback,
     allow_f_increases = true,
 )
-
-# # https://fluxml.ai/Zygote.jl/latest/#Taking-Gradients
-# # an example of how to extract gradients
-# @show eltype(θ)
-# @show l₀ = loss(θ)
-# @time ∇θ = Zygote.gradient(loss, θ)[1]
-# @show typeof(∇θ)
-# @show eltype(∇θ)
-# h = 1e-2  # eltype(θ)(1e-3)
-# @show eltype(h * ∇θ)
-# @show lₕ = loss(θ + h * ∇θ)
-# @show ∇L = lₕ - l₀

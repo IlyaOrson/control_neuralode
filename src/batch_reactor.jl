@@ -24,16 +24,16 @@ function loss(params, prob, tsteps)
 end
 
 # initial conditions and timepoints
-u0 = [1.0f0, 0.0f0]
-tspan = (0.0f0, 1.0f0)
-tsteps = 0.0f0:0.001f0:1.0f0
+u0 = [1f0, 0f0]
+tspan = (0f0, 1f0)
+tsteps = 0f0:0.001f0:1f0
 
 # set arquitecture of neural network controller
 controller = FastChain(
     FastDense(2, 20, tanh),
     FastDense(20, 20, tanh),
     FastDense(20, 2),
-(x, p) -> 5 * σ.(x),  # controllers ∈ (0, 5)
+    (x, p) -> 5 * σ.(x),  # controllers ∈ (0, 5)
 )
 
 # model weights are destructured into a vector of parameters
@@ -45,7 +45,7 @@ prob = ODEProblem(dudt!, u0, tspan, θ)
 
 # closures to comply with required interface
 loss(params) = loss(params, prob, tsteps)
-plotting_callback(params, loss) = plot_simulation(params, loss, prob, tsteps)
+plotting_callback(params, loss) = plot_simulation(params, loss, prob, tsteps, only=:controls)
 
 # Hic sunt dracones
 result = DiffEqFlux.sciml_train(
