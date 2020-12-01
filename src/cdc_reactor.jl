@@ -1,35 +1,54 @@
+# Elements of Chemical Reaction Engineering
+# Fifth Edition
+# H. SCOTT FOGLER
+# Chapter 13: Unsteady-State Nonisothermal Reactor Design
+# Section 13.5: Nonisothermal Multiple Reactions
+# Example 13–5 Multiple Reactions in a Semibatch Reactor
+# p. 658
+
 function system!(du, u, p, t, controller)
     # fixed parameters
-    f = (
-        CpA    = 30f0,
-        CpB    = 60f0,
-        CpC    = 20f0,
-        CpH2SO4= 35f0,
-        T0     = 305f0,
-        HRA    = -6500f0,
-        HRB    = 8000f0,
-        E1A    = 9500f0/1.987f0,
-        E2A    = 7000f0/1.987f0,
-        A1     = 1.25f0,
-        Tr1    = 420f0,
-        Tr2    = 400f0,
-        CA0    = 4f0,
-        A2     = 0.08f0,
-        UA     = 4.5f0,
-        N0H2S04= 100f0
-    )
+    CpA    = 30f0
+    CpB    = 60f0
+    CpC    = 20f0
+    CpH2SO4= 35f0
+    N0H2S04= 100f0
+    T0     = 305f0
+    CA0    = 4f0
+    HRA    = -6500f0
+    HRB    = 8000f0
+    E1A    = 9500f0/1.987f0
+    E2B    = 7000f0/1.987f0
+    A1     = 1.25f0
+    A2     = 0.08f0
+    UA     = 35000f0  # Bradford uses 45000
+    # where did this variables came from?
+    # Tr1    = 420f0
+    # Tr2    = 400f0
 
     # neural network outputs controls taken by the system
     CA, CB, CC, T, Vol = u  # state unpacking
     c_F, c_T = controller(u, p)  # control based on state and parameters
 
-    num = 10f0^4 * f.UA * (c_T-T) - f.CA0*c_F*f.CpA*(T-f.T0)+(f.HRA*(-f.Tr1*CA)+f.HRB*(-f.Tr2*CB))*Vol
-    den = (CA*f.CpA+f.CpB*CB+f.CpC*CC)*Vol + f.N0H2S04*f.CpH2SO4
+    k1A = A1*exp(E1A*(1/320f0 - 1/T))
+    k2B = A2*exp(E2B*(1/300f0 - 1/T))
+
+    k1CA = k1A*CA
+    k2CB = k2B*CB
+    F_Vol = c_F/Vol
+
+    ra = -k1CA
+    rb = 0.5f0*k1CA - k2CB
+    rc = 3f0*k2CB
+
+    num =   UA * (c_T-T) - CA0*c_F*CpA*(T-T0) +
+            (HRA*(-k1CA)+HRB*(-k2CB))*Vol
+    den = (CA*CpA+CpB*CB+CpC*CC)*Vol + N0H2S04*CpH2SO4
 
     # dynamics of the controlled system
-    dCA = -f.Tr1*CA + (f.CA0-CA)*(c_F / Vol)
-    dCB = f.Tr1*CA/2f0 - f.Tr2*CB - CB*(c_F/Vol)
-    dCC = 3f0*f.Tr2*CB - CC*(c_F/Vol)
+    dCA = ra + (CA0-CA)*F_Vol
+    dCB = rb - CB*F_Vol
+    dCC = rc - CC*F_Vol
     dT = num/den
     dVol = c_F
 
@@ -43,35 +62,43 @@ function system!(du, u, p, t, controller)
     end
 end
 
+# TODO: Enfore constraints with barrier methods
+# T ∈ (0, 420]
+# Vol ∈ (0, 800]
+outsider(x, lo, hi) = x < lo || x > hi ? x : 0
+
 # define objective function to optimize
 function loss(params, prob, tsteps)
     # integrate ODE system and extract loss from result
-    sol = solve(prob, Tsit5(), p = params, saveat = tsteps)
-    last_state = Array(sol)[:, end]  # minus to maximize
-    return - 100f0*last_state[1] + last_state[2]  # L = - (100 x₁ - x₂)
+    sol = solve(prob, Tsit5(), p = params, saveat = tsteps) |> Array
+    last_state = sol[:, end]
+    temps = sol[4, 1:end]
+    vols = sol[5, 1:end]
+    out_temp = map(x -> outsider(x, 0, 420), temps)
+    out_vols = map(x -> outsider(x, 0, 800), temps)
+    # quadratic penalty
+    penalty = sum(out_temp.^2) + sum(out_vols.^2)
+    # L = - (100 x₁ - x₂) + penalty  # minus to maximize
+    return - 100f0*last_state[1] + last_state[2] + penalty
 end
 
 # initial conditions and timepoints
 t0 = 0f0
-tf = 4f0
-Δt = 0.4f0
-# TODO: verify intial conditions
-CA0 = 10f0; CB0 = 10f0; CC0 = 10f0; T0=290f0; V0 = 100f0
+tf = 1.5f0  # Bradfoard uses 0.4
+Δt = 0.04f0
+CA0 = 1f0; CB0 = 0f0; CC0 = 0f0; T0=290f0; V0 = 100f0
 u0 = [CA0, CB0, CC0, T0, V0]
 tspan = (t0, tf)
 tsteps = t0:Δt:tf
 
 # set arquitecture of neural network controller
 controller = FastChain(
-    FastDense(5, 20, tanh),
-    FastDense(20, 20, tanh),
+    FastDense(5, 20, relu),
+    FastDense(20, 20, relu),
     FastDense(20, 2),
-    (x, p) -> relu.(x),
+    (x, p) -> [240f0, 298f0],
+    # (x, p) -> tanh.(x),
 )
-
-# TODO: How to enforce constraints???
-# T ∈ (0, 420]
-# Vol ∈ (0, 800]
 
 # model weights are destructured into a vector of parameters
 θ = initial_params(controller)

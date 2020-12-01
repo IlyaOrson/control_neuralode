@@ -1,3 +1,6 @@
+# Solution of a Class of Multistage Dynamic Optimization Problems.
+# 2.Problems with Path Constraints
+
 function system!(du, u, p, t, controller)
     # neural network outputs controls taken by the system
     x1, x2, x3 = u
