@@ -8,9 +8,9 @@ using UnicodePlots: lineplot, lineplot!
 using ClearStacktrace  # nicer stacktraces (unnecesary in julia 1.6)
 
 # handy terminal plots
-function unicode_plotter(states, controls; only=nothing)
-
+function unicode_plotter(states, controls; only=nothing, vars=nothing)
     if only == :states
+        typeof(vars) <: Vector && (states = @view states[vars, :])
         ylim = states |> extrema
         plt = lineplot(
             states[1,:],
@@ -22,7 +22,8 @@ function unicode_plotter(states, controls; only=nothing)
         for (i, s) in enumerate(eachrow(states[2:end,:]))
             lineplot!(plt, collect(s), name = "x$(i+1)")
         end
-    elseif  only == :controls
+    elseif only == :controls
+        typeof(vars) <: Vector && (controls = @view controls[vars, :])
         ylim = controls |> extrema
         plt = lineplot(
             controls[1,:],
@@ -54,7 +55,7 @@ function unicode_plotter(states, controls; only=nothing)
 end
 
 # simulate evolution at each iteration and plot it
-function plot_simulation(params, loss, prob, tsteps; only=nothing)
+function plot_simulation(params, loss, prob, tsteps; only=nothing, vars=nothing)
     @info "Objective" loss
     solution = solve(prob, Tsit5(), p = params, saveat = tsteps)
 
@@ -71,7 +72,7 @@ function plot_simulation(params, loss, prob, tsteps; only=nothing)
     for (step, state) in enumerate(solution.u)
         controls[:, step] = controller(state, params)
     end
-    display(unicode_plotter(states, controls; only))
+    display(unicode_plotter(states, controls; only, vars))
     return false  # if return true, then optimization stops
 end
 
