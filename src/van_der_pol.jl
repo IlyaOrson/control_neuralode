@@ -58,16 +58,11 @@ plotting_callback(params, loss) = plot_simulation(
     params, loss, prob, tsteps, #only=:controls
 )
 
-# Hic sunt dracones
-result = DiffEqFlux.sciml_train(
-    loss,
-    θ,
-    LBFGS(),
-    # ADAM(),
-    # maxiters=10,
-    cb = plotting_callback,
-    # allow_f_increases = true,
-)
+adtype = GalacticOptim.AutoZygote()
+optf = GalacticOptim.OptimizationFunction((x, p) -> loss(x), adtype)
+optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
+optprob = GalacticOptim.OptimizationProblem(optfunc, θ)#  ; allow_f_increases = true)
+result = GalacticOptim.solve(optprob, LBFGS(); cb = plotting_callback)
 
 @show result
 
@@ -80,12 +75,8 @@ function penalty_loss(params, prob, tsteps)
     return sol[3, end] + penalty
 end
 
-result = DiffEqFlux.sciml_train(
-    (params) -> penalty_loss(params, prob, tsteps),
-    θ,
-    LBFGS(),
-    # ADAM(),
-    # maxiters=10,
-    cb = plotting_callback,
-    allow_f_increases = true,
-)
+adtype = GalacticOptim.AutoZygote()
+optf = GalacticOptim.OptimizationFunction((x, p) -> penalty_loss(x, prob, tsteps), adtype)
+optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
+optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases = true)
+result = GalacticOptim.solve(optprob, LBFGS(); cb = plotting_callback)

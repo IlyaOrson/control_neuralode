@@ -62,7 +62,7 @@ function system!(du, u, p, t, controller)
     end
 end
 
-# TODO: Enfore constraints with barrier methods
+# TODO: Enforce constraints with barrier methods
 # T ∈ (0, 420]
 # Vol ∈ (0, 800]
 outsider(x, lo, hi) = x < lo || x > hi ? x : 0
@@ -79,7 +79,8 @@ function loss(params, prob, tsteps)
     # quadratic penalty
     penalty = sum(out_temp.^2) + sum(out_vols.^2)
     # L = - (100 x₁ - x₂) + penalty  # minus to maximize
-    return - 100f0*last_state[1] + last_state[2] + penalty
+    # return - 100f0*last_state[1] + last_state[2] + penalty
+    return penalty
 end
 
 # initial conditions and timepoints
@@ -95,9 +96,8 @@ tsteps = t0:Δt:tf
 controller = FastChain(
     FastDense(5, 20, relu),
     FastDense(20, 20, relu),
-    FastDense(20, 2),
-    (x, p) -> [240f0, 298f0],
-    # (x, p) -> tanh.(x),
+    FastDense(20, 2, x -> 100*sigmoid(x) .+ 250),
+    # (x, p) -> [240f0, 298f0],  # reference values
 )
 
 # model weights are destructured into a vector of parameters
@@ -109,17 +109,12 @@ prob = ODEProblem(dudt!, u0, tspan, θ)
 
 # closures to comply with required interface
 loss(params) = loss(params, prob, tsteps)
-plotting_callback(params, loss) = plot_simulation(params, loss, prob, tsteps; only=:states)
+plotting_callback(params, loss) = plot_simulation(params, loss, prob, tsteps; only=:controls)
 
-# Hic sunt dracones
-result = DiffEqFlux.sciml_train(
-    loss,
-    θ,
-    # NelderMead(),
-    # BFGS(initial_stepnorm = 0.01),
-    LBFGS(),
-    # ADAM(),
-    # maxiters=20,
-    cb = plotting_callback,
-    allow_f_increases = true,
-)
+plotting_callback(θ, loss)
+
+adtype = GalacticOptim.AutoZygote()
+optf = GalacticOptim.OptimizationFunction((x, p) -> loss(x), adtype)
+optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
+optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases = true)
+result = GalacticOptim.solve(optprob, LBFGS(); cb = plotting_callback)

@@ -3,7 +3,7 @@
 module DiscrepancyNeuralODE
 
 # using Sundials
-using DiffEqFlux, Flux, Optim, OrdinaryDiffEq, Zygote
+using DiffEqFlux, Flux, Optim, OrdinaryDiffEq, Zygote, GalacticOptim
 using UnicodePlots: lineplot, lineplot!
 using ClearStacktrace  # nicer stacktraces (unnecesary in julia 1.6)
 
