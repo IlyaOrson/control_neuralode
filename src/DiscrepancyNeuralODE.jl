@@ -79,5 +79,5 @@ end
 function runner(script)
     include(joinpath(@__DIR__, "$script.jl"))
 end
-
+# runner("van_der_pol")  # for PackageCompiler
 end # module

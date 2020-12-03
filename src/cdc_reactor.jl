@@ -22,7 +22,6 @@ function system!(du, u, p, t, controller)
     A1     = 1.25f0
     A2     = 0.08f0
     UA     = 35000f0  # Bradford uses 45000
-    # where did this variables came from?
     # Tr1    = 420f0
     # Tr2    = 400f0
 
@@ -62,59 +61,102 @@ function system!(du, u, p, t, controller)
     end
 end
 
-# TODO: Enforce constraints with barrier methods
-# T ∈ (0, 420]
-# Vol ∈ (0, 800]
-outsider(x, lo, hi) = x < lo || x > hi ? x : 0
-
-# define objective function to optimize
-function loss(params, prob, tsteps)
-    # integrate ODE system and extract loss from result
-    sol = solve(prob, Tsit5(), p = params, saveat = tsteps) |> Array
-    last_state = sol[:, end]
-    temps = sol[4, 1:end]
-    vols = sol[5, 1:end]
-    out_temp = map(x -> outsider(x, 0, 420), temps)
-    out_vols = map(x -> outsider(x, 0, 800), temps)
-    # quadratic penalty
-    penalty = sum(out_temp.^2) + sum(out_vols.^2)
-    # L = - (100 x₁ - x₂) + penalty  # minus to maximize
-    # return - 100f0*last_state[1] + last_state[2] + penalty
-    return penalty
-end
-
 # initial conditions and timepoints
 t0 = 0f0
-tf = 1.5f0  # Bradfoard uses 0.4
-Δt = 0.04f0
-CA0 = 1f0; CB0 = 0f0; CC0 = 0f0; T0=290f0; V0 = 100f0
+tf = 2f0  # Bradfoard uses 0.4
+Δt = 0.01f0
+CA0 = 0f0; CB0 = 0f0; CC0 = 0f0; T0=290f0; V0 = 100f0
 u0 = [CA0, CB0, CC0, T0, V0]
 tspan = (t0, tf)
 tsteps = t0:Δt:tf
 
 # set arquitecture of neural network controller
 controller = FastChain(
-    FastDense(5, 20, relu),
-    FastDense(20, 20, relu),
-    FastDense(20, 2, x -> 100*sigmoid(x) .+ 250),
-    # (x, p) -> [240f0, 298f0],  # reference values
+    FastDense(5, 20, tanh),
+    FastDense(20, 20, tanh),
+    FastDense(20, 2),
+    # (x, p) -> [240f0, 298f0],
+    # F ∈ (0, 250) & V ∈ (200, 500) in Bradford 2017
+    (x, p) -> [250*sigmoid(x[1]), 200 + 300*sigmoid(x[2])],
 )
 
-# model weights are destructured into a vector of parameters
+# simulate the system with constant controls
+fogler_ref = [240f0, 298f0]  # reference values in Fogler
+fixed_dudt!(du, u, p, t) = system!(du, u, p, t, (u, p)->fogler_ref)
+fixed_prob = ODEProblem(fixed_dudt!, u0, tspan)
+fixed_sol = solve(fixed_prob, Tsit5()) |> Array
+
+# enforce constant control over integrated path
+function precondition_loss(params)
+    # this fails because Zygote does not support mutation
+    # diff(state) = controller(state, params) - fogler_ref
+    # coldiff = mapslices(diff, sol; dims=1)  # apply error function over columns
+    # return sum(coldiff.^2)
+
+    sum_squares = 0f0
+    for state in eachcol(fixed_sol)
+        pred = controller(state, params)
+        sum_squares += sum((pred-fogler_ref).^2)
+    end
+    return sum_squares
+end
+
+plot_callback(params, loss) = plot_simulation(params, loss, fixed_prob, tsteps; only=:controls)
+
+# destructure model weights into a vector of parameters
 θ = initial_params(controller)
+
+@info "Controls after default initialization (Xavier uniform)"
+plot_callback(θ, precondition_loss(θ))
+
+adtype = GalacticOptim.AutoZygote()
+optf = GalacticOptim.OptimizationFunction((x, p) -> precondition_loss(x), adtype)
+optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
+optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases = true)
+precondition = GalacticOptim.solve(optprob, LBFGS())
+
+
+# TODO: Enforce constraints with barrier methods
+# T ∈ (0, 420]
+# Vol ∈ (0, 800]
+outsider(x, lo, hi) = x < lo || x > hi ? x : 0
+insider(x, lo, hi) = lo < x < hi ? x : 0
+
+# define objective function to optimize
+function loss(params, prob, tsteps)
+    # integrate ODE system and extract loss from result
+    sol = solve(prob, Tsit5(), p = params, saveat = tsteps) |> Array
+    last_state = sol[:, end]
+    out_temp = map(x -> outsider(x, 0, 400), sol[4, 1:end])
+    out_vols = map(x -> outsider(x, 0, 380), sol[5, 1:end])
+    # quadratic penalty
+    penalty = sum(out_temp.^2) + sum(out_vols.^2)
+    # L = - (100 x₁ - x₂) + penalty  # minus to maximize
+    # return - 100f0*last_state[1] + last_state[2] + penalty
+    return -last_state[2] + penalty
+end
 
 # set differential equation struct
 dudt!(du, u, p, t) = system!(du, u, p, t, controller)
-prob = ODEProblem(dudt!, u0, tspan, θ)
+prob = ODEProblem(dudt!, u0, tspan, precondition.minimizer)
 
 # closures to comply with required interface
 loss(params) = loss(params, prob, tsteps)
-plotting_callback(params, loss) = plot_simulation(params, loss, prob, tsteps; only=:controls)
+plot_controls_callback(params, loss) = plot_simulation(params, loss, prob, tsteps; only=:controls)#  only=:states, vars=[1,2,3])
 
-plotting_callback(θ, loss)
+@info "Controls after preconditioning to Fogler's reference: $(fogler_ref)"
+plot_controls_callback(precondition.minimizer, loss(precondition.minimizer))
 
 adtype = GalacticOptim.AutoZygote()
 optf = GalacticOptim.OptimizationFunction((x, p) -> loss(x), adtype)
 optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
 optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases = true)
-result = GalacticOptim.solve(optprob, LBFGS(); cb = plotting_callback)
+@show result = GalacticOptim.solve(
+    optprob, LBFGS();
+    cb = (params, loss) -> plot_simulation(params, loss, prob, tsteps; only=:states, vars=[1,2,3])
+)
+
+plot_simulation(result.minimizer, loss, prob, tsteps; only=:states, vars=[4,5])
+
+@info "Final controls"
+plot_controls_callback(result.minimizer, loss(result.minimizer))

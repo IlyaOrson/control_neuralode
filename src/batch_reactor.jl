@@ -60,7 +60,7 @@ GalacticOptim.solve(optprob, LBFGS(); cb = plotting_callback)
 @time ∇θ = Zygote.gradient(loss, θ)[1]
 @show typeof(∇θ)
 @show eltype(∇θ)
-h = 1e-2  # eltype(θ)(1e-3)
+h = 0.01f0
 @show eltype(h * ∇θ)
 @show lₕ = loss(θ + h * ∇θ)
 @show ∇L = lₕ - l₀
