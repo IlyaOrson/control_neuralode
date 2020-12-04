@@ -47,11 +47,6 @@ controller = FastChain(
 dudt!(du, u, p, t) = system!(du, u, p, t, controller)
 prob = ODEProblem(dudt!, u0, tspan, θ)
 
-# using Plots
-# @time sol_univ = solve(prob, AutoTsit5(Rosenbrock23()))
-# @show Array(sol_univ)[1:end, end]
-# plot(sol_univ, vars=(1,2))
-
 # closures to comply with required interface
 loss(params) = loss(params, prob, tsteps)
 plotting_callback(params, loss) = plot_simulation(

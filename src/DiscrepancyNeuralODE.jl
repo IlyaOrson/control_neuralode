@@ -12,28 +12,32 @@ function unicode_plotter(states, controls; only=nothing, vars=nothing)
     if only == :states
         typeof(vars) <: Vector && (states = @view states[vars, :])
         ylim = states |> extrema
+        tag = isnothing(vars) ? "x1" : "x$(vars[1])"
         plt = lineplot(
             states[1,:],
             title = "State Evolution",
-            name = "x1",
+            name = tag,
             xlabel = "step",
             ylim = ylim,
         )
         for (i, s) in enumerate(eachrow(states[2:end,:]))
-            lineplot!(plt, collect(s), name = "x$(i+1)")
+            tag = isnothing(vars) ? "x$(i+1)" : "x$(vars[i+1])"
+            lineplot!(plt, collect(s), name = tag)
         end
     elseif only == :controls
         typeof(vars) <: Vector && (controls = @view controls[vars, :])
         ylim = controls |> extrema
+        tag = isnothing(vars) ? "c1" : "c$(vars[1])"
         plt = lineplot(
             controls[1,:],
             title = "Control Evolution",
-            name = "c1",
+            name = tag,
             xlabel = "step",
             ylim = ylim,
         )
         for (i, s) in enumerate(eachrow(controls[2:end,:]))
-            lineplot!(plt, collect(s), name = "c$(i+1)")
+            tag = isnothing(vars) ? "c$(i+1)" : "c$(vars[i+1])"
+            lineplot!(plt, collect(s), name = tag)
         end
     else
         ylim = Iterators.flatten((states, controls)) |> extrema
