@@ -120,7 +120,6 @@ precondition = GalacticOptim.solve(optprob, LBFGS())
 # T ∈ (0, 420]
 # Vol ∈ (0, 800]
 outsider(x, lo, hi) = x < lo || x > hi ? x : 0
-insider(x, lo, hi) = lo < x < hi ? x : 0
 
 # define objective function to optimize
 function loss(params, prob, tsteps)
