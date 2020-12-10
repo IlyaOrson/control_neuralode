@@ -41,25 +41,6 @@ function system!(du, u, p, t, controller)
     end
 end
 
-outsider(x, lo, hi) = x < lo || x > hi ? x : zero(x)
-
-# state constraints and regularization on control change
-# C_N(t) - 150 ≤ 0              t = T
-# C_N(t) − 800 ≤ 0              ∀t
-# C_qc(t) − 0.011 C_X(t) ≤ 0    ∀t
-function penalty_loss(params, prob, tsteps; β=0.1f0)
-    # integrate ODE system (stiff problem)
-    sol = solve(prob, AutoTsit5(Rosenbrock23()), p = params, saveat = tsteps) |> Array
-    C_N_over = relu.(sol[2, 1:end] .- 800f0)
-    C_X_over = relu.(sol[3, 1:end] .- 0.011f0*sol[1, 1:end])
-    C_N_over_last = relu(sol[2, end] - 150f0)
-
-    # TODO: add penalty on change of controls
-
-    constraint_penalty = sum(C_N_over.^2 .+ C_X_over.^2 .+ C_N_over_last.^2)
-    return -sol[3, end] + β*constraint_penalty
-end
-
 # initial conditions and timepoints
 t0 = 0f0
 tf = 240f0  # Bradfoard uses 0.4
@@ -78,6 +59,43 @@ controller = FastChain(
     # I ∈ [120, 400] & F ∈ [0, 40] in Bradford 2020
     (x, p) -> [180f0*sigmoid(x[1]) + 120f0, 40*sigmoid(x[2])],
 )
+
+# outsider(x, lo, hi) = x < lo || x > hi ? x : zero(x)
+
+# state constraints and regularization on control change
+# C_N(t) - 150 ≤ 0              t = T
+# C_N(t) − 800 ≤ 0              ∀t
+# C_qc(t) − 0.011 C_X(t) ≤ 0    ∀t
+function penalty_loss(params, prob, tsteps; β=0.1f0)
+    # integrate ODE system (stiff problem)
+    sol = solve(prob, AutoTsit5(Rosenbrock23()), p = params, saveat = tsteps) |> Array
+
+    C_N_over = relu.(sol[2, 1:end] .- 800f0)
+    C_X_over = relu.(sol[3, 1:end] .- 0.011f0*sol[1, 1:end])
+    C_N_over_last = relu(sol[2, end] - 150f0)
+
+    constraint_penalty = sum(C_N_over.^2 .+ C_X_over.^2 .+ C_N_over_last.^2)
+
+    # missing adjoint in Zygote for this generator
+    # controls = [controller(state, params) for state in eachcol(sol)]
+    # sum_squares = 0f0
+    # for i in eachindex(controls[1:end-1])
+    #     prev = controls[i]
+    #     post = controls[i+1]
+    #     sum_squares += 3.125f-8 * (prev[1]-post[1])^2
+    #     sum_squares += 3.125f-6 * (prev[2]-post[2])^2
+    # end
+
+    # penalty on change of controls
+    sum_squares = 0f0
+    for i in 1:size(sol, 2)-1
+        prev = controller(sol[:,i], params)
+        post = controller(sol[:,i+1], params)
+        sum_squares += 3.125f-8 * (prev[1]-post[1])^2 + 3.125f-6 * (prev[2]-post[2])^2
+    end
+
+    return -sol[3, end] + β*constraint_penalty + sum_squares
+end
 
 # destructure model weights into a vector of parameters
 θ = initial_params(controller)
@@ -105,4 +123,5 @@ result = GalacticOptim.solve(optprob, LBFGS(); cb = plot_states_callback)
 plot_simulation(result.minimizer, penalty_loss(result.minimizer), prob, tsteps; only=:states)
 
 @info "Final controls"
-plot_simulation(result.minimizer, penalty_loss(result.minimizer), prob, tsteps; only=:controls)
+plot_simulation(result.minimizer, penalty_loss(result.minimizer), prob, tsteps; only=:controls, vars=[1])
+plot_simulation(result.minimizer, penalty_loss(result.minimizer), prob, tsteps; only=:controls, vars=[2])
