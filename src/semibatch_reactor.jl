@@ -63,7 +63,7 @@ end
 
 # initial conditions and timepoints
 t0 = 0f0
-tf = 2f0  # Bradfoard uses 0.4
+tf = 1.2f0  # Bradfoard uses 0.4
 Δt = 0.01f0
 CA0 = 0f0; CB0 = 0f0; CC0 = 0f0; T0=290f0; V0 = 100f0
 u0 = [CA0, CB0, CC0, T0, V0]
@@ -115,24 +115,30 @@ optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
 optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases = true)
 precondition = GalacticOptim.solve(optprob, LBFGS())
 
+# C. Feller and C. Ebenbauer
+# "Relaxed Logarithmic Barrier Function Based Model Predictive Control of Linear Systems"
+# IEEE Transactions on Automatic Control, vol. 62, no. 3, pp. 1223-1238, March 2017
+# doi: 10.1109/TAC.2016.2582040.
 
-# TODO: Enforce constraints with barrier methods
+# constraints with barrier methods
 # T ∈ (0, 420]
 # Vol ∈ (0, 800]
-outsider(x, lo, hi) = x < lo || x > hi ? x : 0
+β(z, δ) = 0.5f0 * (((z - 2δ)/δ)^2 - 1f0) - log(δ)
+B(z; δ=0.3f0) = z > δ ? -log(z) : β(z, δ)
+B(z, lower, upper; δ=10f0) = B(z - lower; δ) + B(upper - z; δ)
 
 # define objective function to optimize
 function loss(params, prob, tsteps)
     # integrate ODE system and extract loss from result
     sol = solve(prob, Tsit5(), p = params, saveat = tsteps) |> Array
     last_state = sol[:, end]
-    out_temp = map(x -> outsider(x, 0, 400), sol[4, 1:end])
-    out_vols = map(x -> outsider(x, 0, 380), sol[5, 1:end])
+    out_temp = map(x -> B(x, 0, 400), sol[4, 1:end])
+    out_vols = map(x -> B(x, 0, 380), sol[5, 1:end])
     # quadratic penalty
-    penalty = sum(out_temp.^2) + sum(out_vols.^2)
+    penalty = sum(out_temp) + sum(out_vols)
     # L = - (100 x₁ - x₂) + penalty  # minus to maximize
     # return - 100f0*last_state[1] + last_state[2] + penalty
-    return -last_state[2] + penalty
+    return -last_state[1] + penalty
 end
 
 # set differential equation struct
