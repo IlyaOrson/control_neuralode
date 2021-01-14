@@ -82,7 +82,7 @@ end
 # set arquitecture of neural network controller
 controller = FastChain(
     FastDense(2, 20, tanh),
-    # FastDense(20, 20, tanh),
+    FastDense(20, 20, tanh),
     FastDense(20, 2),
     (x, p) -> [u_lower + (u_upper-u_lower) * σ(x[1])],  # controllers ∈ [u_lower, u_upper]
 )
@@ -96,7 +96,7 @@ function loss(params, prob, tsteps)
     sum_squares = 0f0
     for state in eachcol(sol)
         control = controller(state, params)
-        sum_squares += α1*(control[1]-us)^2 + α2*(state[1]-y1s)^2 + α3*(state[2]-y2s)^2
+        sum_squares += α1*(state[1]-y1s)^2 + α2*(state[2]-y2s)^2 + α3*(control[1]-us)^2
     end
     return sum_squares
 end
@@ -125,4 +125,6 @@ optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
 optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases = true)
 result = GalacticOptim.solve(optprob, LBFGS(); cb = plotting_callback)
 
+plot_simulation(result.minimizer, loss(result.minimizer), prob, tsteps, only=:states, vars=[1])
+plot_simulation(result.minimizer, loss(result.minimizer), prob, tsteps, only=:states, vars=[2])
 plot_simulation(result.minimizer, loss(result.minimizer), prob, tsteps, only=:controls)
