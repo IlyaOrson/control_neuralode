@@ -60,8 +60,6 @@ controller = FastChain(
     (x, p) -> [180f0*sigmoid(x[1]) + 120f0, 40*sigmoid(x[2])],
 )
 
-# outsider(x, lo, hi) = x < lo || x > hi ? x : zero(x)
-
 # state constraints and regularization on control change
 # C_N(t) - 150 ≤ 0              t = T
 # C_N(t) − 800 ≤ 0              ∀t
@@ -112,7 +110,6 @@ plot_states_callback(params, loss) = plot_simulation(params, loss, prob, tsteps;
 @info "Initial controls"
 plot_simulation(θ, penalty_loss(θ), prob, tsteps; only=:controls)
 
-
 adtype = GalacticOptim.AutoZygote()
 optf = GalacticOptim.OptimizationFunction((x, p) -> penalty_loss(x, prob, tsteps), adtype)
 optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
@@ -125,3 +122,6 @@ plot_simulation(result.minimizer, penalty_loss(result.minimizer), prob, tsteps; 
 @info "Final controls"
 plot_simulation(result.minimizer, penalty_loss(result.minimizer), prob, tsteps; only=:controls, vars=[1])
 plot_simulation(result.minimizer, penalty_loss(result.minimizer), prob, tsteps; only=:controls, vars=[2])
+
+@info "Storing results"
+plot_simulation(result.minimizer, penalty_loss(result.minimizer), prob, tsteps; store=@__FILE__)

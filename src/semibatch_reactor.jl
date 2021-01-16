@@ -165,3 +165,6 @@ plot_simulation(result.minimizer, loss, prob, tsteps; only=:states, vars=[4,5])
 
 @info "Final controls"
 plot_controls_callback(result.minimizer, loss(result.minimizer))
+
+@info "Storing results"
+plot_simulation(result.minimizer, loss(result.minimizer), prob, tsteps; store=@__FILE__)

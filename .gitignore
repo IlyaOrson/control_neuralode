@@ -1,2 +1,5 @@
 # PackageCompiler images
 *.so
+
+# data
+*.csv

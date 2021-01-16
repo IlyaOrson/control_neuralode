@@ -128,3 +128,6 @@ result = GalacticOptim.solve(optprob, LBFGS(); cb = plotting_callback)
 plot_simulation(result.minimizer, loss(result.minimizer), prob, tsteps, only=:states, vars=[1])
 plot_simulation(result.minimizer, loss(result.minimizer), prob, tsteps, only=:states, vars=[2])
 plot_simulation(result.minimizer, loss(result.minimizer), prob, tsteps, only=:controls)
+
+@info "Storing results"
+plot_simulation(result.minimizer, loss(result.minimizer), prob, tsteps; store=@__FILE__)

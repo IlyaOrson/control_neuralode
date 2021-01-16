@@ -75,3 +75,6 @@ optf = GalacticOptim.OptimizationFunction((x, p) -> penalty_loss(x, prob, tsteps
 optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
 optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases = true)
 result = GalacticOptim.solve(optprob, LBFGS(); cb = plotting_callback)
+
+@info "Storing results"
+plot_simulation(result.minimizer, (x) -> penalty_loss(x, prob, tsteps), prob, tsteps; store=@__FILE__)

@@ -2,10 +2,13 @@
 
 module DiscrepancyNeuralODE
 
-# using Sundials
-using DiffEqFlux, Flux, Optim, OrdinaryDiffEq, Zygote, GalacticOptim
+using Dates
+using Base.Filesystem
+
+using DiffEqFlux, Flux, Optim, OrdinaryDiffEq, Zygote, GalacticOptim, DiffEqSensitivity
 using UnicodePlots: lineplot, lineplot!
 using ClearStacktrace  # nicer stacktraces (unnecesary in julia 1.6)
+using CSV, Tables
 
 # handy terminal plots
 function unicode_plotter(states, controls; only=nothing, vars=nothing)
@@ -59,14 +62,13 @@ function unicode_plotter(states, controls; only=nothing, vars=nothing)
 end
 
 # simulate evolution at each iteration and plot it
-function plot_simulation(params, loss, prob, tsteps; only=nothing, vars=nothing)
+function plot_simulation(params, loss, prob, tsteps; only=nothing, vars=nothing, store=nothing)
     @info "Objective" loss
     solution = solve(prob, Tsit5(), p = params, saveat = tsteps)
 
     # construct arrays with the same type used by the integrator
     elements_type = eltype(solution.t)
     states = Array(solution)
-
     total_steps = size(states, 2)
     state_dimension = size(states, 1)
     control_dimension = length(controller(solution.u[1], params))
@@ -76,6 +78,36 @@ function plot_simulation(params, loss, prob, tsteps; only=nothing, vars=nothing)
     for (step, state) in enumerate(solution.u)
         controls[:, step] = controller(state, params)
     end
+    if typeof(store) == String
+        parent = dirname(@__DIR__)
+        current_datetime = replace(string(now()), (":" => "_"))
+        datadir = joinpath(
+            parent, "data",
+            basename(store),
+            current_datetime
+        )
+        @info "Storing data in $datadir"
+        @show Base.Filesystem.ispath(joinpath(datadir, "states.csv"))
+        mkpath(datadir)
+
+        # time_data = Tables.table(reshape(solution.t, :, 1), header = ("t"))
+        # CSV.write(joinpath(datadir, "time.csv"), time_data)
+
+        state_headers = ["x$i" for i in 1:state_dimension]
+        # state_data = Tables.table(states', header = state_headers)
+        # CSV.write(joinpath(datadir, "states.csv"), state_data)
+
+        control_headers = ["c$i" for i in 1:control_dimension]
+        # control_data = Tables.table(controls', header = control_headers)
+        # CSV.write(joinpath(datadir, "controls.csv"), control_data)
+
+        full_data = Tables.table(
+            hcat(solution.t, states', controls'),
+            header = vcat(["t"], state_headers, control_headers)
+        )
+        CSV.write(joinpath(datadir, "data.csv"), full_data)
+    end
+
     display(unicode_plotter(states, controls; only, vars))
     return false  # if return true, then optimization stops
 end
