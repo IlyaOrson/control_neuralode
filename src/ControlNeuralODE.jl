@@ -61,9 +61,10 @@ function unicode_plotter(states, controls; only=nothing, vars=nothing)
     return plt
 end
 
-# simulate evolution at each iteration and plot it
-function plot_simulation(params, loss, prob, tsteps; only=nothing, vars=nothing, store=nothing)
-    @info "Objective" loss
+
+function generate_data(prob, params, tsteps)
+
+    # integrate with given parameters
     solution = solve(prob, Tsit5(), p = params, saveat = tsteps)
 
     # construct arrays with the same type used by the integrator
@@ -71,49 +72,67 @@ function plot_simulation(params, loss, prob, tsteps; only=nothing, vars=nothing,
     states = Array(solution)
     total_steps = size(states, 2)
     state_dimension = size(states, 1)
-    control_dimension = length(controller(solution.u[1], params))
+    @show control_dimension = length(controller(solution.u[1], params))
 
     # regenerate controls from controller
     controls = zeros(elements_type, control_dimension, total_steps)
     for (step, state) in enumerate(solution.u)
         controls[:, step] = controller(state, params)
     end
-    if typeof(store) == String
-        parent = dirname(@__DIR__)
-        current_datetime = replace(string(now()), (":" => "_"))
-        datadir = joinpath(
-            parent, "data",
-            basename(store),
-            current_datetime
-        )
-        @info "Storing data in $datadir"
-        @show Base.Filesystem.ispath(joinpath(datadir, "states.csv"))
-        mkpath(datadir)
+    return solution.t, states, controls
+end
 
-        # time_data = Tables.table(reshape(solution.t, :, 1), header = ("t"))
-        # CSV.write(joinpath(datadir, "time.csv"), time_data)
 
-        state_headers = ["x$i" for i in 1:state_dimension]
-        # state_data = Tables.table(states', header = state_headers)
-        # CSV.write(joinpath(datadir, "states.csv"), state_data)
+function store_simulation(name, prob, params, tsteps; metadata=nothing)
 
-        control_headers = ["c$i" for i in 1:control_dimension]
-        # control_data = Tables.table(controls', header = control_headers)
-        # CSV.write(joinpath(datadir, "controls.csv"), control_data)
+    times, states, controls = generate_data(prob, params, tsteps)
 
-        full_data = Tables.table(
-            hcat(solution.t, states', controls'),
-            header = vcat(["t"], state_headers, control_headers)
-        )
-        CSV.write(joinpath(datadir, "data.csv"), full_data)
-    end
+    parent = dirname(@__DIR__)
+    current_datetime = replace(string(now()), (":" => "_"))
+    datadir = joinpath(
+        parent, "data",
+        basename(name),
+        current_datetime
+    )
+    @info "Storing data in $datadir"
+    @show Base.Filesystem.ispath(joinpath(datadir, "states.csv"))
+    mkpath(datadir)
 
+    # time_data = Tables.table(reshape(solution.t, :, 1), header = ("t"))
+    # CSV.write(joinpath(datadir, "time.csv"), time_data)
+
+    state_headers = ["x$i" for i in 1:size(states, 1)]
+    # state_data = Tables.table(states', header = state_headers)
+    # CSV.write(joinpath(datadir, "states.csv"), state_data)
+
+    control_headers = ["c$i" for i in 1:size(controls, 1)]
+    # control_data = Tables.table(controls', header = control_headers)
+    # CSV.write(joinpath(datadir, "controls.csv"), control_data)
+
+    full_data = Tables.table(
+        hcat(times, states', controls'),
+        header = vcat(["t"], state_headers, control_headers)
+    )
+    CSV.write(joinpath(datadir, "data.csv"), full_data)
+
+    !isnothing(metadata) && CSV.write(joinpath(datadir, "metadata.txt"), metadata)
+end
+
+
+# simulate evolution at each iteration and plot it
+function plot_simulation(prob, params, tsteps; show=nothing, only=nothing, vars=nothing)
+
+    !isnothing(show) && @show show
+
+    times, states, controls = generate_data(prob, params, tsteps)
     display(unicode_plotter(states, controls; only, vars))
     return false  # if return true, then optimization stops
 end
 
+
 function runner(script)
     include(joinpath(@__DIR__, "$script.jl"))
 end
-# runner("van_der_pol")  # for PackageCompiler
+
+
 end # module

@@ -103,12 +103,12 @@ dudt!(du, u, p, t) = system!(du, u, p, t, controller)
 prob = ODEProblem(dudt!, u0, tspan, θ)
 
 # closures to comply with optimization interface
-penalty_loss(params) = penalty_loss(params, prob, tsteps, )
-plot_states_callback(params, loss) = plot_simulation(params, loss, prob, tsteps; only=:states, vars=[1,3])
+penalty_loss(params) = penalty_loss(params, prob, tsteps)
+plot_states_callback(params, loss) = plot_simulation(prob, params, tsteps; only=:states, vars=[1,3], show=loss)
 
 
 @info "Initial controls"
-plot_simulation(θ, penalty_loss(θ), prob, tsteps; only=:controls)
+plot_simulation(prob, θ, tsteps; only=:controls, show=penalty_loss(θ))
 
 adtype = GalacticOptim.AutoZygote()
 optf = GalacticOptim.OptimizationFunction((x, p) -> penalty_loss(x, prob, tsteps), adtype)
@@ -117,11 +117,11 @@ optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases = tru
 result = GalacticOptim.solve(optprob, LBFGS(); cb = plot_states_callback)
 
 @info "Final states"
-plot_simulation(result.minimizer, penalty_loss(result.minimizer), prob, tsteps; only=:states)
+plot_simulation(prob, result.minimizer, tsteps; only=:states, show=penalty_loss(result.minimizer))
 
 @info "Final controls"
-plot_simulation(result.minimizer, penalty_loss(result.minimizer), prob, tsteps; only=:controls, vars=[1])
-plot_simulation(result.minimizer, penalty_loss(result.minimizer), prob, tsteps; only=:controls, vars=[2])
+plot_simulation(prob, result.minimizer, tsteps; only=:controls, vars=[1], show=penalty_loss(result.minimizer))
+plot_simulation(prob, result.minimizer, tsteps; only=:controls, vars=[2], show=penalty_loss(result.minimizer))
 
 @info "Storing results"
-plot_simulation(result.minimizer, penalty_loss(result.minimizer), prob, tsteps; store=@__FILE__)
+store_simulation(@__FILE__, prob, result.minimizer, tsteps; metadata=nothing)

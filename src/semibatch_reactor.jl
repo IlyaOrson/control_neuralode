@@ -101,7 +101,7 @@ function precondition_loss(params)
     return sum_squares
 end
 
-plot_callback(params, loss) = plot_simulation(params, loss, fixed_prob, tsteps; only=:controls)
+plot_callback(params, loss) = plot_simulation(prob, params, tsteps; only=:controls, show=loss)
 
 # destructure model weights into a vector of parameters
 θ = initial_params(controller)
@@ -147,7 +147,6 @@ prob = ODEProblem(dudt!, u0, tspan, precondition.minimizer)
 
 # closures to comply with required interface
 loss(params) = loss(params, prob, tsteps)
-plot_controls_callback(params, loss) = plot_simulation(params, loss, prob, tsteps; only=:controls)#  only=:states, vars=[1,2,3])
 
 @info "Controls after preconditioning to Fogler's reference: $(fogler_ref)"
 plot_controls_callback(precondition.minimizer, loss(precondition.minimizer))
@@ -158,13 +157,13 @@ optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
 optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases = true)
 @show result = GalacticOptim.solve(
     optprob, LBFGS();
-    cb = (params, loss) -> plot_simulation(params, loss, prob, tsteps; only=:states, vars=[1,2,3])
+    cb = (params, loss) -> plot_simulation(prob, params, tsteps; only=:states, vars=[1,2,3], show=loss)
 )
 
-plot_simulation(result.minimizer, loss, prob, tsteps; only=:states, vars=[4,5])
+plot_simulation(prob, result.minimizer, tsteps; only=:states, vars=[4,5], show=loss)
 
 @info "Final controls"
-plot_controls_callback(result.minimizer, loss(result.minimizer))
+plot_simulation(prob, params, tsteps; only=:states, show=loss)#  only=:states, vars=[1,2,3])
 
 @info "Storing results"
-plot_simulation(result.minimizer, loss(result.minimizer), prob, tsteps; store=@__FILE__)
+store_simulation(@__FILE__, prob, result.minimizer, tsteps; metadata=Dict(:loss => loss(result.minimizer)))

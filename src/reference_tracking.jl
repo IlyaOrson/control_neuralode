@@ -115,19 +115,19 @@ prob = ODEProblem(dudt!, u0, tspan, θ)
 
 # closures to comply with required interface
 loss(params) = loss(params, prob, tsteps)
-plotting_callback(params, loss) = plot_simulation(params, loss, prob, tsteps, only=:states)
+plotting_callback(params, loss) = plot_simulation(prob, params, tsteps; only=:states, show=loss)
 
-plot_simulation(θ, loss(θ), prob, tsteps, only=:controls)
+plot_simulation(prob, θ, tsteps; only=:controls, show=loss(θ))
 
-adtype = GalacticOptim.AutoZygote()
-optf = GalacticOptim.OptimizationFunction((x, p) -> loss(x), adtype)
-optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
-optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases = true)
-result = GalacticOptim.solve(optprob, LBFGS(); cb = plotting_callback)
+# adtype = GalacticOptim.AutoZygote()
+# optf = GalacticOptim.OptimizationFunction((x, p) -> loss(x), adtype)
+# optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
+# optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases = true)
+# result = GalacticOptim.solve(optprob, LBFGS(); cb = plotting_callback)
 
-plot_simulation(result.minimizer, loss(result.minimizer), prob, tsteps, only=:states, vars=[1])
-plot_simulation(result.minimizer, loss(result.minimizer), prob, tsteps, only=:states, vars=[2])
-plot_simulation(result.minimizer, loss(result.minimizer), prob, tsteps, only=:controls)
+# plot_simulation(prob, result.minimizer, tsteps, only=:states, vars=[1], show=loss(result.minimizer))
+# plot_simulation(prob, result.minimizer, tsteps, only=:states, vars=[2], show=loss(result.minimizer))
+# plot_simulation(prob, result.minimizer, tsteps, only=:controls, show=loss(result.minimizer))
 
-@info "Storing results"
-plot_simulation(result.minimizer, loss(result.minimizer), prob, tsteps; store=@__FILE__)
+# @info "Storing results"
+# store_simulation(@__FILE__, prob, result.minimizer, tsteps; metadata=Dict(:loss => loss(result.minimizer)))

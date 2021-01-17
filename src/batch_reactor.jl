@@ -45,7 +45,7 @@ prob = ODEProblem(dudt!, u0, tspan, θ)
 
 # closures to comply with required interface
 loss(params) = loss(params, prob, tsteps)
-plotting_callback(params, loss) = plot_simulation(params, loss, prob, tsteps, only=:controls)
+plotting_callback(params, loss) = plot_simulation(prob, params, tsteps; only=:controls, show=loss)
 
 @info "Optimizing"
 adtype = GalacticOptim.AutoZygote()
@@ -55,7 +55,7 @@ optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases = tru
 result = GalacticOptim.solve(optprob, LBFGS(); cb = plotting_callback)
 
 @info "Storing results"
-plot_simulation(result.minimizer, loss(result.minimizer), prob, tsteps; store=@__FILE__)
+store_simulation(@__FILE__, prob, result.minimizer, tsteps; metadata=Dict(:loss => loss(result.minimizer)))
 
 # https://fluxml.ai/Zygote.jl/latest/#Taking-Gradients
 # an example of how to extract gradients
