@@ -1,4 +1,4 @@
-name = "DiscrepancyNeuralODE"
+name = "ControlNeuralODE"
 uuid = "43796e44-9168-426f-8631-80c2c8cc7fef"
 authors = ["Ilya Orson Sandoval <ilya.orson@gmail.com>"]
 version = "0.1.0"

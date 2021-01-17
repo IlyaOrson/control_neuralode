@@ -1,6 +1,6 @@
 # adapted from https://diffeqflux.sciml.ai/dev/examples/feedback_control/
 
-module DiscrepancyNeuralODE
+module ControlNeuralODE
 
 using Dates
 using Base.Filesystem
