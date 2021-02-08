@@ -3,7 +3,7 @@
 # The Canadian Journal of Chemical Engineering, 49(4), 522-528.
 
 # irreversible reaction
-const time = 10f0  # final time (θ in original paper)
+const time = 20f0  # final time (θ in original paper)
 const cf = 1f0
 const Tf = 300f0
 const Tc = 290f0
@@ -40,23 +40,23 @@ const yc = Tc/(J*cf)
 
 # case 1
 const α1 = 1f6
-const α2 = 2f3
-const α3 = 1f-3
+const α2 = 2f1
+const α3 = 0f0  # 1f-3
 
 # case 2
-# α1 = 1f6
-# α2 = 2f3
-# α3 = 0f0
+# const α1 = 1f6
+# const α2 = 2f3
+# const α3 = 0f0
 
 # case 3
-# α1 = 10f0
-# α2 = 1f0
-# α3 = 0.1f0
+# const α1 = 10f0
+# const α2 = 1f0
+# const α3 = 0.1f0
 
 # case 4
-# α1 = 10f0
-# α2 = 1f0
-# α3 = 0f0
+# const α1 = 10f0
+# const α2 = 1f0
+# const α3 = 0f0
 
 function system!(du, u, p, t, controller)
 
@@ -65,8 +65,8 @@ function system!(du, u, p, t, controller)
     c = controller(u, p)[1]  # controller output is a 1-element container
 
     # reaction rate
-    r = k10 * y1 * exp(-N/y2)  # irreversible
-    # r = k10 * y1 * exp(-N/y2) - k20 * exp(-γ*N/y2) * (1-y1)  # reversible
+    r = k10 * y1 * exp(-N/y2)  # irreversible (case 1 & case 2)
+    # r = k10 * y1 * exp(-N/y2) - k20 * exp(-γ*N/y2) * (1-y1)  # reversible (case 3 & case 4)
 
     # dynamics of the controlled system
     y1_prime = (1 - y1)/time - r
@@ -82,7 +82,7 @@ end
 # set arquitecture of neural network controller
 controller = FastChain(
     FastDense(2, 20, tanh),
-    FastDense(20, 20, tanh),
+    # FastDense(20, 20, tanh),
     FastDense(20, 2),
     (x, p) -> [u_lower + (u_upper-u_lower) * σ(x[1])],  # controllers ∈ [u_lower, u_upper]
 )
@@ -98,13 +98,13 @@ function loss(params, prob, tsteps)
         control = controller(state, params)
         sum_squares += α1*(state[1]-y1s)^2 + α2*(state[2]-y2s)^2 + α3*(control[1]-us)^2
     end
-    return sum_squares
+    return sum_squares * 0.01f0
 end
 
 # initial conditions and timepoints
 @show u0 = [1f0, yf]
 @show tspan = (0f0, time)
-tsteps = 0f0:0.1f0:time
+tsteps = 0f0:0.01f0:time
 
 # model weights are destructured into a vector of parameters
 θ = initial_params(controller)
@@ -115,7 +115,7 @@ prob = ODEProblem(dudt!, u0, tspan, θ)
 
 # closures to comply with required interface
 loss(params) = loss(params, prob, tsteps)
-plotting_callback(params, loss) = plot_simulation(prob, params, tsteps; only=:states, show=loss)
+plotting_callback(params, loss) = plot_simulation(prob, params, tsteps; only=:controls, show=loss)
 
 plot_simulation(prob, θ, tsteps; only=:controls, show=loss(θ))
 
@@ -130,4 +130,10 @@ plot_simulation(prob, result.minimizer, tsteps, only=:states, vars=[2], show=los
 plot_simulation(prob, result.minimizer, tsteps, only=:controls, show=loss(result.minimizer))
 
 @info "Storing results"
-store_simulation(@__FILE__, prob, result.minimizer, tsteps; metadata=Dict(:loss => loss(result.minimizer)))
+metadata = Dict(
+    :loss => loss(result.minimizer),
+    :α1 => α1,
+    :α2 => α2,
+    :α3 => α3,
+)
+store_simulation(@__FILE__, prob, result.minimizer, tsteps; metadata=metadata)

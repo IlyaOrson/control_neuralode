@@ -65,14 +65,14 @@ end
 function generate_data(prob, params, tsteps)
 
     # integrate with given parameters
-    solution = solve(prob, Tsit5(), p = params, saveat = tsteps)
+    solution = solve(prob, AutoTsit5(Rosenbrock23()), p = params, saveat = tsteps)
 
     # construct arrays with the same type used by the integrator
     elements_type = eltype(solution.t)
     states = Array(solution)
     total_steps = size(states, 2)
     state_dimension = size(states, 1)
-    @show control_dimension = length(controller(solution.u[1], params))
+    control_dimension = length(controller(solution.u[1], params))
 
     # regenerate controls from controller
     controls = zeros(elements_type, control_dimension, total_steps)
@@ -95,7 +95,6 @@ function store_simulation(name, prob, params, tsteps; metadata=nothing)
         current_datetime
     )
     @info "Storing data in $datadir"
-    @show Base.Filesystem.ispath(joinpath(datadir, "states.csv"))
     mkpath(datadir)
 
     # time_data = Tables.table(reshape(solution.t, :, 1), header = ("t"))
@@ -115,7 +114,7 @@ function store_simulation(name, prob, params, tsteps; metadata=nothing)
     )
     CSV.write(joinpath(datadir, "data.csv"), full_data)
 
-    !isnothing(metadata) && CSV.write(joinpath(datadir, "metadata.txt"), metadata)
+    !isnothing(metadata) && CSV.write(joinpath(datadir, "metadata.txt"), metadata; writeheader=false, delim="\t")
 end
 
 
@@ -131,7 +130,7 @@ end
 
 
 function runner(script)
-    include(joinpath(@__DIR__, "$script.jl"))
+    include(joinpath(@__DIR__, endswith(script, ".jl") ? script : "$script.jl"))
 end
 
 

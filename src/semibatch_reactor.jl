@@ -84,7 +84,7 @@ controller = FastChain(
 fogler_ref = [240f0, 298f0]  # reference values in Fogler
 fixed_dudt!(du, u, p, t) = system!(du, u, p, t, (u, p)->fogler_ref)
 fixed_prob = ODEProblem(fixed_dudt!, u0, tspan)
-fixed_sol = solve(fixed_prob, Tsit5()) |> Array
+fixed_sol = solve(fixed_prob, Tsit5()) |> Array  # sensealg=ReverseDiffAdjoint()
 
 # enforce constant control over integrated path
 function precondition_loss(params)
@@ -155,7 +155,7 @@ adtype = GalacticOptim.AutoZygote()
 optf = GalacticOptim.OptimizationFunction((x, p) -> loss(x), adtype)
 optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
 optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases = true)
-@show result = GalacticOptim.solve(
+result = GalacticOptim.solve(
     optprob, LBFGS();
     cb = (params, loss) -> plot_simulation(prob, params, tsteps; only=:states, vars=[1,2,3], show=loss)
 )
