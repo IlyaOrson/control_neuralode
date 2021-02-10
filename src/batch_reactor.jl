@@ -19,20 +19,21 @@ end
 
 # define objective function to optimize
 function loss(params, prob, tsteps)
-    sol = solve(prob, Tsit5(), p = params, saveat = tsteps, sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(false)))  # integrate ODE system
+    # sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(false))
+    sol = solve(prob, Tsit5(), p = params, saveat = tsteps)  # integrate ODE system
     return -Array(sol)[2, end]  # second variable, last value, maximize
 end
 
 # initial conditions and timepoints
 u0 = [1f0, 0f0]
 tspan = (0f0, 1f0)
-tsteps = 0f0:0.001f0:1f0
+tsteps = 0f0:0.01f0:1f0
 
 # set arquitecture of neural network controller
 controller = FastChain(
-    FastDense(2, 16, tanh),
-    FastDense(16, 16, tanh),
-    FastDense(16, 2),
+    FastDense(2, 12, tanh),
+    FastDense(12, 12, tanh),
+    FastDense(12, 2),
     (x, p) -> 5 * σ.(x),  # controllers ∈ (0, 5)
 )
 
