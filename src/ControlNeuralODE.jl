@@ -7,21 +7,22 @@ using Base.Filesystem
 
 using DiffEqFlux, Flux, Optim, OrdinaryDiffEq, Zygote, GalacticOptim, DiffEqSensitivity
 using UnicodePlots: lineplot, lineplot!
-using ClearStacktrace  # nicer stacktraces (unnecesary in julia 1.6)
 using CSV, Tables
 
 # handy terminal plots
 function unicode_plotter(states, controls; only=nothing, vars=nothing)
+    @assert size(states, 2) == size(controls, 2)
+    xlim = (0, size(states, 2))
     if only == :states
         typeof(vars) <: Vector && (states = @view states[vars, :])
         ylim = states |> extrema
         tag = isnothing(vars) ? "x1" : "x$(vars[1])"
         plt = lineplot(
-            states[1,:],
+            states[1,:];
             title = "State Evolution",
             name = tag,
             xlabel = "step",
-            ylim = ylim,
+            ylim, xlim
         )
         for (i, s) in enumerate(eachrow(states[2:end,:]))
             tag = isnothing(vars) ? "x$(i+1)" : "x$(vars[i+1])"
@@ -32,11 +33,11 @@ function unicode_plotter(states, controls; only=nothing, vars=nothing)
         ylim = controls |> extrema
         tag = isnothing(vars) ? "c1" : "c$(vars[1])"
         plt = lineplot(
-            controls[1,:],
+            controls[1,:];
             title = "Control Evolution",
             name = tag,
             xlabel = "step",
-            ylim = ylim,
+            ylim, xlim
         )
         for (i, s) in enumerate(eachrow(controls[2:end,:]))
             tag = isnothing(vars) ? "c$(i+1)" : "c$(vars[i+1])"
@@ -45,11 +46,11 @@ function unicode_plotter(states, controls; only=nothing, vars=nothing)
     else
         ylim = Iterators.flatten((states, controls)) |> extrema
         plt = lineplot(
-            states[1,:],
+            states[1,:];
             title = "State and Control Evolution",
             name = "x1",
             xlabel = "step",
-            ylim = ylim,
+            ylim, xlim
         )
         for (i, s) in enumerate(eachrow(states[2:end,:]))
             lineplot!(plt, collect(s), name = "x$(i+1)")
@@ -119,12 +120,18 @@ end
 
 
 # simulate evolution at each iteration and plot it
-function plot_simulation(prob, params, tsteps; show=nothing, only=nothing, vars=nothing)
+function plot_simulation(prob, params, tsteps; show=nothing, only=nothing, vars=nothing, xrefs=nothing)
 
     !isnothing(show) && @show show
 
     times, states, controls = generate_data(prob, params, tsteps)
-    display(unicode_plotter(states, controls; only, vars))
+    plt = unicode_plotter(states, controls; only, vars)
+    if !isnothing(xrefs)
+        for xref in xrefs
+            lineplot!(plt, x -> xref, name="$xref")
+        end
+    end
+    display(plt)
     return false  # if return true, then optimization stops
 end
 
