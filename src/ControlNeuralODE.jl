@@ -135,6 +135,12 @@ function plot_simulation(prob, params, tsteps; show=nothing, only=nothing, vars=
     return false  # if return true, then optimization stops
 end
 
+function controller_shape(controller)
+    dims = [l.in for l in controller.layers[1:end-1]]
+    # last layer is just for custom activation functions
+    push!(dims, controller.layers[end-1].out)
+end
+
 
 function runner(script)
     include(joinpath(@__DIR__, endswith(script, ".jl") ? script : "$script.jl"))

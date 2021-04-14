@@ -64,17 +64,17 @@ end
 # initial conditions and timepoints
 t0 = 0f0
 tf = 1.2f0  # Bradfoard uses 0.4
-Δt = 0.01f0
-CA0 = 0f0; CB0 = 0f0; CC0 = 0f0; T0=290f0; V0 = 100f0
+Δt = 0.05f0
+CA0 = 0f0; CB0 = 0f0; CC0 = 0f0; T0 = 290f0; V0 = 100f0
 u0 = [CA0, CB0, CC0, T0, V0]
 tspan = (t0, tf)
 tsteps = t0:Δt:tf
 
 # set arquitecture of neural network controller
 controller = FastChain(
-    FastDense(5, 20, tanh),
-    FastDense(20, 20, tanh),
-    FastDense(20, 2),
+    FastDense(5, 16, tanh),
+    FastDense(16, 16, tanh),
+    FastDense(16, 2),
     # (x, p) -> [240f0, 298f0],
     # F ∈ (0, 250) & V ∈ (200, 500) in Bradford 2017
     (x, p) -> [250*sigmoid(x[1]), 200 + 300*sigmoid(x[2])],
@@ -84,7 +84,7 @@ controller = FastChain(
 fogler_ref = [240f0, 298f0]  # reference values in Fogler
 fixed_dudt!(du, u, p, t) = system!(du, u, p, t, (u, p)->fogler_ref)
 fixed_prob = ODEProblem(fixed_dudt!, u0, tspan)
-fixed_sol = solve(fixed_prob, Tsit5()) |> Array  # sensealg=ReverseDiffAdjoint()
+fixed_sol = solve(fixed_prob, BS3()) |> Array  # sensealg=ReverseDiffAdjoint()
 
 # enforce constant control over integrated path
 function precondition_loss(params)
@@ -101,10 +101,14 @@ function precondition_loss(params)
     return sum_squares
 end
 
-plot_callback(params, loss) = plot_simulation(fixed_prob, params, tsteps; only=:controls, show=loss)
+plot_callback(params, loss) = plot_simulation(
+    fixed_prob, params, tsteps; only=:controls, show=loss
+)
 
 # destructure model weights into a vector of parameters
 θ = initial_params(controller)
+
+dudt!(du, u, p, t) = system!(du, u, p, t, controller)
 
 @info "Controls after default initialization (Xavier uniform)"
 plot_callback(θ, precondition_loss(θ))
@@ -113,7 +117,10 @@ adtype = GalacticOptim.AutoZygote()
 optf = GalacticOptim.OptimizationFunction((x, p) -> precondition_loss(x), adtype)
 optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
 optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases = true)
-precondition = GalacticOptim.solve(optprob, LBFGS())
+result = GalacticOptim.solve(optprob, ADAM(), maxiters=10)
+
+@info "Controls preconditioned to Fogler's reference: $(fogler_ref)"
+# plot_callback(result.minimizer, loss(result.minimizer))
 
 # C. Feller and C. Ebenbauer
 # "Relaxed Logarithmic Barrier Function Based Model Predictive Control of Linear Systems"
@@ -123,47 +130,86 @@ precondition = GalacticOptim.solve(optprob, LBFGS())
 # constraints with barrier methods
 # T ∈ (0, 420]
 # Vol ∈ (0, 800]
-β(z, δ) = 0.5f0 * (((z - 2δ)/δ)^2 - 1f0) - log(δ)
+T_up = 420
+V_up = 200
+
+# β(z, δ) = 0.5f0 * (((z - 2δ)/δ)^2 - 1f0) - log(δ)  # quadratic approximation to exponential
+β(z, δ) = exp(1f0 - z/δ) - 1 - log(δ)
 B(z; δ=0.3f0) = z > δ ? -log(z) : β(z, δ)
-B(z, lower, upper; δ=10f0) = B(z - lower; δ) + B(upper - z; δ)
+B(z, lower, upper; δ=10f0) = max(B(z - lower; δ) + B(upper - z; δ), 0f0)
 
 # define objective function to optimize
-function loss(params, prob, tsteps)
+function loss(params, prob, tsteps, δ; T_up=T_up, V_up=V_up)
     # integrate ODE system and extract loss from result
-    sol = solve(prob, Tsit5(), p = params, saveat = tsteps) |> Array
+    sol = solve(prob, BS3(), p = params, saveat = tsteps) |> Array
     last_state = sol[:, end]
-    out_temp = map(x -> B(x, 0, 400), sol[4, 1:end])
-    out_vols = map(x -> B(x, 0, 380), sol[5, 1:end])
-    # quadratic penalty
-    penalty = sum(out_temp) + sum(out_vols)
+    out_temp = map(x -> B(x, 0, T_up; δ), sol[4, 1:end])
+    out_vols = map(x -> B(x, 0, V_up; δ), sol[5, 1:end])
+
     # L = - (100 x₁ - x₂) + penalty  # minus to maximize
     # return - 100f0*last_state[1] + last_state[2] + penalty
-    return -last_state[1] + penalty
+    @show objective = -last_state[3]
+
+    # integral penalty
+    @show penalty = Δt * (sum(out_temp) + sum(out_vols))
+
+    α = 1f-3
+    # strength_ratio = abs(penalty / objective)
+    # if strength_ratio > 10
+    #     penalty /= strength_ratio  # α = ratio⁻¹
+    #     α = 1/strength_ratio
+    # end
+    return objective, α * penalty # objective + α*penalty
 end
+δ0 = 1f1
+δs = [δ0 * 0.7^i for i in 0:10]
+for δ in δs
+    @show δ
+    global prob, loss, result
+    local adtype, optf, optfunc, optprob
 
-# set differential equation struct
-dudt!(du, u, p, t) = system!(du, u, p, t, controller)
-prob = ODEProblem(dudt!, u0, tspan, precondition.minimizer)
+    # set differential equation struct
+    prob = ODEProblem(dudt!, u0, tspan, result.minimizer)
 
-# closures to comply with required interface
-loss(params) = loss(params, prob, tsteps)
+    # closures to comply with required interface
+    loss(params) = +(loss(params, prob, tsteps, δ)...)
 
-@info "Controls after preconditioning to Fogler's reference: $(fogler_ref)"
-plot_callback(precondition.minimizer, loss(precondition.minimizer))
+    @info "Current Controls"
+    plot_callback(result.minimizer, loss(result.minimizer))
 
-adtype = GalacticOptim.AutoZygote()
-optf = GalacticOptim.OptimizationFunction((x, p) -> loss(x), adtype)
-optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
-optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases = true)
-result = GalacticOptim.solve(
-    optprob, LBFGS();
-    cb = (params, loss) -> plot_simulation(prob, params, tsteps; only=:states, vars=[1,2,3], show=loss)
-)
-
-plot_simulation(prob, result.minimizer, tsteps; only=:states, vars=[4,5], show=loss)
+    adtype = GalacticOptim.AutoZygote()
+    optf = GalacticOptim.OptimizationFunction((x, p) -> loss(x), adtype)
+    optfunc = GalacticOptim.instantiate_function(optf, result.minimizer, adtype, nothing)
+    optprob = GalacticOptim.OptimizationProblem(optfunc, result.minimizer; allow_f_increases = true)
+    result = GalacticOptim.solve(
+        optprob, ADAM();
+        cb = (params, loss) -> plot_simulation(
+            prob, params, tsteps; only=:states, vars=[1,2,3], show=loss
+        ),
+        maxiters=5
+    )
+end
+@info "Final states"
+plot_simulation(prob, result.minimizer, tsteps; only=:states, vars=[1,2,3])
+plot_simulation(prob, result.minimizer, tsteps; only=:states, vars=[4,5], xrefs=[T_up, V_up])
 
 @info "Final controls"
-plot_simulation(prob, result.minimizer, tsteps; only=:states, show=loss)#  only=:states, vars=[1,2,3])
+plot_simulation(prob, result.minimizer, tsteps; only=:controls, show=loss)#  only=:states, vars=[1,2,3])
+
+@show final_objective, final_penalty = loss(result.minimizer, prob, tsteps, δs[end])
 
 @info "Storing results"
-store_simulation(@__FILE__, prob, result.minimizer, tsteps; metadata=Dict(:loss => loss(result.minimizer)))
+store_simulation(
+    @__FILE__, prob, result.minimizer, tsteps;
+    metadata=Dict(
+        :loss => final_objective + final_penalty,
+        :objective => final_objective,
+        :penalty => final_penalty,
+        :num_params => length(initial_params(controller)),
+        :layers => controller_shape(controller),
+        :deltas => δs,
+        :t0 => t0,
+        :tf => tf,
+        :Δt => Δt,
+    )
+)
