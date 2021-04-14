@@ -8,3 +8,6 @@ data/
 
 # images
 *.pdf
+
+__pycache__/
+.vscode/
