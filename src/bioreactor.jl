@@ -43,8 +43,8 @@ end
 
 # initial conditions and timepoints
 t0 = 0f0
-tf = 240f0  # Bradfoard uses 0.4
-Δt = 1f0
+tf = 240f0
+Δt = 20f0
 C_X₀, C_N₀, C_qc₀ = 1f0, 150f0, 0f0
 u0 = [C_X₀, C_N₀, C_qc₀]
 tspan = (t0, tf)
@@ -52,27 +52,40 @@ tsteps = t0:Δt:tf
 
 # set arquitecture of neural network controller
 controller = FastChain(
-    FastDense(3, 20, tanh),
-    FastDense(20, 20, tanh),
-    FastDense(20, 2),
+    FastDense(3, 16, tanh),
+    FastDense(16, 16, tanh),
+    FastDense(16, 2),
     # (x, p) -> [240f0, 298f0],
     # I ∈ [120, 400] & F ∈ [0, 40] in Bradford 2020
-    (x, p) -> [180f0*sigmoid(x[1]) + 120f0, 40*sigmoid(x[2])],
+    (x, p) -> [280f0*sigmoid(x[1]) + 120f0, 40*sigmoid(x[2])],
 )
+
+# Feller, C., & Ebenbauer, C. (2014).
+# Continuous-time linear MPC algorithms based on relaxed logarithmic barrier functions.
+# IFAC Proceedings Volumes, 47(3), 2481–2488.
+# https://doi.org/10.3182/20140824-6-ZA-1003.01022
+
+
+β(z, δ) = exp(1f0 - z/δ) - 1f0 - log(δ)
+B(z; δ=0.3f0) = max(z > δ ? -log(z) : β(z, δ), 0f0)
+B(z, lower, upper; δ=(upper-lower)/2f0) = B(z - lower; δ) + B(upper - z; δ)
 
 # state constraints and regularization on control change
 # C_N(t) - 150 ≤ 0              t = T
 # C_N(t) − 800 ≤ 0              ∀t
 # C_qc(t) − 0.011 C_X(t) ≤ 0    ∀t
-function penalty_loss(params, prob, tsteps; β=0.1f0)
-    # integrate ODE system (stiff problem)
-    sol = solve(prob, AutoTsit5(Rosenbrock23()), p = params, saveat = tsteps) |> Array
+function loss(params, prob, tsteps, δ; α=1f-3)
+    # integrate ODE system
+    sol = solve(prob, BS3(), p=params, saveat=tsteps) |> Array
 
-    C_N_over = relu.(sol[2, 1:end] .- 800f0)
-    C_X_over = relu.(sol[3, 1:end] .- 0.011f0*sol[1, 1:end])
-    C_N_over_last = relu(sol[2, end] - 150f0)
+    ratio_X_N = 1.1f-2 / 800f0
+    ratio_N_N_last = 150f0 / 800f0
 
-    constraint_penalty = sum(C_N_over.^2 .+ C_X_over.^2 .+ C_N_over_last.^2)
+    C_N_over = map(x -> B(800f0 - x; δ), sol[2, 1:end])
+    C_X_over = map((x, y) -> B(1.1f-2*y - x; δ=δ*ratio_X_N), sol[3, 1:end], sol[1, 1:end])
+    C_N_over_last = B(150f0 - sol[2, end]; δ=δ*ratio_N_N_last)
+
+    constraint_penalty = Δt * (sum(C_N_over) + sum(C_X_over)) + sum(C_N_over_last)
 
     # missing adjoint in Zygote for this generator
     # controls = [controller(state, params) for state in eachcol(sol)]
@@ -85,14 +98,16 @@ function penalty_loss(params, prob, tsteps; β=0.1f0)
     # end
 
     # penalty on change of controls
-    sum_squares = 0f0
+    control_penalty = 0f0
     for i in 1:size(sol, 2)-1
         prev = controller(sol[:,i], params)
         post = controller(sol[:,i+1], params)
-        sum_squares += 3.125f-8 * (prev[1]-post[1])^2 + 3.125f-6 * (prev[2]-post[2])^2
+        control_penalty += 3.125f-8 * (prev[1]-post[1])^2 + 3.125f-6 * (prev[2]-post[2])^2
     end
 
-    return -sol[3, end] + β*constraint_penalty + sum_squares
+    @show α*constraint_penalty, control_penalty
+    @show objective = -sol[3, end]  # maximize C_qc
+    return objective, α*constraint_penalty, control_penalty
 end
 
 # destructure model weights into a vector of parameters
@@ -100,28 +115,47 @@ end
 
 # set differential equation problem
 dudt!(du, u, p, t) = system!(du, u, p, t, controller)
-prob = ODEProblem(dudt!, u0, tspan, θ)
 
-# closures to comply with optimization interface
-penalty_loss(params) = penalty_loss(params, prob, tsteps)
-plot_states_callback(params, loss) = plot_simulation(prob, params, tsteps; only=:states, vars=[1,3], show=loss)
+δ0 = 1f2
+δs = [δ0 * 0.666^i for i in 0:12]
+for δ in δs
+    @show δ
+    global prob, loss, θ
+    local adtype, optf, optfunc, optprob
 
+    prob = ODEProblem(dudt!, u0, tspan, θ)
 
-@info "Initial controls"
-plot_simulation(prob, θ, tsteps; only=:controls, show=penalty_loss(θ))
+    # closures to comply with optimization interface
+    loss(params) = reduce(+, loss(params, prob, tsteps, δ))
+    function plot_callback(params, loss)
+        plot_simulation(
+            prob, params, tsteps; only=:states, vars=[2], show=loss, yrefs=[800, 150]
+        )
+        plot_simulation(prob, params, tsteps; only=:states, fun=(x,y,z)->z-1.1f-2x, yrefs=[0])
+    end
 
-adtype = GalacticOptim.AutoZygote()
-optf = GalacticOptim.OptimizationFunction((x, p) -> penalty_loss(x, prob, tsteps), adtype)
-optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
-optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases = true)
-result = GalacticOptim.solve(optprob, LBFGS(); cb = plot_states_callback)
+    @info "Current controls"
+    plot_simulation(prob, θ, tsteps; only=:controls, show=loss(θ))
 
+    adtype = GalacticOptim.AutoZygote()
+    optf = GalacticOptim.OptimizationFunction((x, p) -> loss(x), adtype)
+    optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
+    optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases=true)
+    result = GalacticOptim.solve(optprob, LBFGS(), cb=plot_callback)
+    θ = result.minimizer
+end
+
+final_objective, final_state_penalty, final_control_penalty = loss(θ, prob, tsteps, δs[end])
+final_values = NamedTuple{(:objective, :state_penalty, :control_penalty)}(loss(θ, prob, tsteps, δs[end]))
 @info "Final states"
-plot_simulation(prob, result.minimizer, tsteps; only=:states, show=penalty_loss(result.minimizer))
+plot_simulation(prob, θ, tsteps; only=:states, vars=[1], show=final_values)
+plot_simulation(prob, θ, tsteps; only=:states, vars=[2], show=final_values, yrefs=[800,150])
+plot_simulation(prob, θ, tsteps; only=:states, vars=[3], show=final_values)
+plot_simulation(prob, θ, tsteps; only=:states, fun=(x,y,z)->z-1.1f-2x, yrefs=[0])
 
 @info "Final controls"
-plot_simulation(prob, result.minimizer, tsteps; only=:controls, vars=[1], show=penalty_loss(result.minimizer))
-plot_simulation(prob, result.minimizer, tsteps; only=:controls, vars=[2], show=penalty_loss(result.minimizer))
+plot_simulation(prob, θ, tsteps; only=:controls, vars=[1], show=final_values)
+plot_simulation(prob, θ, tsteps; only=:controls, vars=[2], show=final_values)
 
 @info "Storing results"
-store_simulation(@__FILE__, prob, result.minimizer, tsteps; metadata=nothing)
+store_simulation(@__FILE__, prob, θ, tsteps; metadata=nothing)

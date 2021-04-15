@@ -9,11 +9,25 @@ using DiffEqFlux, Flux, Optim, OrdinaryDiffEq, Zygote, GalacticOptim, DiffEqSens
 using UnicodePlots: lineplot, lineplot!
 using CSV, Tables
 
+function fun_plotter(fun, array; xlim=(0,0))
+    output = map(fun, eachrow(array)...)
+    lineplot(
+        output;
+        title="Custom Function",
+        name="fun",
+        ylim=extrema(output),
+        xlim
+    )
+end
+
 # handy terminal plots
-function unicode_plotter(states, controls; only=nothing, vars=nothing)
+function unicode_plotter(states, controls; only=nothing, vars=nothing, fun=nothing)
     @assert size(states, 2) == size(controls, 2)
     xlim = (0, size(states, 2))
     if only == :states
+        if !isnothing(fun)
+            return fun_plotter(fun, states; xlim)
+        end
         typeof(vars) <: Vector && (states = @view states[vars, :])
         ylim = states |> extrema
         tag = isnothing(vars) ? "x1" : "x$(vars[1])"
@@ -29,6 +43,9 @@ function unicode_plotter(states, controls; only=nothing, vars=nothing)
             lineplot!(plt, collect(s), name = tag)
         end
     elseif only == :controls
+        if !isnothing(fun)
+            return fun_plotter(fun, controls; xlim)
+        end
         typeof(vars) <: Vector && (controls = @view controls[vars, :])
         ylim = controls |> extrema
         tag = isnothing(vars) ? "c1" : "c$(vars[1])"
@@ -44,6 +61,9 @@ function unicode_plotter(states, controls; only=nothing, vars=nothing)
             lineplot!(plt, collect(s), name = tag)
         end
     else
+        if !isnothing(fun)
+            return fun_plotter(fun, hcat(states, controls); xlim)
+        end
         ylim = Iterators.flatten((states, controls)) |> extrema
         plt = lineplot(
             states[1,:];
@@ -120,15 +140,18 @@ end
 
 
 # simulate evolution at each iteration and plot it
-function plot_simulation(prob, params, tsteps; show=nothing, only=nothing, vars=nothing, xrefs=nothing)
+function plot_simulation(
+    prob, params, tsteps;
+    show=nothing, only=nothing, vars=nothing, fun=nothing, yrefs=nothing
+)
 
     !isnothing(show) && @show show
 
     times, states, controls = generate_data(prob, params, tsteps)
-    plt = unicode_plotter(states, controls; only, vars)
-    if !isnothing(xrefs)
-        for xref in xrefs
-            lineplot!(plt, x -> xref, name="$xref")
+    plt = unicode_plotter(states, controls; only, vars, fun)
+    if !isnothing(yrefs)
+        for yref in yrefs
+            lineplot!(plt, x -> yref, name="$yref")
         end
     end
     display(plt)

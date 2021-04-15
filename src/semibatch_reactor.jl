@@ -122,10 +122,10 @@ result = GalacticOptim.solve(optprob, ADAM(), maxiters=10)
 @info "Controls preconditioned to Fogler's reference: $(fogler_ref)"
 # plot_callback(result.minimizer, loss(result.minimizer))
 
-# C. Feller and C. Ebenbauer
-# "Relaxed Logarithmic Barrier Function Based Model Predictive Control of Linear Systems"
-# IEEE Transactions on Automatic Control, vol. 62, no. 3, pp. 1223-1238, March 2017
-# doi: 10.1109/TAC.2016.2582040.
+# Feller, C., & Ebenbauer, C. (2014).
+# Continuous-time linear MPC algorithms based on relaxed logarithmic barrier functions.
+# IFAC Proceedings Volumes, 47(3), 2481–2488.
+# https://doi.org/10.3182/20140824-6-ZA-1003.01022
 
 # constraints with barrier methods
 # T ∈ (0, 420]
@@ -134,18 +134,18 @@ T_up = 420
 V_up = 200
 
 # β(z, δ) = 0.5f0 * (((z - 2δ)/δ)^2 - 1f0) - log(δ)  # quadratic approximation to exponential
-β(z, δ) = exp(1f0 - z/δ) - 1 - log(δ)
+β(z, δ) = exp(1f0 - z/δ) - 1f0 - log(δ)
 B(z; δ=0.3f0) = z > δ ? -log(z) : β(z, δ)
-B(z, lower, upper; δ=10f0) = max(B(z - lower; δ) + B(upper - z; δ), 0f0)
+B(z, lower, upper; δ=(upper-lower)/2f0) = max(B(z - lower; δ) + B(upper - z; δ), 0f0)
 
 # define objective function to optimize
-function loss(params, prob, tsteps, δ; T_up=T_up, V_up=V_up)
+function loss(params, prob, tsteps, δ; T_up=T_up, V_up=V_up, α=1f-3)
     # integrate ODE system and extract loss from result
     sol = solve(prob, BS3(), p = params, saveat = tsteps) |> Array
-    last_state = sol[:, end]
     out_temp = map(x -> B(x, 0, T_up; δ), sol[4, 1:end])
     out_vols = map(x -> B(x, 0, V_up; δ), sol[5, 1:end])
 
+    last_state = sol[:, end]
     # L = - (100 x₁ - x₂) + penalty  # minus to maximize
     # return - 100f0*last_state[1] + last_state[2] + penalty
     @show objective = -last_state[3]
@@ -153,12 +153,6 @@ function loss(params, prob, tsteps, δ; T_up=T_up, V_up=V_up)
     # integral penalty
     @show penalty = Δt * (sum(out_temp) + sum(out_vols))
 
-    α = 1f-3
-    # strength_ratio = abs(penalty / objective)
-    # if strength_ratio > 10
-    #     penalty /= strength_ratio  # α = ratio⁻¹
-    #     α = 1/strength_ratio
-    # end
     return objective, α * penalty # objective + α*penalty
 end
 δ0 = 1f1
@@ -172,7 +166,7 @@ for δ in δs
     prob = ODEProblem(dudt!, u0, tspan, result.minimizer)
 
     # closures to comply with required interface
-    loss(params) = +(loss(params, prob, tsteps, δ)...)
+    loss(params) = reduce(+,loss(params, prob, tsteps, δ))
 
     @info "Current Controls"
     plot_callback(result.minimizer, loss(result.minimizer))
@@ -191,7 +185,7 @@ for δ in δs
 end
 @info "Final states"
 plot_simulation(prob, result.minimizer, tsteps; only=:states, vars=[1,2,3])
-plot_simulation(prob, result.minimizer, tsteps; only=:states, vars=[4,5], xrefs=[T_up, V_up])
+plot_simulation(prob, result.minimizer, tsteps; only=:states, vars=[4,5], yrefs=[T_up, V_up])
 
 @info "Final controls"
 plot_simulation(prob, result.minimizer, tsteps; only=:controls, show=loss)#  only=:states, vars=[1,2,3])
