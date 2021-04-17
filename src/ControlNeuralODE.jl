@@ -6,7 +6,7 @@ using Dates
 using Base.Filesystem
 
 using DiffEqFlux, Flux, Optim, OrdinaryDiffEq, Zygote, GalacticOptim, DiffEqSensitivity
-using UnicodePlots: lineplot, lineplot!
+using UnicodePlots: lineplot, lineplot!, histogram
 using CSV, Tables
 
 function fun_plotter(fun, array; xlim=(0,0))
@@ -103,13 +103,14 @@ function generate_data(prob, params, tsteps)
     return solution.t, states, controls
 end
 
+string_datetime() = replace(string(now()), (":" => "_"))
 
-function store_simulation(name, prob, params, tsteps; metadata=nothing)
+function store_simulation(name, prob, params, tsteps; metadata=nothing, current_datetime=nothing, filename=nothing)
 
     times, states, controls = generate_data(prob, params, tsteps)
 
     parent = dirname(@__DIR__)
-    current_datetime = replace(string(now()), (":" => "_"))
+    isnothing(current_datetime) && (current_datetime = string_datetime())
     datadir = joinpath(
         parent, "data",
         basename(name),
@@ -133,7 +134,8 @@ function store_simulation(name, prob, params, tsteps; metadata=nothing)
         hcat(times, states', controls'),
         header = vcat(["t"], state_headers, control_headers)
     )
-    CSV.write(joinpath(datadir, "data.csv"), full_data)
+    isnothing(filename) ? filename="data.csv" : filename=filename*".csv"
+    CSV.write(joinpath(datadir, filename), full_data)
 
     !isnothing(metadata) && CSV.write(joinpath(datadir, "metadata.txt"), metadata; writeheader=false, delim="\t")
 end

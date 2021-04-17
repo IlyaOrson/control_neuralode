@@ -2,6 +2,8 @@
 # Stochastic data-driven model predictive control using Gaussian processes.
 # Computers & Chemical Engineering, 139, 106844.
 
+log_time = string_datetime()
+
 function system!(du, u, p, t, controller)
 
     # fixed parameters
@@ -44,7 +46,7 @@ end
 # initial conditions and timepoints
 t0 = 0f0
 tf = 240f0
-Δt = 20f0
+Δt = 5f0
 C_X₀, C_N₀, C_qc₀ = 1f0, 150f0, 0f0
 u0 = [C_X₀, C_N₀, C_qc₀]
 tspan = (t0, tf)
@@ -52,12 +54,12 @@ tsteps = t0:Δt:tf
 
 # set arquitecture of neural network controller
 controller = FastChain(
-    FastDense(3, 16, tanh),
-    FastDense(16, 16, tanh),
-    FastDense(16, 2),
+    FastDense(3, 16, tanh),# initW = (x,y) -> 1f2*Flux.kaiming_normal(x,y)),
+    FastDense(16, 16, tanh),# initW = (x,y) -> 1f2*Flux.kaiming_normal(x,y)),
+    FastDense(16, 2),# initW = (x,y) -> 1f2*Flux.kaiming_normal(x,y)),
     # (x, p) -> [240f0, 298f0],
     # I ∈ [120, 400] & F ∈ [0, 40] in Bradford 2020
-    (x, p) -> [280f0*sigmoid(x[1]) + 120f0, 40*sigmoid(x[2])],
+    (x, p) -> [280f0*sigmoid(x[1]) + 120f0, 40f0*sigmoid(x[2])],
 )
 
 # Feller, C., & Ebenbauer, C. (2014).
@@ -74,28 +76,17 @@ B(z, lower, upper; δ=(upper-lower)/2f0) = B(z - lower; δ) + B(upper - z; δ)
 # C_N(t) - 150 ≤ 0              t = T
 # C_N(t) − 800 ≤ 0              ∀t
 # C_qc(t) − 0.011 C_X(t) ≤ 0    ∀t
-function loss(params, prob, tsteps, δ; α=1f-3)
+function loss(params, prob, tsteps; δ=1f1, α=1f0)
     # integrate ODE system
     sol = solve(prob, BS3(), p=params, saveat=tsteps) |> Array
 
     ratio_X_N = 1.1f-2 / 800f0
-    ratio_N_N_last = 150f0 / 800f0
 
     C_N_over = map(x -> B(800f0 - x; δ), sol[2, 1:end])
     C_X_over = map((x, y) -> B(1.1f-2*y - x; δ=δ*ratio_X_N), sol[3, 1:end], sol[1, 1:end])
-    C_N_over_last = B(150f0 - sol[2, end]; δ=δ*ratio_N_N_last)
+    C_N_over_last = B(150f0 - sol[2, end]; δ=δ)
 
-    constraint_penalty = Δt * (sum(C_N_over) + sum(C_X_over)) + sum(C_N_over_last)
-
-    # missing adjoint in Zygote for this generator
-    # controls = [controller(state, params) for state in eachcol(sol)]
-    # sum_squares = 0f0
-    # for i in eachindex(controls[1:end-1])
-    #     prev = controls[i]
-    #     post = controls[i+1]
-    #     sum_squares += 3.125f-8 * (prev[1]-post[1])^2
-    #     sum_squares += 3.125f-6 * (prev[2]-post[2])^2
-    # end
+    constraint_penalty = Δt * (sum(C_N_over) + sum(C_X_over)) + C_N_over_last
 
     # penalty on change of controls
     control_penalty = 0f0
@@ -105,28 +96,31 @@ function loss(params, prob, tsteps, δ; α=1f-3)
         control_penalty += 3.125f-8 * (prev[1]-post[1])^2 + 3.125f-6 * (prev[2]-post[2])^2
     end
 
-    @show α*constraint_penalty, control_penalty
-    @show objective = -sol[3, end]  # maximize C_qc
+    objective = -sol[3, end]  # maximize C_qc
+    # @show objective, α*constraint_penalty, control_penalty
     return objective, α*constraint_penalty, control_penalty
 end
 
 # destructure model weights into a vector of parameters
 θ = initial_params(controller)
+display(histogram(θ, title="Number of params: $(length(θ))")); sleep(5)
 
 # set differential equation problem
 dudt!(du, u, p, t) = system!(du, u, p, t, controller)
 
-δ0 = 1f2
-δs = [δ0 * 0.666^i for i in 0:12]
-for δ in δs
-    @show δ
-    global prob, loss, θ
+α, δ = 1f-2, 1f2
+αs, δs = [], []
+limit = 12
+counter = 1
+while true
+    @show δ, α
+    global prob, loss, θ, limit, counter, δ, δs, α, log_time
     local adtype, optf, optfunc, optprob
 
     prob = ODEProblem(dudt!, u0, tspan, θ)
 
     # closures to comply with optimization interface
-    loss(params) = reduce(+, loss(params, prob, tsteps, δ))
+    loss(params) = reduce(+, loss(params, prob, tsteps; δ, α))
     function plot_callback(params, loss)
         plot_simulation(
             prob, params, tsteps; only=:states, vars=[2], show=loss, yrefs=[800, 150]
@@ -141,12 +135,40 @@ for δ in δs
     optf = GalacticOptim.OptimizationFunction((x, p) -> loss(x), adtype)
     optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
     optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases=true)
-    result = GalacticOptim.solve(optprob, LBFGS(), cb=plot_callback)
+    result = GalacticOptim.solve(optprob, LBFGS(); cb=plot_callback)
     θ = result.minimizer
+
+    @show objective, state_penalty, control_penalty = loss(θ, prob, tsteps; δ, α)
+    if isinf(state_penalty) || state_penalty/objective > 1f4
+        δ *= 1.1
+        α = 1f4 * abs(objective / state_penalty)
+    else
+        @info "Storing results"
+        local  metadata = Dict(
+            :objective => final_objective,
+            :state_penalty => final_state_penalty,
+            :control_penalty => final_control_penalty,
+            :num_params => length(initial_params(controller)),
+            :layers => controller_shape(controller),
+            :penalty_relaxations => δs,
+            :penalty_coefficients => αs,
+            :t0 => t0,
+            :tf => tf,
+            :Δt => Δt,
+        )
+        store_simulation(
+            @__FILE__, prob, θ, tsteps;
+            current_datetime=log_time, filename="delta_$(round(δ, digits=2))", metadata=metadata
+        )
+        push!(δs, δ)
+        δ *= 0.8
+    end
+    counter == limit ? break : counter += 1
 end
 
-final_objective, final_state_penalty, final_control_penalty = loss(θ, prob, tsteps, δs[end])
-final_values = NamedTuple{(:objective, :state_penalty, :control_penalty)}(loss(θ, prob, tsteps, δs[end]))
+final_objective, final_state_penalty, final_control_penalty = loss(θ, prob, tsteps; δ, α)
+final_values = NamedTuple{(:objective, :state_penalty, :control_penalty)}(loss(θ, prob, tsteps; δ, α))
+
 @info "Final states"
 plot_simulation(prob, θ, tsteps; only=:states, vars=[1], show=final_values)
 plot_simulation(prob, θ, tsteps; only=:states, vars=[2], show=final_values, yrefs=[800,150])
@@ -156,6 +178,3 @@ plot_simulation(prob, θ, tsteps; only=:states, fun=(x,y,z)->z-1.1f-2x, yrefs=[0
 @info "Final controls"
 plot_simulation(prob, θ, tsteps; only=:controls, vars=[1], show=final_values)
 plot_simulation(prob, θ, tsteps; only=:controls, vars=[2], show=final_values)
-
-@info "Storing results"
-store_simulation(@__FILE__, prob, θ, tsteps; metadata=nothing)
