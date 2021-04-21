@@ -63,8 +63,8 @@ end
 
 # initial conditions and timepoints
 t0 = 0f0
-tf = 1.2f0  # Bradfoard uses 0.4
-Δt = 0.05f0
+tf = 0.7f0  # Bradfoard uses 0.4
+Δt = 0.02f0
 CA0 = 0f0; CB0 = 0f0; CC0 = 0f0; T0 = 290f0; V0 = 100f0
 u0 = [CA0, CB0, CC0, T0, V0]
 tspan = (t0, tf)

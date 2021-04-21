@@ -46,7 +46,7 @@ end
 # initial conditions and timepoints
 t0 = 0f0
 tf = 240f0
-Δt = 5f0
+Δt = 2f0
 C_X₀, C_N₀, C_qc₀ = 1f0, 150f0, 0f0
 u0 = [C_X₀, C_N₀, C_qc₀]
 tspan = (t0, tf)
@@ -141,13 +141,13 @@ while true
     @show objective, state_penalty, control_penalty = loss(θ, prob, tsteps; δ, α)
     if isinf(state_penalty) || state_penalty/objective > 1f4
         δ *= 1.1
-        α = 1f4 * abs(objective / state_penalty)
+        @show α = 1f4 * abs(objective / state_penalty)
     else
         @info "Storing results"
         local  metadata = Dict(
-            :objective => final_objective,
-            :state_penalty => final_state_penalty,
-            :control_penalty => final_control_penalty,
+            :objective => objective,
+            :state_penalty => state_penalty,
+            :control_penalty => control_penalty,
             :num_params => length(initial_params(controller)),
             :layers => controller_shape(controller),
             :penalty_relaxations => δs,
