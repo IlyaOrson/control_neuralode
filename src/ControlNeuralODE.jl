@@ -161,9 +161,14 @@ function plot_simulation(
 end
 
 function controller_shape(controller)
-    dims = [l.in for l in controller.layers[1:end-1]]
-    # last layer is just for custom activation functions
-    push!(dims, controller.layers[end-1].out)
+    # this method is brittle as any function inside the Chain
+    # will not be identified, could be a problem if those change dimensions
+
+    # Flux Layers have fields (:weight, :bias, :σ)
+    # FastLayers have fields (:out, :in, :σ, :initial_params, :bias)
+    dims_input = [l.in for l in controller.layers[1:end] if typeof(l) <: FastDense]
+    dims_output = [l.out for l in controller.layers[1:end] if typeof(l) <: FastDense]
+    push!(dims_input, pop!(dims_output))
 end
 
 
