@@ -3,6 +3,7 @@
 # The Canadian Journal of Chemical Engineering, 49(4), 522-528.
 
 # irreversible reaction
+const reaction = "irreversible"
 const time = 20f0  # final time (θ in original paper)
 const cf = 1f0
 const Tf = 300f0
@@ -18,6 +19,7 @@ const y2s = 3.29763f0
 const us = 370f0
 
 # # reversible reaction
+# const reaction = "reversible"
 # const time = 1f0  # final time (θ in original paper)
 # const cf = 1f0
 # const Tf = 323f0
@@ -39,9 +41,9 @@ const yf = Tf/(J*cf)
 const yc = Tc/(J*cf)
 
 # case 1
-const α1 = 1f6
-const α2 = 2f1
-const α3 = 0f0  # 1f-3
+# const α1 = 1f6
+# const α2 = 2f3
+# const α3 = 1f-3
 
 # case 2
 # const α1 = 1f6
@@ -57,6 +59,11 @@ const α3 = 0f0  # 1f-3
 # const α1 = 10f0
 # const α2 = 1f0
 # const α3 = 0f0
+
+# custom case
+const α1 = 1f0
+const α2 = 1f1
+const α3 = 1f-1
 
 function system!(du, u, p, t, controller)
 
@@ -81,9 +88,9 @@ end
 
 # set arquitecture of neural network controller
 controller = FastChain(
-    FastDense(2, 20, tanh),
-    # FastDense(20, 20, tanh),
-    FastDense(20, 2),
+    FastDense(2, 16, tanh),
+    FastDense(16, 16, tanh),
+    FastDense(16, 2),
     (x, p) -> [u_lower + (u_upper-u_lower) * σ(x[1])],  # controllers ∈ [u_lower, u_upper]
 )
 
@@ -91,7 +98,7 @@ controller = FastChain(
 function loss(params, prob, tsteps)
 
     # curious error with ROS3P()
-    sol = solve(prob, Tsit5(), p=params, saveat=tsteps) |> Array # integrate ODE system
+    sol = solve(prob, BS3(), p=params, saveat=tsteps) |> Array # integrate ODE system
 
     sum_squares = 0f0
     for state in eachcol(sol)
@@ -125,13 +132,14 @@ optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
 optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases = true)
 result = GalacticOptim.solve(optprob, LBFGS(); cb = plotting_callback)
 
-plot_simulation(prob, result.minimizer, tsteps, only=:states, vars=[1], show=loss(result.minimizer))
-plot_simulation(prob, result.minimizer, tsteps, only=:states, vars=[2], show=loss(result.minimizer))
-plot_simulation(prob, result.minimizer, tsteps, only=:controls, show=loss(result.minimizer))
+plot_simulation(prob, result.minimizer, tsteps, only=:states, vars=[1], show=loss(result.minimizer), yrefs=[y1s])
+plot_simulation(prob, result.minimizer, tsteps, only=:states, vars=[2], show=loss(result.minimizer), yrefs=[y2s])
+plot_simulation(prob, result.minimizer, tsteps, only=:controls, show=loss(result.minimizer), yrefs=[us])
 
 @info "Storing results"
 metadata = Dict(
     :loss => loss(result.minimizer),
+    :reaction => reaction,
     :α1 => α1,
     :α2 => α2,
     :α3 => α3,

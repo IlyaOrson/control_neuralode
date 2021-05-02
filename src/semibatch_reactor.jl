@@ -101,17 +101,15 @@ function precondition_loss(params)
     return sum_squares
 end
 
-plot_callback(params, loss) = plot_simulation(
-    fixed_prob, params, tsteps; only=:controls, show=loss
-)
-
 # destructure model weights into a vector of parameters
 θ = initial_params(controller)
 
 dudt!(du, u, p, t) = system!(du, u, p, t, controller)
 
 @info "Controls after default initialization (Xavier uniform)"
-plot_callback(θ, precondition_loss(θ))
+plot_simulation(
+    fixed_prob, θ, tsteps; only=:controls, show=precondition_loss(θ)
+)
 
 adtype = GalacticOptim.AutoZygote()
 optf = GalacticOptim.OptimizationFunction((x, p) -> precondition_loss(x), adtype)
@@ -120,7 +118,9 @@ optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases = tru
 result = GalacticOptim.solve(optprob, ADAM(), maxiters=10)
 
 @info "Controls preconditioned to Fogler's reference: $(fogler_ref)"
-# plot_callback(result.minimizer, loss(result.minimizer))
+plot_simulation(
+    fixed_prob, result.minimizer, tsteps; only=:controls, show=precondition_loss(result.minimizer)
+)
 
 # Feller, C., & Ebenbauer, C. (2014).
 # Continuous-time linear MPC algorithms based on relaxed logarithmic barrier functions.
@@ -166,10 +166,12 @@ for δ in δs
     prob = ODEProblem(dudt!, u0, tspan, result.minimizer)
 
     # closures to comply with required interface
-    loss(params) = reduce(+,loss(params, prob, tsteps, δ))
+    loss(params) = reduce(+, loss(params, prob, tsteps, δ))
 
     @info "Current Controls"
-    plot_callback(result.minimizer, loss(result.minimizer))
+    plot_simulation(
+        prob, result.minimizer, tsteps; only=:controls, show=loss(result.minimizer)
+    )
 
     adtype = GalacticOptim.AutoZygote()
     optf = GalacticOptim.OptimizationFunction((x, p) -> loss(x), adtype)
