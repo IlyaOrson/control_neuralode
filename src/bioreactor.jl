@@ -68,10 +68,12 @@ controller = FastChain(
     (x, p) -> [280f0*sigmoid(x[1]) + 120f0, 40f0*sigmoid(x[2])],
 )
 
+
 # set differential equation problem
 dudt!(du, u, p, t) = system!(du, u, p, t, controller)
 
 # destructure model weights into a vector of parameters
+@show controller_shape(controller)
 θ = initial_params(controller)
 display(histogram(θ, title="Number of params: $(length(θ))"))
 
@@ -120,7 +122,6 @@ for partial_time in tsteps[ end÷5 : end÷5 : end]
         end
         if plot
             Zygote.ignore() do
-                @show f1s |> typeof
                 p1 = lineplot(f1s, name="fixed")
                 lineplot!(p1, c1s, name="neural")
                 display(p1)
@@ -147,7 +148,12 @@ prob = ODEProblem(dudt!, u0, tspan, θ)
 plot_simulation(prob, θ, tsteps; only=:controls)
 display(histogram(θ, title="Number of params: $(length(θ))")); sleep(2)
 
-#=
+store_simulation(
+    @__FILE__, prob, θ, tsteps;
+    current_datetime=log_time,
+    filename="precondition",
+)
+
 # Feller, C., & Ebenbauer, C. (2014).
 # Continuous-time linear MPC algorithms based on relaxed logarithmic barrier functions.
 # IFAC Proceedings Volumes, 47(3), 2481–2488.
@@ -160,15 +166,18 @@ B(z, lower, upper; δ=(upper-lower)/2f0) = B(z - lower; δ) + B(upper - z; δ)
 # state constraints and regularization on control change
 # C_N(t) - 150 ≤ 0              t = T
 # C_N(t) − 800 ≤ 0              ∀t
-# C_qc(t) − 0.011 C_X(t) ≤ 0    ∀t  --->  0.011 C_X(t) - C_qc(t) ≤ 2f-2
+# C_qc(t) − 0.011 C_X(t) ≤ 0    ∀t  --->  0.011 C_X(t) - C_qc(t) ≤ 3f-2
 function loss(params, prob, tsteps; δ=1f1, α=1f0)
     # integrate ODE system
-    sol = solve(prob, BS3(), p=params, saveat=tsteps) |> Array
+    sol = solve(prob, BS3(), p=params) |> Array  # , saveat=tsteps
 
-    ratio_X_N = 2f-2 / 800f0
+    ratio_X_N = 3f-2 / 800f0
 
     C_N_over = map(y -> B(800f0 - y; δ), sol[2, 1:end])
-    C_X_over = map((x, z) -> B(2f-2 - (1.1f-2*x - z); δ=δ*ratio_X_N), sol[1, 1:end], sol[3, 1:end])
+    C_X_over = map(
+        (x, z) -> B(3f-2 - (1.1f-2*x - z);
+        δ=δ*ratio_X_N), sol[1, 1:end], sol[3, 1:end]
+    )
     C_N_over_last = B(150f0 - sol[2, end]; δ=δ)
 
     constraint_penalty = Δt * (sum(C_N_over) + sum(C_X_over)) + C_N_over_last
@@ -203,17 +212,15 @@ while true
         plot_simulation(
             prob, params, tsteps; only=:states, vars=[2], show=loss, yrefs=[800, 150]
         )
-        plot_simulation(prob, params, tsteps; only=:states, fun=(x,y,z)->1.1f-2x - z, yrefs=[2f-2])
+        plot_simulation(prob, params, tsteps; only=:states, fun=(x,y,z)->1.1f-2x - z, yrefs=[3f-2])
     end
 
     @info "Current controls"
     plot_simulation(prob, θ, tsteps; only=:controls, show=loss(θ))
 
-    adtype = GalacticOptim.AutoZygote()
-    optf = GalacticOptim.OptimizationFunction((x, p) -> loss(x), adtype)
-    optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
-    optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases=true)
-    result = GalacticOptim.solve(optprob, LBFGS(); cb=plot_callback)
+    result = DiffEqFlux.sciml_train(
+        loss, θ, LBFGS(); maxiters=500, allow_f_increases=true, cb=plot_callback
+    )
     θ = result.minimizer
 
     @show objective, state_penalty, control_penalty = loss(θ, prob, tsteps; δ, α)
@@ -236,7 +243,9 @@ while true
         )
         store_simulation(
             @__FILE__, prob, θ, tsteps;
-            current_datetime=log_time, filename="delta_$(round(δ, digits=2))", metadata=metadata
+            current_datetime=log_time,
+            filename="delta_$(round(δ, digits=2))",
+            metadata=metadatapol
         )
         push!(δs, δ)
         δ *= 0.8
@@ -251,9 +260,8 @@ final_values = NamedTuple{(:objective, :state_penalty, :control_penalty)}(loss(�
 plot_simulation(prob, θ, tsteps; only=:states, vars=[1], show=final_values)
 plot_simulation(prob, θ, tsteps; only=:states, vars=[2], show=final_values, yrefs=[800,150])
 plot_simulation(prob, θ, tsteps; only=:states, vars=[3], show=final_values)
-plot_simulation(prob, θ, tsteps; only=:states, fun=(x,y,z) -> 1.1f-2x - z, yrefs=[2f-2])
+plot_simulation(prob, θ, tsteps; only=:states, fun=(x,y,z) -> 1.1f-2x - z, yrefs=[3f-2])
 
 @info "Final controls"
 plot_simulation(prob, θ, tsteps; only=:controls, vars=[1], show=final_values)
 plot_simulation(prob, θ, tsteps; only=:controls, vars=[2], show=final_values)
-=#
