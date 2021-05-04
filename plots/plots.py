@@ -75,7 +75,7 @@ for i, filepath in enumerate(ordered_paths):
     data = pd.read_csv(filepath)
     data.plot("t", "x2", ax=fig[0].axes, color=colors["Purples"][i], label=f"δ={deltas[i]}", legend=False, alpha=0.7)
 
-plt.legend(fontsize="medium", loc='center left', bbox_to_anchor=(1, 0.5))
+plt.legend(fontsize="x-small", loc='center left', bbox_to_anchor=(1.02, 0.5))
 plt.title(r"$x_2$")
 plt.xlabel("time")
 plt.savefig("./plots/bioreactor_constraints_x2.pdf")
@@ -89,7 +89,7 @@ for i, filepath in enumerate(ordered_paths):
     data["g_x1_x3"] = 0.011*data["x1"] - data["x3"]
     data.plot("t", "g_x1_x3", ax=fig[0].axes, color=colors["Blues"][i], label=f"δ={deltas[i]}", legend=False, alpha=0.7)
 
-plt.legend(fontsize="medium", loc='center left', bbox_to_anchor=(1, 0.5))
+plt.legend(fontsize="x-small", loc='center left', bbox_to_anchor=(1.02, 0.5))
 plt.title(r"$0.011 x_1 - x_3$")
 plt.xlabel("time")
 plt.savefig("./plots/bioreactor_constraints_x1_x3.pdf")
@@ -131,10 +131,10 @@ def four_axis(data, cols, labels=None, refs=None, alpha=None, saveas=None):
     # plt.setp(axs[0].spines["left"], color=palette[0])  # https://stackoverflow.com/a/20371140/6313433
 
     if len(axs) > 1:
-        axs[1].spines["right"].set_position(("axes", -0.2))
+        axs[1].spines["right"].set_position(("axes", -0.15))
         axs[1].tick_params(axis="y", colors=palette[1], direction="in", pad=-35)
     if len(axs) > 3:
-        axs[3].spines["right"].set_position(("axes", 1.2))
+        axs[3].spines["right"].set_position(("axes", 1.15))
 
     if labels:
         assert len(labels) == len(cols)
@@ -212,7 +212,7 @@ def ref_track(data, reversible, saveas=None):
         us = 3.234
 
     fig, axs = plt.subplots(3, 1, sharex=True, constrained_layout=True, squeeze=True, figsize=(8, 3*4))
-    fig.set_xlabel("time")
+    # plt.xlabel("time")
     data.plot("t", "x1", ax=axs[0], color=palette[0], label=r"$x_1$")
     axs[0].axhline(y=y1s, zorder=100, color="orange", ls="--", alpha=0.7)
     axs[0].legend(loc='center right')
