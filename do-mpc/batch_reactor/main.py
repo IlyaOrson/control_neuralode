@@ -24,9 +24,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from casadi import *
 from casadi.tools import *
-import pdb
-import sys
-sys.path.append('../../')
+
 import do_mpc
 
 import matplotlib.pyplot as plt
@@ -54,11 +52,10 @@ estimator = do_mpc.estimator.StateFeedback(model)
 Set initial state
 """
 
-X_s_0 = 1.0 # This is the initial concentration inside the tank [mol/l]
-S_s_0 = 0.5 # This is the controlled variable [mol/l]
-P_s_0 = 0.0 #[C]
-V_s_0 = 120.0 #[C]
-x0 = np.array([X_s_0, S_s_0, P_s_0, V_s_0])
+C_X_s_0 = 1.0
+C_N_s_0 = 150.0
+C_qc_s_0 = 0.0
+x0 = np.array([C_X_s_0, C_N_s_0, C_qc_s_0])
 
 
 mpc.x0 = x0
@@ -78,11 +75,21 @@ plt.ion()
 Run MPC main loop:
 """
 
-for k in range(150):
+# TODO: should only solve until fixed final time by
+#       reducing horizon as it advances accordingly
+for k in range(120):
     u0 = mpc.make_step(x0)
     y_next = simulator.make_step(u0)
     x0 = estimator.make_step(y_next)
 
+
+    # mpc.set_param(n_horizon=mpc.n_horizon-2)
+    mpc.n_horizon -= 2
+    print(
+        "------------------",
+        mpc.n_horizon,
+        "------------------",
+    )
 
     if show_animation:
         graphics.plot_results(t_ind=k)

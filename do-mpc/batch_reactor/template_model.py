@@ -23,9 +23,7 @@
 import numpy as np
 from casadi import *
 from casadi.tools import *
-import pdb
-import sys
-sys.path.append('../../')
+
 import do_mpc
 
 
@@ -39,33 +37,42 @@ def template_model():
     model = do_mpc.model.Model(model_type)
 
     # Certain parameters
-    mu_m  = 0.02
-    K_m	  = 0.05
-    K_i	  = 5.0
-    v_par = 0.004
-    Y_p	  = 1.2
+    u_m = 0.0572
+    u_d = 0.0
+    K_N = 393.1
+    Y_NX = 504.5
+    k_m = 0.00016
+    k_d = 0.281
+    k_s = 178.9
+    k_i = 447.1
+    k_sq = 23.51
+    k_iq = 800.0
+    K_Np = 16.89
 
     # States struct (optimization variables):
-    X_s = model.set_variable('_x',  'X_s')  # bio mass
-    S_s = model.set_variable('_x',  'S_s')  # Substrate
-    P_s = model.set_variable('_x',  'P_s')  # Product
-    V_s = model.set_variable('_x',  'V_s')  # Reactor volume
+    C_X = model.set_variable('_x', 'C_X')
+    C_N = model.set_variable('_x', 'C_N')
+    C_qc = model.set_variable('_x', 'C_qc')
 
     # Input struct (optimization variables):
-    inp = model.set_variable('_u',  'inp')
+    I = model.set_variable('_u', 'I')
+    F_N = model.set_variable('_u', 'F_N')
 
-    # Fixed parameters:
-    Y_x = model.set_variable('_p',  'Y_x')
-    S_in = model.set_variable('_p', 'S_in')
+    # # Uncertain parameters:
+    # Y_x = model.set_variable('_p',  'Y_x')
+    # S_in = model.set_variable('_p', 'S_in')
 
+    # auxiliary variables
+    I_ksi = I/(I+k_s+I**2/k_i)
+    CN_KN = C_N/(C_N+K_N)
 
-    mu_S	= mu_m*S_s/(K_m+S_s+(S_s**2/K_i))
+    I_kiq = I/(I+k_sq+I**2/k_iq)
+    Cqc_KNp = C_qc/(C_N+K_Np)
 
     # Differential equations
-    model.set_rhs('X_s', mu_S*X_s - inp/V_s*X_s)
-    model.set_rhs('S_s', -mu_S*X_s/Y_x - v_par*X_s/Y_p + inp/V_s*(S_in-S_s))
-    model.set_rhs('P_s', v_par*X_s - inp/V_s*P_s)
-    model.set_rhs('V_s', inp)
+    model.set_rhs('C_X', u_m * I_ksi * C_X * CN_KN - u_d * C_X)
+    model.set_rhs('C_N', -Y_NX * u_m * I_ksi * C_X * CN_KN + F_N)
+    model.set_rhs('C_qc', k_m * I_kiq * C_X - k_d * Cqc_KNp)
 
     # Build the model
     model.setup()

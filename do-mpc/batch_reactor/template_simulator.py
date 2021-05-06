@@ -23,9 +23,7 @@
 import numpy as np
 from casadi import *
 from casadi.tools import *
-import pdb
-import sys
-sys.path.append('../../')
+
 import do_mpc
 
 
@@ -41,19 +39,19 @@ def template_simulator(model):
         'integration_tool': 'cvodes',
         'abstol': 1e-10,
         'reltol': 1e-10,
-        't_step': 1.0
+        't_step': 2.0
     }
 
     simulator.set_param(**params_simulator)
 
-    p_num = simulator.get_p_template()
-    p_num['Y_x'] = 0.5
-    p_num['S_in'] = 200.0
+    # p_num = simulator.get_p_template()
+    # p_num['Y_x'] = 0.5
+    # p_num['S_in'] = 200.0
 
-    def p_fun(t_now):
-        return p_num
+    # def p_fun(t_now):
+    #     return p_num
 
-    simulator.set_p_fun(p_fun)
+    # simulator.set_p_fun(p_fun)
 
     simulator.setup()
 
