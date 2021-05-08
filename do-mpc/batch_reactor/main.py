@@ -20,6 +20,8 @@
 #   You should have received a copy of the GNU General Public License
 #   along with do-mpc.  If not, see <http://www.gnu.org/licenses/>.
 
+import time
+
 import numpy as np
 import matplotlib.pyplot as plt
 from casadi import *
@@ -43,8 +45,9 @@ store_results = False
 Get configured do-mpc modules:
 """
 
+horizon = 120
 model = template_model()
-mpc = template_mpc(model)
+mpc = template_mpc(model, horizon)
 simulator = template_simulator(model)
 estimator = do_mpc.estimator.StateFeedback(model)
 
@@ -74,29 +77,38 @@ plt.ion()
 """
 Run MPC main loop:
 """
-
-# TODO: should only solve until fixed final time by
-#       reducing horizon as it advances accordingly
+data = []
 for k in range(120):
+    mpc = template_mpc(model, horizon)
+    mpc.x0 = x0
+    mpc.set_initial_guess()
+
     u0 = mpc.make_step(x0)
     y_next = simulator.make_step(u0)
     x0 = estimator.make_step(y_next)
 
+    data.append(mpc.data)  # TODO: do something smarter...
 
     # mpc.set_param(n_horizon=mpc.n_horizon-2)
-    mpc.n_horizon -= 2
     print(
         "------------------",
         mpc.n_horizon,
         "------------------",
+        horizon,
+        "------------------",
     )
+    time.sleep(1)
 
-    if show_animation:
-        graphics.plot_results(t_ind=k)
-        graphics.plot_predictions(t_ind=k)
-        graphics.reset_axes()
-        plt.show()
-        plt.pause(0.01)
+    # if show_animation:
+    #     graphics.plot_results(t_ind=k)
+    #     graphics.plot_predictions(t_ind=k)
+    #     graphics.reset_axes()
+    #     plt.show()
+    #     plt.pause(0.01)
+
+    horizon -= 1
+
+print("Final objective:", model.x['C_qc'])
 
 input('Press any key to exit.')
 
