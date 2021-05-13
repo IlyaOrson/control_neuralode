@@ -26,12 +26,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from casadi import *
 from casadi.tools import *
+import pandas as pd
 
 import do_mpc
-
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
-import time
 
 from template_model import template_model
 from template_mpc import template_mpc
@@ -39,16 +36,17 @@ from template_simulator import template_simulator
 
 """ User settings: """
 show_animation = True
-store_results = False
+store_results = True
 
 """
 Get configured do-mpc modules:
 """
 
-horizon = 120
+horizon = 60
+t_step = 4.0
 model = template_model()
-mpc = template_mpc(model, horizon)
-simulator = template_simulator(model)
+mpc = template_mpc(model, horizon, t_step)
+simulator = template_simulator(model, t_step)
 estimator = do_mpc.estimator.StateFeedback(model)
 
 """
@@ -68,50 +66,55 @@ estimator.x0 = x0
 mpc.set_initial_guess()
 
 """
-Setup graphic:
-"""
-
-fig, ax, graphics = do_mpc.graphics.default_plot(mpc.data, figsize=(8,5))
-plt.ion()
-
-"""
 Run MPC main loop:
 """
-data = []
-for k in range(120):
-    mpc = template_mpc(model, horizon)
+mpc_evol = {
+    "C_X": np.zeros(horizon),
+    "C_N": np.zeros(horizon),
+    "C_qc": np.zeros(horizon),
+    "I": np.zeros(horizon),
+    "F_N": np.zeros(horizon),
+}
+states = np.zeros((3,horizon))
+controls = np.zeros((2,horizon))
+mpc_prediction = {}
+for k in range(horizon):
+    mpc = template_mpc(model, horizon, t_step)
     mpc.x0 = x0
+    try:
+        mpc.u0 = u0
+    except:
+        pass
     mpc.set_initial_guess()
+
+    mpc_evol["C_X"][k], mpc_evol["C_N"][k], mpc_evol["C_qc"][k] = x0.flatten()
 
     u0 = mpc.make_step(x0)
     y_next = simulator.make_step(u0)
     x0 = estimator.make_step(y_next)
 
-    data.append(mpc.data)  # TODO: do something smarter...
+    mpc_evol["I"][k], mpc_evol["F_N"][k] = u0.flatten()
 
-    # mpc.set_param(n_horizon=mpc.n_horizon-2)
-    print(
-        "------------------",
-        mpc.n_horizon,
-        "------------------",
-        horizon,
-        "------------------",
-    )
-    time.sleep(1)
+    if k == 0:
+        # removes last one because it is out of range
+        mpc_prediction["C_X"] = mpc.data.prediction(("_x", "C_X", 0)).flatten()[:-1]
+        mpc_prediction["C_N"] = mpc.data.prediction(("_x", "C_N", 0)).flatten()[:-1]
+        mpc_prediction["C_qc"] = mpc.data.prediction(("_x", "C_qc", 0)).flatten()[:-1]
 
-    # if show_animation:
-    #     graphics.plot_results(t_ind=k)
-    #     graphics.plot_predictions(t_ind=k)
-    #     graphics.reset_axes()
-    #     plt.show()
-    #     plt.pause(0.01)
+        mpc_prediction["I"] = mpc.data.prediction(("_u", "I", 0)).flatten()
+        mpc_prediction["F_N"] = mpc.data.prediction(("_u", "F_N", 0)).flatten()
+
+    # sometimes the prediction is completely off...
+    # pd.DataFrame(mpc_prediction).plot(subplots=True, sharex=True); plt.show()
 
     horizon -= 1
 
-print("Final objective:", model.x['C_qc'])
 
 input('Press any key to exit.')
 
 # Store results:
 if store_results:
-    do_mpc.data.save_results([mpc, simulator], 'batch_reactor_MPC')
+    # do_mpc.data.save_results([mpc, simulator], 'batch_reactor_MPC')
+    time_array = [i * mpc.t_step for i in range(len(mpc_evol["I"]))]
+    pd.DataFrame(mpc_prediction, index=time_array).to_csv("predictions.csv", index=False)
+    pd.DataFrame(mpc_evol, index=time_array).to_csv("evolution.csv", index=False)

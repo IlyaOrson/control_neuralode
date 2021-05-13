@@ -27,7 +27,7 @@ from casadi.tools import *
 import do_mpc
 
 
-def template_mpc(model):
+def template_mpc(model, n_horizon, t_step):
     """
     --------------------------------------------------------------------------
     template_mpc: tuning parameters
@@ -36,14 +36,14 @@ def template_mpc(model):
     mpc = do_mpc.controller.MPC(model)
 
     setup_mpc = {
-        'n_horizon': 50,  # TODO: should be 240
-        't_step': 2.0,
+        'n_horizon': n_horizon,
+        't_step': t_step,
         'n_robust': 0,
         'open_loop': 0,
         'state_discretization': 'collocation',
         'collocation_type': 'radau',
-        'collocation_deg': 2,
-        'collocation_ni': 2,
+        'collocation_deg': 4,
+        'collocation_ni': 1,
         'store_full_solution': True,
         # Use MA27 linear solver in ipopt for faster calculations:
         #'nlpsol_opts': {'ipopt.linear_solver': 'MA27'}
@@ -56,11 +56,6 @@ def template_mpc(model):
 
     mpc.set_objective(mterm=mterm, lterm=DM(0))
     mpc.set_rterm(I=3.125E-8, F_N=3.125E-6)
-
-
-    # mpc.bounds['lower', '_x', 'C_X_s'] = 0.0
-    # mpc.bounds['lower', '_x', 'S_s'] = -0.01
-    # mpc.bounds['lower', '_x', 'P_s'] = 0.0
 
     mpc.bounds['upper', '_x','C_N'] = 800.0
     mpc.terminal_bounds["upper", "_x", "C_N"] = 150.0

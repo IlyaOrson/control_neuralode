@@ -27,7 +27,7 @@ from casadi.tools import *
 import do_mpc
 
 
-def template_simulator(model):
+def template_simulator(model, t_step):
     """
     --------------------------------------------------------------------------
     template_simulator: tuning parameters
@@ -37,9 +37,9 @@ def template_simulator(model):
 
     params_simulator = {
         'integration_tool': 'cvodes',
-        'abstol': 1e-10,
-        'reltol': 1e-10,
-        't_step': 2.0
+        'abstol': 1e-8,
+        'reltol': 1e-8,
+        't_step': t_step
     }
 
     simulator.set_param(**params_simulator)
