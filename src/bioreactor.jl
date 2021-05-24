@@ -52,7 +52,7 @@ end
 # initial conditions and timepoints
 t0 = 0f0
 tf = 240f0
-Δt = 2f0
+Δt = 10f0
 C_X₀, C_N₀, C_qc₀ = 1f0, 150f0, 0f0
 u0 = [C_X₀, C_N₀, C_qc₀]
 tspan = (t0, tf)
@@ -99,7 +99,7 @@ for partial_time in tsteps[ end÷5 : end÷5 : end]
 
     fixed_dudt!(du, u, p, t) = system!(du, u, p, t, precondition, :time)
     fixed_prob = ODEProblem(fixed_dudt!, u0, tspan)
-    fixed_sol = solve(fixed_prob, BS3(), abstol=1e-2)  #, saveat=tsteps)
+    fixed_sol = solve(fixed_prob, BS3(), abstol=1f-1, reltol=1f-1)  #, saveat=tsteps)
 
     function precondition_loss(params; plot=false)
         f1s, f2s, c1s, c2s = Float32[], Float32[], Float32[], Float32[]
@@ -136,9 +136,11 @@ for partial_time in tsteps[ end÷5 : end÷5 : end]
     @show precondition_loss(θ; plot=true)
 
     preconditioner = DiffEqFlux.sciml_train(
-        precondition_loss, θ, LBFGS();
-        maxiters=500, allow_f_increases=true
-        )
+        precondition_loss, θ, BFGS(initial_stepnorm=0.01);
+        # maxiters=10,
+        allow_f_increases=true,
+        # f_tol=1f-2,
+    )
     θ = preconditioner.minimizer
 end
 
@@ -163,7 +165,7 @@ store_simulation(
 B(z; δ=0.3f0) = max(z > δ ? -log(z) : β(z, δ), 0f0)
 B(z, lower, upper; δ=(upper-lower)/2f0) = B(z - lower; δ) + B(upper - z; δ)
 
-# state constraints and regularization on control change
+# state constraints on control change
 # C_N(t) - 150 ≤ 0              t = T
 # C_N(t) − 800 ≤ 0              ∀t
 # C_qc(t) − 0.011 C_X(t) ≤ 0    ∀t  --->  0.011 C_X(t) - C_qc(t) ≤ 3f-2
@@ -195,9 +197,9 @@ function loss(params, prob, tsteps; δ=1f1, α=1f0)
     return objective, α * constraint_penalty, control_penalty
 end
 
-α, δ = 1f-5, 1f2
+α, δ = 1f-5, 100f0
 αs, δs = [], []
-limit = 18
+limit = 20
 counter = 1
 while true
     @show δ, α
@@ -219,7 +221,10 @@ while true
     plot_simulation(prob, θ, tsteps; only=:controls, show=loss(θ))
 
     result = DiffEqFlux.sciml_train(
-        loss, θ, LBFGS(); maxiters=500, allow_f_increases=true, cb=plot_callback
+        loss, θ, LBFGS(linesearch=LineSearches.BackTracking());
+        # cb=plot_callback,
+        allow_f_increases=true,
+        f_tol = 1f-3,
     )
     θ = result.minimizer
 
@@ -233,6 +238,7 @@ while true
             :objective => objective,
             :state_penalty => state_penalty,
             :control_penalty => control_penalty,
+            :parameters => θ,
             :num_params => length(initial_params(controller)),
             :layers => controller_shape(controller),
             :penalty_relaxations => δs,
@@ -245,7 +251,7 @@ while true
             @__FILE__, prob, θ, tsteps;
             current_datetime=log_time,
             filename="delta_$(round(δ, digits=2))",
-            metadata=metadatapol
+            metadata=metadata
         )
         push!(δs, δ)
         δ *= 0.8
@@ -257,7 +263,7 @@ final_objective, final_state_penalty, final_control_penalty = loss(θ, prob, tst
 final_values = NamedTuple{(:objective, :state_penalty, :control_penalty)}(loss(θ, prob, tsteps; δ, α))
 
 @info "Final states"
-plot_simulation(prob, θ, tsteps; only=:states, vars=[1], show=final_values)
+# plot_simulation(prob, θ, tsteps; only=:states, vars=[1], show=final_values)
 plot_simulation(prob, θ, tsteps; only=:states, vars=[2], show=final_values, yrefs=[800,150])
 plot_simulation(prob, θ, tsteps; only=:states, vars=[3], show=final_values)
 plot_simulation(prob, θ, tsteps; only=:states, fun=(x,y,z) -> 1.1f-2x - z, yrefs=[3f-2])
