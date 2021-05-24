@@ -4,7 +4,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-plt.style.use("seaborn-colorblind")
+plt.style.use("seaborn-colorblind")  # "ggplot"
 
 palette = plt.cm.Dark2.colors
 
@@ -12,8 +12,8 @@ font = {"family": "STIXGeneral", "size": 16}
 savefig = {"dpi": 600, "bbox": "tight"}
 lines = {"linewidth": 4}
 figure = {"figsize": (8, 4)}
-axes = {"prop_cycle": mpl.cycler(color=palette)}  # color=["F8766D", "A3A500", "00BF7D"]
-legend = {"fontsize": "x-large"}
+axes = {"prop_cycle": mpl.cycler(color=palette)}
+legend = {"fontsize": "x-large"}  # medium for presentations, x-large for papers
 
 mpl.rc("font", **font)
 mpl.rc("savefig", **savefig)
@@ -23,29 +23,34 @@ mpl.rc("axes", **axes)
 mpl.rc("legend", **legend)
 
 # # van der Pol unconstrained
-# data = pd.read_csv("van der Pol unconstrained.csv")
+# data = pd.read_csv("./plots/van der Pol unconstrained.csv")
 
 # fig = data.plot("t", ["x1", "x2", "u"])
 # fig.set_xlabel("time")
-# plt.savefig("van_der_pol_unconstrained.pdf")
+# plt.savefig("./plots/van_der_pol_unconstrained.pdf")
+# plt.savefig("./plots/van_der_pol_unconstrained.svg")
 
 # # van der Pol constrained
-# data = pd.read_csv("van der Pol constrained.csv")
+# data = pd.read_csv("./plots/van der Pol constrained.csv")
 
 # fig = data.plot("t", ["x1", "x2", "u"])
+# fig.axhline(y=-0.4, zorder=100, color= plt.gca().lines[0].get_color(), ls="--", alpha=0.7)
 # fig.set_xlabel("time")
-# plt.savefig("van_der_pol_constrained.pdf")
+# plt.savefig("./plots/van_der_pol_constrained.pdf")
+# plt.savefig("./plots/van_der_pol_constrained.svg")
 
 # # photo production
-# data = pd.read_csv("photo production.csv")
+# data = pd.read_csv("./plots/photo production.csv")
 
 # fig = data.plot("t", ["y1", "y2"])
 # fig.set_xlabel("time")
-# plt.savefig("photo_production_states.pdf")
+# plt.savefig("./plots/photo_production_states.pdf")
+# plt.savefig("./plots/photo_production_states.svg")
 
 # fig = data.plot("t", ["u1", "u2"])
 # fig.set_xlabel("time")
-# plt.savefig("photo_production_controls.pdf")
+# plt.savefig("./plots/photo_production_controls.pdf")
+# plt.savefig("./plots/photo_production_controls.svg")
 
 
 #################################### semibatch_reactor ####################################
@@ -79,6 +84,7 @@ plt.legend(fontsize="x-small", loc='center left', bbox_to_anchor=(1.02, 0.5))
 plt.title(r"$x_2$")
 plt.xlabel("time")
 plt.savefig("./plots/bioreactor_constraints_x2.pdf")
+plt.savefig("./plots/bioreactor_constraints_x2.svg")
 plt.show()
 
 
@@ -93,6 +99,7 @@ plt.legend(fontsize="x-small", loc='center left', bbox_to_anchor=(1.02, 0.5))
 plt.title(r"$0.011 x_1 - x_3$")
 plt.xlabel("time")
 plt.savefig("./plots/bioreactor_constraints_x1_x3.pdf")
+plt.savefig("./plots/bioreactor_constraints_x1_x3.svg")
 plt.show()
 
 
@@ -118,6 +125,7 @@ data = pd.read_csv(results_dir / f"delta_{delta}.csv")
 # # axs[3].ticklabel_format(useMathText=True)
 # plt.setp(axs[3], xlabel="time")
 # plt.savefig("./plots/bioreactor_x1_x3_c1_c2.pdf")
+# plt.savefig("./plots/bioreactor_x1_x3_c1_c2.svg")
 # plt.show()
 
 def four_axis(data, cols, labels=None, refs=None, alpha=None, saveas=None):
@@ -160,6 +168,12 @@ four_axis(
     labels=[r"$C_X$", r"$C_{q_c}$", r"$I$", r"$F_N$"],
     saveas="./plots/bioreactor_x1_x3_c1_c2.pdf"
 )
+four_axis(
+    data,
+    cols=["x1", "x3", "c1", "c2"],
+    labels=[r"$C_X$", r"$C_{q_c}$", r"$I$", r"$F_N$"],
+    saveas="./plots/bioreactor_x1_x3_c1_c2.svg"
+)
 
 #################################### semibatch_reactor ####################################
 
@@ -170,10 +184,11 @@ fig = data.plot("t", ["x1","x2","x3"], label=[r"$C_A$", r"$C_B$", r"$C_C$"])
 fig.legend(fontsize="medium")
 fig.set_xlabel("time")
 plt.savefig("./plots/semibatch_x1_x2_x3.pdf")
+plt.savefig("./plots/semibatch_x1_x2_x3.svg")
 plt.show()
 
 fig, axs = plt.subplots(4, 1, sharex=True, constrained_layout=True, squeeze=True, figsize=(8, 4*4))
-fig.set_xlabel("time")
+# fig.set_xlabel("time")
 data.plot("t", "x4", ax=axs[0], color=palette[3], label=r"$T$")
 axs[0].axhline(y=420, zorder=100, color="orange", ls="--", alpha=0.7)
 axs[0].legend(loc='center right')
@@ -187,6 +202,7 @@ data.plot("t", "c2", ax=axs[3], color=palette[7], label=r"$T_a$")
 axs[3].legend(loc="center right")
 axs[3].set_xlabel("time")
 plt.savefig("./plots/semibatch_x4_x5_c1_c2.pdf")
+plt.savefig("./plots/semibatch_x4_x5_c1_c2.svg")
 plt.show()
 
 # four_axis(
@@ -232,11 +248,13 @@ results_dir = Path("./data/reference_tracking.jl/2021-04-20T16_20_04.482/")
 data = pd.read_csv(results_dir / "data.csv")
 
 ref_track(data, reversible=True, saveas="./plots/reftrack_case1.pdf")
+ref_track(data, reversible=True, saveas="./plots/reftrack_case1.svg")
 
 # case 4
 results_dir = Path("./data/reference_tracking.jl/2021-04-21T17_58_04.656/")
 data = pd.read_csv(results_dir / "data.csv")
 
 ref_track(data, reversible=False, saveas="./plots/reftrack_case4.pdf")
+ref_track(data, reversible=False, saveas="./plots/reftrack_case4.svg")
 
 # custom case
