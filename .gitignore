@@ -9,6 +9,10 @@ data/
 # images
 *.pdf
 *.svg
+*.png
+
+# profiling
+statprof/
 
 __pycache__/
 .vscode/
