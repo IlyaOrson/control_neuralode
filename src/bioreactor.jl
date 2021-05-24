@@ -130,7 +130,8 @@ for partial_time in tsteps[ end÷5 : end÷5 : end]
                 display(p2)
             end
         end
-        return sum_squares
+        regularization = 1f-1 * mean(abs2, params)
+        return sum_squares + regularization
     end
 
     @show precondition_loss(θ; plot=true)
@@ -168,10 +169,12 @@ B(z, lower, upper; δ=(upper-lower)/2f0) = B(z - lower; δ) + B(upper - z; δ)
 # state constraints on control change
 # C_N(t) - 150 ≤ 0              t = T
 # C_N(t) − 800 ≤ 0              ∀t
-# C_qc(t) − 0.011 C_X(t) ≤ 0    ∀t  --->  0.011 C_X(t) - C_qc(t) ≤ 3f-2
-function loss(params, prob, tsteps; δ=1f1, α=1f0)
+# 0.011 C_X(t) - C_qc(t) ≤ 3f-2 ∀t
+function loss(params, prob; δ=1f1, α=1f0, tsteps=[])
     # integrate ODE system
-    sol = solve(prob, BS3(), p=params) |> Array  # , saveat=tsteps
+    sol_raw = solve(prob, BS3(), p=params, abstol=1f-1, reltol=1f-1)  # saveat=tsteps
+    sol = Array(sol_raw)
+    sol_t = Array(sol_raw.t)
 
     ratio_X_N = 3f-2 / 800f0
 
@@ -182,7 +185,19 @@ function loss(params, prob, tsteps; δ=1f1, α=1f0)
     )
     C_N_over_last = B(150f0 - sol[2, end]; δ=δ)
 
-    constraint_penalty = Δt * (sum(C_N_over) + sum(C_X_over)) + C_N_over_last
+    # integral penalty
+    # constraint_penalty = Δt * (sum(C_N_over) + sum(C_X_over)) + C_N_over_last  # for fixed timesteps
+    Zygote.ignore() do
+        global delta_times = [sol_t[i+1] - sol_t[i] for i in eachindex(sol_t[1:end-1])]
+    end
+    # Zygote does not support this one for some reason...
+    # for i in eachindex(sol_t[1:end-1])
+    #     δt = sol_t[i+1] - sol_t[i]
+    #     # constraint_penalty += C_N_over[i] * δt
+    #     # constraint_penalty += C_X_over[i] * δt
+    #     # constraint_penalty += (C_N_over[i] + C_X_over[i]) * δt
+    # end
+    constraint_penalty = sum((C_N_over .+ C_X_over)[1:end-1] .* delta_times) + C_N_over_last
 
     # penalty on change of controls
     control_penalty = 0f0
@@ -192,9 +207,11 @@ function loss(params, prob, tsteps; δ=1f1, α=1f0)
         control_penalty += 3.125f-8 * (prev[1]-post[1])^2 + 3.125f-6 * (prev[2]-post[2])^2
     end
 
+    regularization = 1f-1 * mean(abs2, θ)  # sum(abs2, θ)
+
     objective = -sol[3, end]  # maximize C_qc
-    # @show objective, α*constraint_penalty, control_penalty
-    return objective, α * constraint_penalty, control_penalty
+
+    return objective, α * constraint_penalty, control_penalty, regularization
 end
 
 α, δ = 1f-5, 100f0
@@ -202,23 +219,27 @@ end
 limit = 20
 counter = 1
 while true
-    @show δ, α
-    global prob, loss, θ, limit, counter, δ, δs, α, log_time, result
+    @show δ, α, tsteps
+    global prob, loss, θ, limit, counter, δ, δs, α, αs, log_time, result
     local adtype, optf, optfunc, optprob
 
     prob = ODEProblem(dudt!, u0, tspan, θ)
 
     # closures to comply with optimization interface
-    loss(params) = reduce(+, loss(params, prob, tsteps; δ, α))
-    function plot_callback(params, loss)
-        plot_simulation(
-            prob, params, tsteps; only=:states, vars=[2], show=loss, yrefs=[800, 150]
-        )
-        plot_simulation(prob, params, tsteps; only=:states, fun=(x,y,z)->1.1f-2x - z, yrefs=[3f-2])
-    end
+    loss(params) = reduce(+, loss(params, prob; δ, α, tsteps))
+    @info "Current states"
+    plot_simulation(prob, θ, tsteps; only=:states, vars=[2], yrefs=[800, 150])
+    plot_simulation(prob, θ, tsteps; only=:states, fun=(x,y,z)->1.1f-2x - z, yrefs=[3f-2])
+
+    # function plot_callback(params, loss)
+    #     plot_simulation(
+    #         prob, params, tsteps; only=:states, vars=[2], show=loss, yrefs=[800, 150]
+    #     )
+    #     plot_simulation(prob, params, tsteps; only=:states, fun=(x,y,z)->1.1f-2x - z, yrefs=[3f-2])
+    # end
 
     @info "Current controls"
-    plot_simulation(prob, θ, tsteps; only=:controls, show=loss(θ))
+    plot_simulation(prob, θ, tsteps; only=:controls)
 
     result = DiffEqFlux.sciml_train(
         loss, θ, LBFGS(linesearch=LineSearches.BackTracking());
@@ -226,9 +247,10 @@ while true
         allow_f_increases=true,
         f_tol = 1f-3,
     )
+    @show result |> typeof |> fieldnames
     θ = result.minimizer
 
-    @show objective, state_penalty, control_penalty = loss(θ, prob, tsteps; δ, α)
+    @show objective, state_penalty, control_penalty, regularization = loss(θ, prob; δ, α, tsteps)
     if isinf(state_penalty) || state_penalty/objective > 1f4
         δ *= 1.1
         @show α = 1f4 * abs(objective / state_penalty)
@@ -253,14 +275,15 @@ while true
             filename="delta_$(round(δ, digits=2))",
             metadata=metadata
         )
+        push!(αs, α)
         push!(δs, δ)
         δ *= 0.8
     end
     counter == limit ? break : counter += 1
 end
 
-final_objective, final_state_penalty, final_control_penalty = loss(θ, prob, tsteps; δ, α)
-final_values = NamedTuple{(:objective, :state_penalty, :control_penalty)}(loss(θ, prob, tsteps; δ, α))
+final_objective, final_state_penalty, final_control_penalty, final_regularization = loss(θ, prob; δ, α, tsteps)
+final_values = NamedTuple{(:objective, :state_penalty, :control_penalty, :regularization)}(loss(θ, prob; δ, α, tsteps))
 
 @info "Final states"
 # plot_simulation(prob, θ, tsteps; only=:states, vars=[1], show=final_values)
