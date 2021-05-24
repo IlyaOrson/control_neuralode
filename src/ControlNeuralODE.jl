@@ -1,13 +1,14 @@
-# adapted from https://diffeqflux.sciml.ai/dev/examples/feedback_control/
-
 module ControlNeuralODE
 
 using Dates
 using Base.Filesystem
 
-using DiffEqFlux, Flux, Optim, OrdinaryDiffEq, Zygote, GalacticOptim, DiffEqSensitivity
-using UnicodePlots: lineplot, lineplot!, histogram
-using CSV, Tables
+using Statistics: mean
+using LineSearches, Optim, NLopt, GalacticOptim
+using Zygote, Flux
+using OrdinaryDiffEq, DiffEqSensitivity, DiffEqFlux
+using UnicodePlots: lineplot, lineplot!, histogram, boxplot
+using JSON3, CSV, Tables
 
 function fun_plotter(fun, array; xlim=(0,0))
     output = map(fun, eachrow(array)...)
@@ -92,7 +93,7 @@ function generate_data(prob, params, tsteps)
     elements_type = eltype(solution.t)
     states = Array(solution)
     total_steps = size(states, 2)
-    state_dimension = size(states, 1)
+    # state_dimension = size(states, 1)
     control_dimension = length(controller(solution.u[1], params))
 
     # regenerate controls from controller
@@ -137,7 +138,13 @@ function store_simulation(name, prob, params, tsteps; metadata=nothing, current_
     isnothing(filename) ? filename="data.csv" : filename=filename*".csv"
     CSV.write(joinpath(datadir, filename), full_data)
 
-    !isnothing(metadata) && CSV.write(joinpath(datadir, "metadata.txt"), metadata; writeheader=false, delim="\t")
+    # !isnothing(metadata) && CSV.write(joinpath(datadir, "metadata.txt"), metadata; writeheader=false, delim="\t")
+    if !isnothing(metadata)
+        open(joinpath(datadir, "metadata.json"), "w") do f
+            JSON3.pretty(f, JSON3.write(metadata))
+            println(f)
+        end
+    end
 end
 
 
