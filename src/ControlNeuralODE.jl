@@ -4,7 +4,7 @@ using Dates
 using Base.Filesystem
 
 using Statistics: mean
-using LineSearches, Optim, NLopt, GalacticOptim
+using LineSearches, Optim, GalacticOptim
 using Zygote, Flux
 using OrdinaryDiffEq, DiffEqSensitivity, DiffEqFlux
 using UnicodePlots: lineplot, lineplot!, histogram, boxplot
@@ -120,16 +120,8 @@ function store_simulation(name, prob, params, tsteps; metadata=nothing, current_
     @info "Storing data in $datadir"
     mkpath(datadir)
 
-    # time_data = Tables.table(reshape(solution.t, :, 1), header = ("t"))
-    # CSV.write(joinpath(datadir, "time.csv"), time_data)
-
     state_headers = ["x$i" for i in 1:size(states, 1)]
-    # state_data = Tables.table(states', header = state_headers)
-    # CSV.write(joinpath(datadir, "states.csv"), state_data)
-
     control_headers = ["c$i" for i in 1:size(controls, 1)]
-    # control_data = Tables.table(controls', header = control_headers)
-    # CSV.write(joinpath(datadir, "controls.csv"), control_data)
 
     full_data = Tables.table(
         hcat(times, states', controls'),
@@ -138,7 +130,6 @@ function store_simulation(name, prob, params, tsteps; metadata=nothing, current_
     isnothing(filename) ? filename="data.csv" : filename=filename*".csv"
     CSV.write(joinpath(datadir, filename), full_data)
 
-    # !isnothing(metadata) && CSV.write(joinpath(datadir, "metadata.txt"), metadata; writeheader=false, delim="\t")
     if !isnothing(metadata)
         open(joinpath(datadir, "metadata.json"), "w") do f
             JSON3.pretty(f, JSON3.write(metadata))
@@ -156,6 +147,7 @@ function plot_simulation(
 
     !isnothing(show) && @show show
 
+    # TODO: use times in plotting?
     times, states, controls = generate_data(prob, params, tsteps)
     plt = unicode_plotter(states, controls; only, vars, fun)
     if !isnothing(yrefs)
@@ -178,6 +170,63 @@ function controller_shape(controller)
     push!(dims_input, pop!(dims_output))
 end
 
+function preconditioner(
+    controller, precondition, system!, time_fractions;
+    reg_coeff = 1f-1, f_tol=1f-2, decay_factor=9f-1
+)
+    θ = initial_params(controller)
+    for partial_time in tsteps[end÷time_fractions : end÷time_fractions : end]
+
+        tspan = (t0, partial_time)
+        fixed_dudt!(du, u, p, t) = system!(du, u, p, t, precondition, :time)
+        fixed_prob = ODEProblem(fixed_dudt!, u0, tspan)
+        fixed_sol = solve(fixed_prob, BS3(), abstol=1f-1, reltol=1f-1)  #, saveat=tsteps)
+
+        function precondition_loss(params; plot=false)
+
+            f1s, f2s, c1s, c2s = Float32[], Float32[], Float32[], Float32[]
+            sum_squares = 0f0
+
+            # for (time, state) in zip(fixed_sol.t, fixed_sol.u)  # Zygote error
+            for (i, state) in enumerate(eachcol(Array(fixed_sol)))
+
+                fixed = precondition(fixed_sol.t[i], nothing)  # precondition(time, params)
+                pred = controller(state, params)
+                sum_squares += sum((pred - fixed).^2) * decay_factor^i
+                if plot
+                    Zygote.ignore() do
+                        push!(f1s, fixed[1])
+                        push!(f2s, fixed[2])
+                        push!(c1s, pred[1])
+                        push!(c2s, pred[2])
+                    end
+                end
+            end
+            if plot
+                Zygote.ignore() do
+                    p1 = lineplot(f1s, name="fixed")
+                    lineplot!(p1, c1s, name="neural")
+                    display(p1)
+                    p2 = lineplot(f2s, name="fixed")
+                    lineplot!(p2, c2s, name="neural")
+                    display(p2)
+                end
+            end
+            regularization = reg_coeff * mean(abs2, params)
+            return sum_squares + regularization
+        end
+
+        preconditioner = DiffEqFlux.sciml_train(
+            precondition_loss, θ, BFGS(initial_stepnorm=0.01);
+            # maxiters=10,
+            allow_f_increases=true,
+            f_tol
+        )
+        θ = preconditioner.minimizer
+        @show precondition_loss(θ; plot=true)
+    end
+    return θ
+end
 
 function runner(script)
     include(joinpath(@__DIR__, endswith(script, ".jl") ? script : "$script.jl"))

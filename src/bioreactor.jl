@@ -60,14 +60,13 @@ tsteps = t0:Δt:tf
 
 # set arquitecture of neural network controller
 controller = FastChain(
-    (x, p) -> [x[1], x[2]/10, x[3]*10],  # scaling
+    (x, p) -> [x[1], x[2]/10, x[3]*10],  # input scaling
     FastDense(3, 16, tanh, initW = (x,y) -> (5/3)*Flux.glorot_uniform(x,y)),
     FastDense(16, 16, tanh, initW = (x,y) -> (5/3)*Flux.glorot_uniform(x,y)),
     FastDense(16, 2, initW = (x,y) -> (5/3)*Flux.glorot_uniform(x,y)),
     # I ∈ [120, 400] & F ∈ [0, 40] in Bradford 2020
     (x, p) -> [280f0*sigmoid(x[1]) + 120f0, 40f0*sigmoid(x[2])],
 )
-
 
 # set differential equation problem
 dudt!(du, u, p, t) = system!(du, u, p, t, controller)
@@ -93,63 +92,11 @@ end
 # display(lineplot(x -> precondition(x, nothing)[1], t0, tf, xlim=(t0,tf)))
 # display(lineplot(x -> precondition(x, nothing)[2], t0, tf, xlim=(t0,tf)))
 
-for partial_time in tsteps[ end÷5 : end÷5 : end]
-    global θ
-    local tspan = (t0, partial_time)
-
-    fixed_dudt!(du, u, p, t) = system!(du, u, p, t, precondition, :time)
-    fixed_prob = ODEProblem(fixed_dudt!, u0, tspan)
-    fixed_sol = solve(fixed_prob, BS3(), abstol=1f-1, reltol=1f-1)  #, saveat=tsteps)
-
-    function precondition_loss(params; plot=false)
-        f1s, f2s, c1s, c2s = Float32[], Float32[], Float32[], Float32[]
-        penalty = 0.9
-        sum_squares = 0f0
-        # for (time, state) in zip(fixed_sol.t, fixed_sol.u)  # Zygote error
-        for (i, state) in enumerate(eachcol(Array(fixed_sol)))
-            # fixed = precondition(time, params)
-            fixed = precondition(fixed_sol.t[i], nothing)
-            pred = controller(state, params)
-            sum_squares += sum((pred - fixed).^2) * penalty^i
-            if plot
-                Zygote.ignore() do
-                    push!(f1s, fixed[1])
-                    push!(f2s, fixed[2])
-                    push!(c1s, pred[1])
-                    push!(c2s, pred[2])
-                end
-            end
-        end
-        if plot
-            Zygote.ignore() do
-                p1 = lineplot(f1s, name="fixed")
-                lineplot!(p1, c1s, name="neural")
-                display(p1)
-                p2 = lineplot(f2s, name="fixed")
-                lineplot!(p2, c2s, name="neural")
-                display(p2)
-            end
-        end
-        regularization = 1f-1 * mean(abs2, params)
-        return sum_squares + regularization
-    end
-
-    @show precondition_loss(θ; plot=true)
-
-    preconditioner = DiffEqFlux.sciml_train(
-        precondition_loss, θ, BFGS(initial_stepnorm=0.01);
-        # maxiters=10,
-        allow_f_increases=true,
-        # f_tol=1f-2,
-    )
-    θ = preconditioner.minimizer
-end
-
-prob = ODEProblem(dudt!, u0, tspan, θ)
-
 @info "Controls after preconditioning"
+θ = preconditioner(controller, precondition, system!, 5)
+prob = ODEProblem(dudt!, u0, tspan, θ)
 plot_simulation(prob, θ, tsteps; only=:controls)
-display(histogram(θ, title="Number of params: $(length(θ))")); sleep(2)
+display(histogram(θ, title="Number of params: $(length(θ))"))
 
 store_simulation(
     @__FILE__, prob, θ, tsteps;
