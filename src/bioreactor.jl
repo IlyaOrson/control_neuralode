@@ -104,15 +104,6 @@ store_simulation(
     filename="precondition",
 )
 
-# Feller, C., & Ebenbauer, C. (2014).
-# Continuous-time linear MPC algorithms based on relaxed logarithmic barrier functions.
-# IFAC Proceedings Volumes, 47(3), 2481–2488.
-# https://doi.org/10.3182/20140824-6-ZA-1003.01022
-
-β(z, δ) = exp(1f0 - z/δ) - 1f0 - log(δ)
-B(z; δ=0.3f0) = max(z > δ ? -log(z) : β(z, δ), 0f0)
-B(z, lower, upper; δ=(upper-lower)/2f0) = B(z - lower; δ) + B(upper - z; δ)
-
 # state constraints on control change
 # C_N(t) - 150 ≤ 0              t = T
 # C_N(t) − 800 ≤ 0              ∀t
@@ -125,12 +116,12 @@ function loss(params, prob; δ=1f1, α=1f0, tsteps=[])
 
     ratio_X_N = 3f-2 / 800f0
 
-    C_N_over = map(y -> B(800f0 - y; δ), sol[2, 1:end])
+    C_N_over = map(y -> relaxed_barrier(800f0 - y; δ), sol[2, 1:end])
     C_X_over = map(
-        (x, z) -> B(3f-2 - (1.1f-2*x - z);
+        (x, z) -> relaxed_barrier(3f-2 - (1.1f-2*x - z);
         δ=δ*ratio_X_N), sol[1, 1:end], sol[3, 1:end]
     )
-    C_N_over_last = B(150f0 - sol[2, end]; δ=δ)
+    C_N_over_last = relaxed_barrier(150f0 - sol[2, end]; δ=δ)
 
     # integral penalty
     # constraint_penalty = Δt * (sum(C_N_over) + sum(C_X_over)) + C_N_over_last  # for fixed timesteps
