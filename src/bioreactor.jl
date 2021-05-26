@@ -93,7 +93,7 @@ end
 # display(lineplot(x -> precondition(x, nothing)[2], t0, tf, xlim=(t0,tf)))
 
 @info "Controls after preconditioning"
-θ = preconditioner(controller, precondition, system!, 5)
+θ = preconditioner(controller, precondition, system!, tsteps[end÷5:end÷5:end], progressbar=false)
 prob = ODEProblem(dudt!, u0, tspan, θ)
 plot_simulation(prob, θ, tsteps; only=:controls)
 display(histogram(θ, title="Number of params: $(length(θ))"))
@@ -108,11 +108,10 @@ store_simulation(
 # C_N(t) - 150 ≤ 0              t = T
 # C_N(t) − 800 ≤ 0              ∀t
 # 0.011 C_X(t) - C_qc(t) ≤ 3f-2 ∀t
-function loss(params, prob; δ=1f1, α=1f0, tsteps=[])
+function loss(params, prob; δ=1f1, α=1f0, tsteps=())
     # integrate ODE system
-    sol_raw = solve(prob, BS3(), p=params, abstol=1f-1, reltol=1f-1)  # saveat=tsteps
+    sol_raw = solve(prob, BS3(), p=params, saveat=tsteps, abstol=1f-1, reltol=1f-1)
     sol = Array(sol_raw)
-    sol_t = Array(sol_raw.t)
 
     ratio_X_N = 3f-2 / 800f0
 
@@ -126,9 +125,10 @@ function loss(params, prob; δ=1f1, α=1f0, tsteps=[])
     # integral penalty
     # constraint_penalty = Δt * (sum(C_N_over) + sum(C_X_over)) + C_N_over_last  # for fixed timesteps
     Zygote.ignore() do
-        global delta_times = [sol_t[i+1] - sol_t[i] for i in eachindex(sol_t[1:end-1])]
+        global delta_times = [sol_raw.t[i+1] - sol_raw.t[i] for i in eachindex(sol_raw.t[1:end-1])]
     end
     # Zygote does not support this one for some reason...
+    # sol_t = Array(sol_raw.t)
     # for i in eachindex(sol_t[1:end-1])
     #     δt = sol_t[i+1] - sol_t[i]
     #     # constraint_penalty += C_N_over[i] * δt
@@ -156,18 +156,21 @@ end
 αs, δs = [], []
 limit = 20
 counter = 1
+prog = ProgressUnknown(; desc="Training with constraints...", enabled=false)
 while true
     @show δ, α, tsteps
-    global prob, loss, θ, limit, counter, δ, δs, α, αs, log_time, result
+    global prog, prob, loss, θ, limit, counter, δ, δs, α, αs, log_time, result
     local adtype, optf, optfunc, optprob
 
-    prob = ODEProblem(dudt!, u0, tspan, θ)
+    prob = ODEProblem(dudt!, u0, tspan, θ)  # might not be required
 
     # closures to comply with optimization interface
     loss(params) = reduce(+, loss(params, prob; δ, α, tsteps))
     @info "Current states"
     plot_simulation(prob, θ, tsteps; only=:states, vars=[2], yrefs=[800, 150])
     plot_simulation(prob, θ, tsteps; only=:states, fun=(x,y,z)->1.1f-2x - z, yrefs=[3f-2])
+    @info "Current controls"
+    plot_simulation(prob, θ, tsteps; only=:controls)
 
     # function plot_callback(params, loss)
     #     plot_simulation(
@@ -176,16 +179,12 @@ while true
     #     plot_simulation(prob, params, tsteps; only=:states, fun=(x,y,z)->1.1f-2x - z, yrefs=[3f-2])
     # end
 
-    @info "Current controls"
-    plot_simulation(prob, θ, tsteps; only=:controls)
-
     result = DiffEqFlux.sciml_train(
         loss, θ, LBFGS(linesearch=LineSearches.BackTracking());
         # cb=plot_callback,
         allow_f_increases=true,
-        f_tol = 1f-3,
+        f_tol = 1f-2,
     )
-    @show result |> typeof |> fieldnames
     θ = result.minimizer
 
     @show objective, state_penalty, control_penalty, regularization = loss(θ, prob; δ, α, tsteps)
@@ -193,7 +192,6 @@ while true
         δ *= 1.1
         @show α = 1f4 * abs(objective / state_penalty)
     else
-        @info "Storing results"
         local  metadata = Dict(
             :objective => objective,
             :state_penalty => state_penalty,
@@ -217,7 +215,13 @@ while true
         push!(δs, δ)
         δ *= 0.8
     end
-    counter == limit ? break : counter += 1
+    if counter == limit
+        ProgressMeter.finish!(prog)
+        break
+    else
+        ProgressMeter.next!(prog; showvalues=[(:δ, δ), (:α, α), (:objective, objective), (:state_penalty, state_penalty)])
+        counter += 1
+    end
 end
 
 final_objective, final_state_penalty, final_control_penalty, final_regularization = loss(θ, prob; δ, α, tsteps)

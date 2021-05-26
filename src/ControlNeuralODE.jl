@@ -3,6 +3,7 @@ module ControlNeuralODE
 using Dates
 using Base.Filesystem
 
+using ProgressMeter
 using Statistics: mean
 using LineSearches, Optim, GalacticOptim
 using Zygote, Flux
@@ -181,15 +182,20 @@ relaxed_barrier(z, lower, upper; δ=(upper-lower)/2f0) = relaxed_barrier(z - low
 
 function preconditioner(
     controller, precondition, system!, time_fractions;
-    reg_coeff = 1f-1, f_tol=1f-2, decay_factor=9f-1
+    reg_coeff = 1f-1, f_tol=1f-2, saveat=(), progressbar=true, #decay_factor=9f-1
 )
     θ = initial_params(controller)
-    for partial_time in tsteps[end÷time_fractions : end÷time_fractions : end]
+    prog = Progress(
+        length(time_fractions);
+        desc="Pretraining in subintervals...",
+        dt=0.5, showspeed=true, enabled=progressbar,
+    )
+    for partial_time in time_fractions
 
         tspan = (t0, partial_time)
         fixed_dudt!(du, u, p, t) = system!(du, u, p, t, precondition, :time)
         fixed_prob = ODEProblem(fixed_dudt!, u0, tspan)
-        fixed_sol = solve(fixed_prob, BS3(), abstol=1f-1, reltol=1f-1)  #, saveat=tsteps)
+        fixed_sol = solve(fixed_prob, BS3(), abstol=1f-1, reltol=1f-1, saveat)
 
         function precondition_loss(params; plot=false)
 
@@ -201,7 +207,7 @@ function preconditioner(
 
                 fixed = precondition(fixed_sol.t[i], nothing)  # precondition(time, params)
                 pred = controller(state, params)
-                sum_squares += sum((pred - fixed).^2) * decay_factor^i
+                sum_squares += sum((pred - fixed).^2)  # * decay_factor^i
                 if plot
                     Zygote.ignore() do
                         push!(f1s, fixed[1])
@@ -232,7 +238,8 @@ function preconditioner(
             f_tol
         )
         θ = preconditioner.minimizer
-        @show precondition_loss(θ; plot=true)
+        @show ploss = precondition_loss(θ; plot=true)
+        next!(prog; showvalues = [(:loss, ploss)])
     end
     return θ
 end

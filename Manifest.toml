@@ -742,9 +742,9 @@ version = "0.1.4"
 
 [[ProgressMeter]]
 deps = ["Distributed", "Printf"]
-git-tree-sha1 = "6e9c89cba09f6ef134b00e10625590746ba1e036"
+git-tree-sha1 = "1be8800271c86f572d334fef6e3b8364eaece7d9"
 uuid = "92933f4c-e287-5a05-a399-4b506db050ca"
-version = "1.5.0"
+version = "1.6.2"
 
 [[QuadGK]]
 deps = ["DataStructures", "LinearAlgebra"]
