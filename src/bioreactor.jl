@@ -58,6 +58,12 @@ u0 = [C_X₀, C_N₀, C_qc₀]
 tspan = (t0, tf)
 tsteps = t0:Δt:tf
 
+control_ranges = [(120f0, 400f0), (0f0, 40f0)]
+# function scaled_sigmoids(control_ranges)
+#     control_type = control_ranges |> eltype |> eltype
+#     return (x, p) -> [mean(range) + (range[end]-range[1]) * sigmoid(x[i]) for (i, range) in enumerate(control_ranges)]
+# end
+
 # set arquitecture of neural network controller
 controller = FastChain(
     (x, p) -> [x[1], x[2]/10, x[3]*10],  # input scaling
@@ -68,17 +74,17 @@ controller = FastChain(
     (x, p) -> [280f0*sigmoid(x[1]) + 120f0, 40f0*sigmoid(x[2])],
 )
 
+# initial parameters
+@show controller_shape(controller)
+θ = initial_params(controller)  # destructure model weights into a vector of parameters
+@time display(histogram(θ, title="Number of params: $(length(θ))"))
+
 # set differential equation problem
 dudt!(du, u, p, t) = system!(du, u, p, t, controller)
-
-# destructure model weights into a vector of parameters
-@show controller_shape(controller)
-θ = initial_params(controller)
-display(histogram(θ, title="Number of params: $(length(θ))"))
-
-@info "Controls after default initialization (Xavier uniform)"
 prob = ODEProblem(dudt!, u0, tspan, θ)
-plot_simulation(prob, θ, tsteps; only=:controls)
+
+@info "Controls after initialization"
+@time plot_simulation(prob, θ, tsteps; only=:controls)
 
 # preconditioning to control sequences
 function precondition(t, p)
@@ -93,8 +99,12 @@ end
 # display(lineplot(x -> precondition(x, nothing)[2], t0, tf, xlim=(t0,tf)))
 
 @info "Controls after preconditioning"
-θ = preconditioner(controller, precondition, system!, tsteps[end÷5:end÷5:end], progressbar=false)
-prob = ODEProblem(dudt!, u0, tspan, θ)
+θ = preconditioner(
+    controller, precondition, system!, tsteps[end÷5:end÷5:end];
+    progressbar=false, control_range_scaling=[range[end] - range[1] for range in control_ranges]
+)
+prob = remake(prob, p=θ)
+# prob = ODEProblem(dudt!, u0, tspan, θ)
 plot_simulation(prob, θ, tsteps; only=:controls)
 display(histogram(θ, title="Number of params: $(length(θ))"))
 
@@ -153,77 +163,7 @@ function loss(params, prob; δ=1f1, α=1f0, tsteps=())
 end
 
 α, δ = 1f-5, 100f0
-αs, δs = [], []
-limit = 20
-counter = 1
-prog = ProgressUnknown(; desc="Training with constraints...", enabled=false)
-while true
-    @show δ, α, tsteps
-    global prog, prob, loss, θ, limit, counter, δ, δs, α, αs, log_time, result
-    local adtype, optf, optfunc, optprob
-
-    prob = ODEProblem(dudt!, u0, tspan, θ)  # might not be required
-
-    # closures to comply with optimization interface
-    loss(params) = reduce(+, loss(params, prob; δ, α, tsteps))
-    @info "Current states"
-    plot_simulation(prob, θ, tsteps; only=:states, vars=[2], yrefs=[800, 150])
-    plot_simulation(prob, θ, tsteps; only=:states, fun=(x,y,z)->1.1f-2x - z, yrefs=[3f-2])
-    @info "Current controls"
-    plot_simulation(prob, θ, tsteps; only=:controls)
-
-    # function plot_callback(params, loss)
-    #     plot_simulation(
-    #         prob, params, tsteps; only=:states, vars=[2], show=loss, yrefs=[800, 150]
-    #     )
-    #     plot_simulation(prob, params, tsteps; only=:states, fun=(x,y,z)->1.1f-2x - z, yrefs=[3f-2])
-    # end
-
-    result = DiffEqFlux.sciml_train(
-        loss, θ, LBFGS(linesearch=LineSearches.BackTracking());
-        # cb=plot_callback,
-        allow_f_increases=true,
-        f_tol = 1f-2,
-    )
-    θ = result.minimizer
-
-    @show objective, state_penalty, control_penalty, regularization = loss(θ, prob; δ, α, tsteps)
-    if isinf(state_penalty) || state_penalty/objective > 1f4
-        δ *= 1.1
-        @show α = 1f4 * abs(objective / state_penalty)
-    else
-        local  metadata = Dict(
-            :objective => objective,
-            :state_penalty => state_penalty,
-            :control_penalty => control_penalty,
-            :parameters => θ,
-            :num_params => length(initial_params(controller)),
-            :layers => controller_shape(controller),
-            :penalty_relaxations => δs,
-            :penalty_coefficients => αs,
-            :t0 => t0,
-            :tf => tf,
-            :Δt => Δt,
-        )
-        store_simulation(
-            @__FILE__, prob, θ, tsteps;
-            current_datetime=log_time,
-            filename="delta_$(round(δ, digits=2))",
-            metadata=metadata
-        )
-        push!(αs, α)
-        push!(δs, δ)
-        δ *= 0.8
-    end
-    if counter == limit
-        ProgressMeter.finish!(prog)
-        break
-    else
-        ProgressMeter.next!(prog; showvalues=[(:δ, δ), (:α, α), (:objective, objective), (:state_penalty, state_penalty)])
-        counter += 1
-    end
-end
-
+θ = constrained_training(prob, loss, θ, α, δ; tsteps)
 final_objective, final_state_penalty, final_control_penalty, final_regularization = loss(θ, prob; δ, α, tsteps)
 final_values = NamedTuple{(:objective, :state_penalty, :control_penalty, :regularization)}(loss(θ, prob; δ, α, tsteps))
 

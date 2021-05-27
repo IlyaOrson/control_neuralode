@@ -182,9 +182,10 @@ relaxed_barrier(z, lower, upper; δ=(upper-lower)/2f0) = relaxed_barrier(z - low
 
 function preconditioner(
     controller, precondition, system!, time_fractions;
-    reg_coeff = 1f-1, f_tol=1f-2, saveat=(), progressbar=true, #decay_factor=9f-1
+    reg_coeff = 1f-1, f_tol=1f-2, saveat=(), progressbar=true, control_range_scaling=nothing
 )
     θ = initial_params(controller)
+    fixed_dudt!(du, u, p, t) = system!(du, u, p, t, precondition, :time)
     prog = Progress(
         length(time_fractions);
         desc="Pretraining in subintervals...",
@@ -193,12 +194,12 @@ function preconditioner(
     for partial_time in time_fractions
 
         tspan = (t0, partial_time)
-        fixed_dudt!(du, u, p, t) = system!(du, u, p, t, precondition, :time)
         fixed_prob = ODEProblem(fixed_dudt!, u0, tspan)
         fixed_sol = solve(fixed_prob, BS3(), abstol=1f-1, reltol=1f-1, saveat)
 
         function precondition_loss(params; plot=false)
 
+            # TODO: generalize or remove plotting?
             f1s, f2s, c1s, c2s = Float32[], Float32[], Float32[], Float32[]
             sum_squares = 0f0
 
@@ -207,7 +208,11 @@ function preconditioner(
 
                 fixed = precondition(fixed_sol.t[i], nothing)  # precondition(time, params)
                 pred = controller(state, params)
-                sum_squares += sum((pred - fixed).^2)  # * decay_factor^i
+                diff_square = (pred - fixed).^2
+                if !isnothing(control_range_scaling)
+                    diff_square ./ control_range_scaling
+                end
+                sum_squares += sum(diff_square)
                 if plot
                     Zygote.ignore() do
                         push!(f1s, fixed[1])
@@ -242,6 +247,97 @@ function preconditioner(
         next!(prog; showvalues = [(:loss, ploss)])
     end
     return θ
+end
+
+function constrained_training(
+    prob, loss, θ_0, α_0, δ_0;
+    barrier_modifications = 20,
+    barrier_strengthening = 0.8f0,
+    barrier_relaxation = 1.1f0,
+    show_progresbar = false,
+    plot_iterations = true,
+    f_tol=1f-1,
+    tsteps=(),
+    # log_time
+)
+    barrier_modifications > 0
+    @assert barrier_relaxation > 1
+    @assert barrier_strengthening < 1
+
+    θ = θ_0
+    α = α_0
+    δ = δ_0
+    αs = []  # typeof(α)[]
+    global δs = []  # typeof(δ)[]
+
+    counter = 1
+    prog = ProgressUnknown(; desc="Training with constraints...", enabled=show_progresbar)
+    while true
+
+        @show δ, α
+
+        # prob = ODEProblem(dudt!, u0, tspan, θ)
+        prob = remake(prob; p=θ)
+
+        # closure to comply with optimization interface
+        loss_(params) = reduce(+, loss(params, prob; δ, α, tsteps))
+
+        if plot_iterations
+            @info "Current states"
+            plot_simulation(prob, θ, tsteps; only=:states, vars=[2], yrefs=[800, 150])
+            plot_simulation(prob, θ, tsteps; only=:states, fun=(x,y,z)->1.1f-2x - z, yrefs=[3f-2])
+            @info "Current controls"
+            plot_simulation(prob, θ, tsteps; only=:controls)
+        end
+
+        # function print_callback(params, loss)
+        #     println(loss)
+        #     return false
+        # end
+
+        result = DiffEqFlux.sciml_train(
+            loss_, θ, LBFGS(linesearch=LineSearches.BackTracking());
+            # cb=print_callback,
+            allow_f_increases=true,
+            f_tol,
+        )
+        θ = result.minimizer
+        @show objective, state_penalty, control_penalty, regularization = loss(θ, prob; δ, α, tsteps)
+        if isinf(state_penalty) || state_penalty/objective > 1f4
+            δ *= barrier_relaxation
+            @show α = 1f4 * abs(objective / state_penalty)
+        else
+            local metadata = Dict(
+                :objective => objective,
+                :state_penalty => state_penalty,
+                :control_penalty => control_penalty,
+                :parameters => θ,
+                :num_params => length(initial_params(controller)),
+                :layers => controller_shape(controller),
+                :penalty_relaxations => δs,
+                :penalty_coefficients => αs,
+                :t0 => t0,
+                :tf => tf,
+                :Δt => Δt,
+            )
+            store_simulation(
+                @__FILE__, prob, θ, tsteps;
+                current_datetime=log_time,
+                filename="delta_$(round(δ, digits=2))",
+                metadata=metadata
+            )
+            push!(αs, α)
+            push!(δs, δ)
+            δ *= barrier_strengthening
+        end
+        if counter == barrier_modifications
+            ProgressMeter.finish!(prog)
+            return θ
+        else
+            ProgressMeter.next!(prog; showvalues=[(:δ, δ), (:α, α), (:objective, objective), (:state_penalty, state_penalty)])
+            counter += 1
+        end
+    end
 end
 
 function runner(script)
