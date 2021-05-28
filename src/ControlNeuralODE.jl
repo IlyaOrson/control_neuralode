@@ -271,8 +271,8 @@ function constrained_training(
     θ = θ_0
     α = α_0
     δ = δ_0
-    αs = []  # typeof(α)[]
-    global δs = []  # typeof(δ)[]
+    αs = typeof(α)[]
+    δs = typeof(δ)[]
 
     counter = 1
     prog = ProgressUnknown(; desc="Training with constraints...", enabled=show_progresbar)
