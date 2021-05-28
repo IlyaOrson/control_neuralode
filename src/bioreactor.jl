@@ -2,7 +2,7 @@
 # Stochastic data-driven model predictive control using Gaussian processes.
 # Computers & Chemical Engineering, 139, 106844.
 
-log_time = string_datetime()
+datadir = generate_data_subdir(@__FILE__)
 
 function system!(du, u, p, t, controller, input=:state)
 
@@ -109,7 +109,7 @@ plot_simulation(prob, θ, tsteps; only=:controls)
 display(histogram(θ, title="Number of params: $(length(θ))"))
 
 store_simulation(
-    @__FILE__, prob, θ, tsteps;
+    datadir, prob, θ, tsteps;
     current_datetime=log_time,
     filename="precondition",
 )
@@ -162,9 +162,11 @@ function loss(params, prob; δ=1f1, α=1f0, tsteps=())
     return objective, α * constraint_penalty, control_penalty, regularization
 end
 
+# α: penalty coefficient
+# δ: barrier relaxation coefficient
 α, δ = 1f-5, 100f0
-θ = constrained_training(prob, loss, θ, α, δ; tsteps)
-final_objective, final_state_penalty, final_control_penalty, final_regularization = loss(θ, prob; δ, α, tsteps)
+θ, δs, αs = constrained_training(prob, loss, θ, α, δ; tsteps, datadir)
+# final_objective, final_state_penalty, final_control_penalty, final_regularization = loss(θ, prob; δ, α, tsteps)
 final_values = NamedTuple{(:objective, :state_penalty, :control_penalty, :regularization)}(loss(θ, prob; δ, α, tsteps))
 
 @info "Final states"

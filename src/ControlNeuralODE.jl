@@ -107,19 +107,22 @@ end
 
 string_datetime() = replace(string(now()), (":" => "_"))
 
-function store_simulation(name, prob, params, tsteps; metadata=nothing, current_datetime=nothing, filename=nothing)
-
-    times, states, controls = generate_data(prob, params, tsteps)
-
+function generate_data_subdir(callerfile; current_datetime=nothing)
     parent = dirname(@__DIR__)
     isnothing(current_datetime) && (current_datetime = string_datetime())
     datadir = joinpath(
         parent, "data",
-        basename(name),
+        basename(callerfile),
         current_datetime
     )
-    @info "Storing data in $datadir"
+    @info "Generating data directory: $datadir"
     mkpath(datadir)
+    return datadir
+end
+
+function store_simulation(datadir, prob, params, tsteps; metadata=nothing, current_datetime=nothing, filename=nothing)
+
+    times, states, controls = generate_data(prob, params, tsteps)
 
     state_headers = ["x$i" for i in 1:size(states, 1)]
     control_headers = ["c$i" for i in 1:size(controls, 1)]
@@ -258,6 +261,7 @@ function constrained_training(
     plot_iterations = true,
     f_tol=1f-1,
     tsteps=(),
+    datadir=nothing,
     # log_time
 )
     barrier_modifications > 0
@@ -307,32 +311,34 @@ function constrained_training(
             δ *= barrier_relaxation
             @show α = 1f4 * abs(objective / state_penalty)
         else
-            local metadata = Dict(
-                :objective => objective,
-                :state_penalty => state_penalty,
-                :control_penalty => control_penalty,
-                :parameters => θ,
-                :num_params => length(initial_params(controller)),
-                :layers => controller_shape(controller),
-                :penalty_relaxations => δs,
-                :penalty_coefficients => αs,
-                :t0 => t0,
-                :tf => tf,
-                :Δt => Δt,
-            )
-            store_simulation(
-                @__FILE__, prob, θ, tsteps;
-                current_datetime=log_time,
-                filename="delta_$(round(δ, digits=2))",
-                metadata=metadata
-            )
+            if !isnothing(datadir)
+                local metadata = Dict(
+                    :objective => objective,
+                    :state_penalty => state_penalty,
+                    :control_penalty => control_penalty,
+                    :parameters => θ,
+                    :num_params => length(initial_params(controller)),
+                    :layers => controller_shape(controller),
+                    :penalty_relaxations => δs,
+                    :penalty_coefficients => αs,
+                    :t0 => t0,
+                    :tf => tf,
+                    :Δt => Δt,
+                )
+                store_simulation(
+                    datadir, prob, θ, tsteps;
+                    current_datetime=log_time,
+                    filename="delta_$(round(δ, digits=2))",
+                    metadata=metadata
+                )
+            end
             push!(αs, α)
             push!(δs, δ)
             δ *= barrier_strengthening
         end
         if counter == barrier_modifications
             ProgressMeter.finish!(prog)
-            return θ
+            return θ, δs, αs
         else
             ProgressMeter.next!(prog; showvalues=[(:δ, δ), (:α, α), (:objective, objective), (:state_penalty, state_penalty)])
             counter += 1
