@@ -85,7 +85,7 @@ function unicode_plotter(states, controls; only=nothing, vars=nothing, fun=nothi
 end
 
 
-function generate_data(prob, params, tsteps)
+function generate_data(controller, prob, params, tsteps)
 
     # integrate with given parameters
     solution = solve(prob, AutoTsit5(Rosenbrock23()), p = params, saveat = tsteps)
@@ -120,9 +120,12 @@ function generate_data_subdir(callerfile; current_datetime=nothing)
     return datadir
 end
 
-function store_simulation(datadir, prob, params, tsteps; metadata=nothing, current_datetime=nothing, filename=nothing)
+function store_simulation(
+    datadir, controller, prob, params, tsteps;
+    metadata=nothing, filename=nothing
+)
 
-    times, states, controls = generate_data(prob, params, tsteps)
+    times, states, controls = generate_data(controller, prob, params, tsteps)
 
     state_headers = ["x$i" for i in 1:size(states, 1)]
     control_headers = ["c$i" for i in 1:size(controls, 1)]
@@ -145,14 +148,14 @@ end
 
 # simulate evolution at each iteration and plot it
 function plot_simulation(
-    prob, params, tsteps;
+    controller, prob, params, tsteps;
     show=nothing, only=nothing, vars=nothing, fun=nothing, yrefs=nothing
 )
 
     !isnothing(show) && @show show
 
     # TODO: use times in plotting?
-    times, states, controls = generate_data(prob, params, tsteps)
+    times, states, controls = generate_data(controller, prob, params, tsteps)
     plt = unicode_plotter(states, controls; only, vars, fun)
     if !isnothing(yrefs)
         for yref in yrefs
@@ -184,7 +187,7 @@ relaxed_barrier(z; δ=0.3f0) = max(z > δ ? -log(z) : exp_relax(z, δ), 0f0)
 relaxed_barrier(z, lower, upper; δ=(upper-lower)/2f0) = relaxed_barrier(z - lower; δ) + relaxed_barrier(upper - z; δ)
 
 function preconditioner(
-    controller, precondition, system!, time_fractions;
+    controller, precondition, system!, t0, u0, time_fractions;
     reg_coeff = 1f-1, f_tol=1f-2, saveat=(), progressbar=true, control_range_scaling=nothing
 )
     θ = initial_params(controller)
@@ -253,7 +256,7 @@ function preconditioner(
 end
 
 function constrained_training(
-    prob, loss, θ_0, α_0, δ_0;
+    controller, prob, loss, θ_0, α_0, δ_0;
     barrier_modifications = 20,
     barrier_strengthening = 0.8f0,
     barrier_relaxation = 1.1f0,
@@ -262,6 +265,7 @@ function constrained_training(
     f_tol=1f-1,
     tsteps=(),
     datadir=nothing,
+    metadata=nothing,
     # log_time
 )
     barrier_modifications > 0
@@ -288,10 +292,10 @@ function constrained_training(
 
         if plot_iterations
             @info "Current states"
-            plot_simulation(prob, θ, tsteps; only=:states, vars=[2], yrefs=[800, 150])
-            plot_simulation(prob, θ, tsteps; only=:states, fun=(x,y,z)->1.1f-2x - z, yrefs=[3f-2])
+            plot_simulation(controller, prob, θ, tsteps; only=:states, vars=[2], yrefs=[800, 150])
+            plot_simulation(controller, prob, θ, tsteps; only=:states, fun=(x,y,z)->1.1f-2x - z, yrefs=[3f-2])
             @info "Current controls"
-            plot_simulation(prob, θ, tsteps; only=:controls)
+            plot_simulation(controller, prob, θ, tsteps; only=:controls)
         end
 
         # function print_callback(params, loss)
@@ -321,13 +325,11 @@ function constrained_training(
                     :layers => controller_shape(controller),
                     :penalty_relaxations => δs,
                     :penalty_coefficients => αs,
-                    :t0 => t0,
-                    :tf => tf,
-                    :Δt => Δt,
+                    :tspan => prob.tspan,
+                    :tsteps => tsteps,
                 )
                 store_simulation(
-                    datadir, prob, θ, tsteps;
-                    current_datetime=log_time,
+                    datadir, controller, prob, θ, tsteps;
                     filename="delta_$(round(δ, digits=2))",
                     metadata=metadata
                 )
@@ -350,5 +352,6 @@ function runner(script)
     include(joinpath(@__DIR__, endswith(script, ".jl") ? script : "$script.jl"))
 end
 
+include("bioreactor.jl")
 
 end # module

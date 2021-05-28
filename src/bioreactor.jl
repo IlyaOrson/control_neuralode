@@ -2,6 +2,8 @@
 # Stochastic data-driven model predictive control using Gaussian processes.
 # Computers & Chemical Engineering, 139, 106844.
 
+function bioreactor()
+
 datadir = generate_data_subdir(@__FILE__)
 
 function system!(du, u, p, t, controller, input=:state)
@@ -84,7 +86,7 @@ dudt!(du, u, p, t) = system!(du, u, p, t, controller)
 prob = ODEProblem(dudt!, u0, tspan, θ)
 
 @info "Controls after initialization"
-@time plot_simulation(prob, θ, tsteps; only=:controls)
+@time plot_simulation(controller, prob, θ, tsteps; only=:controls)
 
 # preconditioning to control sequences
 function precondition(t, p)
@@ -100,19 +102,15 @@ end
 
 @info "Controls after preconditioning"
 θ = preconditioner(
-    controller, precondition, system!, tsteps[end÷5:end÷5:end];
+    controller, precondition, system!, t0, u0,tsteps[end÷5:end÷5:end];
     progressbar=false, control_range_scaling=[range[end] - range[1] for range in control_ranges]
 )
 prob = remake(prob, p=θ)
 # prob = ODEProblem(dudt!, u0, tspan, θ)
-plot_simulation(prob, θ, tsteps; only=:controls)
+plot_simulation(controller, prob, θ, tsteps; only=:controls)
 display(histogram(θ, title="Number of params: $(length(θ))"))
 
-store_simulation(
-    datadir, prob, θ, tsteps;
-    current_datetime=log_time,
-    filename="precondition",
-)
+store_simulation(datadir, controller, prob, θ, tsteps; filename="precondition")
 
 # state constraints on control change
 # C_N(t) - 150 ≤ 0              t = T
@@ -165,19 +163,19 @@ end
 # α: penalty coefficient
 # δ: barrier relaxation coefficient
 α, δ = 1f-5, 100f0
-θ, δs, αs = constrained_training(prob, loss, θ, α, δ; tsteps, datadir)
+θ, δs, αs = constrained_training(controller, prob, loss, θ, α, δ; tsteps, datadir)
 # final_objective, final_state_penalty, final_control_penalty, final_regularization = loss(θ, prob; δ, α, tsteps)
 final_values = NamedTuple{(:objective, :state_penalty, :control_penalty, :regularization)}(loss(θ, prob; δ, α, tsteps))
 
 @info "Final states"
-# plot_simulation(prob, θ, tsteps; only=:states, vars=[1], show=final_values)
-plot_simulation(prob, θ, tsteps; only=:states, vars=[2], show=final_values, yrefs=[800,150])
-plot_simulation(prob, θ, tsteps; only=:states, vars=[3], show=final_values)
-plot_simulation(prob, θ, tsteps; only=:states, fun=(x,y,z) -> 1.1f-2x - z, yrefs=[3f-2])
+# plot_simulation(controller, prob, θ, tsteps; only=:states, vars=[1], show=final_values)
+plot_simulation(controller, prob, θ, tsteps; only=:states, vars=[2], show=final_values, yrefs=[800,150])
+plot_simulation(controller, prob, θ, tsteps; only=:states, vars=[3], show=final_values)
+plot_simulation(controller, prob, θ, tsteps; only=:states, fun=(x,y,z) -> 1.1f-2x - z, yrefs=[3f-2])
 
 @info "Final controls"
-plot_simulation(prob, θ, tsteps; only=:controls, vars=[1], show=final_values)
-plot_simulation(prob, θ, tsteps; only=:controls, vars=[2], show=final_values)
+plot_simulation(controller, prob, θ, tsteps; only=:controls, vars=[1], show=final_values)
+plot_simulation(controller, prob, θ, tsteps; only=:controls, vars=[2], show=final_values)
 
 function noisy(times, percentage; scale = 1f0, type = :centered)
     if iszero(scale); scale=0.1f0; end
@@ -202,8 +200,8 @@ for (i, type) in enumerate([:centered, :centered, :positive])
         @info u0 + noise_vec
         local prob = ODEProblem(dudt!, u0 + noise_vec, tspan, θ)
         local objective, state_penalty, control_penalty, _ = loss(θ, prob; δ=δs[end], α=αs[end], tsteps)
-        # plot_simulation(prob, θ, tsteps; only=:states, vars=[2], yrefs=[800,150])
-        # plot_simulation(prob, θ, tsteps; only=:states, fun=(x,y,z) -> 1.1f-2x - z, yrefs=[3f-2])
+        # plot_simulation(controller, prob, θ, tsteps; only=:states, vars=[2], yrefs=[800,150])
+        # plot_simulation(controller, prob, θ, tsteps; only=:states, fun=(x,y,z) -> 1.1f-2x - z, yrefs=[3f-2])
         push!(obs, objective)
         push!(spens, state_penalty)
         push!(cpens, control_penalty)
@@ -215,3 +213,5 @@ for (i, type) in enumerate([:centered, :centered, :positive])
         title="Grouped Boxplot"
     ) |> display
 end
+
+end  # bioreactor
