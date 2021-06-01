@@ -105,8 +105,10 @@ end
     controller, precondition, system!, t0, u0,tsteps[end÷5:end÷5:end];
     progressbar=false, control_range_scaling=[range[end] - range[1] for range in control_ranges]
 )
-prob = remake(prob, p=θ)
+
 # prob = ODEProblem(dudt!, u0, tspan, θ)
+prob = remake(prob, p=θ)
+
 plot_simulation(controller, prob, θ, tsteps; only=:controls)
 display(histogram(θ, title="Number of params: $(length(θ))"))
 
@@ -117,6 +119,7 @@ store_simulation("precondition", datadir, controller, prob, θ, tsteps)
 # C_N(t) − 800 ≤ 0              ∀t
 # 0.011 C_X(t) - C_qc(t) ≤ 3f-2 ∀t
 function loss(params, prob; δ=1f1, α=1f0, tsteps=())
+
     # integrate ODE system
     sol_raw = solve(prob, BS3(), p=params, saveat=tsteps, abstol=1f-1, reltol=1f-1)
     sol = Array(sol_raw)
@@ -164,6 +167,7 @@ end
 # δ: barrier relaxation coefficient
 α, δ = 1f-5, 100f0
 θ, δs, αs = constrained_training(controller, prob, loss, θ, α, δ; tsteps, datadir)
+
 # final_objective, final_state_penalty, final_control_penalty, final_regularization = loss(θ, prob; δ, α, tsteps)
 final_values = NamedTuple{(:objective, :state_penalty, :control_penalty, :regularization)}(loss(θ, prob; δ, α, tsteps))
 
@@ -192,26 +196,53 @@ function noisy(times, percentage; scale = 1f0, type = :centered)
     return [n * percentage * scale - translation for n in 1:times]
 end
 
-for (i, type) in enumerate([:centered, :centered, :positive])
-    local obs, spens, cpens = Float32[], Float32[], Float32[]
-    for noise in noisy(20, 0.02; scale=u0[i], type=type)
-        noise_vec = zeros(typeof(noise), length(u0))
-        noise_vec[i] = noise
-        @info u0 + noise_vec
-        local prob = ODEProblem(dudt!, u0 + noise_vec, tspan, θ)
-        local objective, state_penalty, control_penalty, _ = loss(θ, prob; δ=δs[end], α=αs[end], tsteps)
-        # plot_simulation(controller, prob, θ, tsteps; only=:states, vars=[2], yrefs=[800,150])
-        # plot_simulation(controller, prob, θ, tsteps; only=:states, fun=(x,y,z) -> 1.1f-2x - z, yrefs=[3f-2])
-        push!(obs, objective)
-        push!(spens, state_penalty)
-        push!(cpens, control_penalty)
+perturbation_specs = [
+    Dict(:type => :centered, :scale => 1f0, :samples => 20, :percentage => 2f-2)
+    Dict(:type => :centered, :scale => 150f0, :samples => 20, :percentage => 2f-2)
+    Dict(:type => :positive, :scale => 0f0 + 5f-1, :samples => 20, :percentage => 2f-2)
+]
+function initial_perturbations(prob, θ, specs)
+
+    prob = remake(prob, p=θ)
+
+    for (i, spec) in enumerate(specs)
+        obs, spens, cpens = Float32[], Float32[], Float32[]
+        perturbations = noisy(spec[:samples], spec[:percentage]; scale=spec[:scale], type=spec[:type])
+
+        boxplot("Δu[$i]", perturbations; title="perturbations") |> display
+
+        for noise in perturbations
+            noise_vec = zeros(typeof(noise), length(u0))
+            noise_vec[i] = noise
+            # @info u0 + noise_vec
+
+            # local prob = ODEProblem(dudt!, u0 + noise_vec, tspan, θ)
+            prob = remake(prob, u0=prob.u0 + noise_vec)
+
+            objective, state_penalty, control_penalty, _ = loss(θ, prob; δ=δs[end], α=αs[end], tsteps)
+            # plot_simulation(controller, prob, θ, tsteps; only=:states, vars=[2], yrefs=[800,150])
+            # plot_simulation(controller, prob, θ, tsteps; only=:states, fun=(x,y,z) -> 1.1f-2x - z, yrefs=[3f-2])
+
+            push!(obs, objective)
+            push!(spens, state_penalty)
+            push!(cpens, control_penalty)
+        end
+        try  # this fails when penalties explode due to the steep barriers
+            boxplot(
+                ["objectives", "state_penalties", "constraint_penalties"],
+                [obs, spens, cpens],
+                title="Perturbation results"
+            ) |> display
+            lineplot(prob.u0[i] .+ perturbations, obs; title="u0 + Δu[$i] ~ objectives") |> display
+            lineplot(prob.u0[i] .+ perturbations, spens; title="u0 + Δu[$i] ~ state_penalties") |> display
+            lineplot(prob.u0[i] .+ perturbations, cpens; title="u0 + Δu[$i] ~ constraint_penalties") |> display
+        catch
+            @show obs
+            @show spens
+            @show cpens
+        end
     end
-    @show obs, spens, cpens
-    boxplot(
-        ["objectives", "state_penalties", "constraint_penalties"],
-        [obs, spens, cpens],
-        title="Grouped Boxplot"
-    ) |> display
 end
+initial_perturbations(prob, θ, perturbation_specs)
 
 end  # script wrapper

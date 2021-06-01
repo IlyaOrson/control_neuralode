@@ -3,6 +3,7 @@ module ControlNeuralODE
 using Dates
 using Base.Filesystem
 
+# using Revise
 using ProgressMeter
 using Statistics: mean
 using LineSearches, Optim, GalacticOptim
@@ -190,7 +191,7 @@ relaxed_barrier(z, lower, upper; δ=(upper-lower)/2f0) = relaxed_barrier(z - low
 
 function preconditioner(
     controller, precondition, system!, t0, u0, time_fractions;
-    reg_coeff = 1f-1, f_tol=1f-2, saveat=(), progressbar=true, control_range_scaling=nothing
+    reg_coeff = 1f-1, f_tol=1f-3, saveat=(), progressbar=true, control_range_scaling=nothing
 )
     θ = initial_params(controller)
     fixed_dudt!(du, u, p, t) = system!(du, u, p, t, precondition, :time)
@@ -244,7 +245,7 @@ function preconditioner(
             return sum_squares + regularization
         end
 
-        preconditioner = DiffEqFlux.sciml_train(
+        @time preconditioner = DiffEqFlux.sciml_train(
             precondition_loss, θ, BFGS(initial_stepnorm=0.01);
             # maxiters=10,
             allow_f_increases=true,
@@ -305,7 +306,7 @@ function constrained_training(
         #     return false
         # end
 
-        result = DiffEqFlux.sciml_train(
+        @time result = DiffEqFlux.sciml_train(
             loss_, θ, LBFGS(linesearch=LineSearches.BackTracking());
             # cb=print_callback,
             allow_f_increases=true,
