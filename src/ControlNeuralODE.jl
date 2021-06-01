@@ -9,7 +9,7 @@ using LineSearches, Optim, GalacticOptim
 using Zygote, Flux
 using OrdinaryDiffEq, DiffEqSensitivity, DiffEqFlux
 using UnicodePlots: lineplot, lineplot!, histogram, boxplot
-using JSON3, CSV, Tables
+using BSON, JSON3, CSV, Tables
 
 function fun_plotter(fun, array; xlim=(0,0))
     output = map(fun, eachrow(array)...)
@@ -121,9 +121,11 @@ function generate_data_subdir(callerfile; current_datetime=nothing)
 end
 
 function store_simulation(
-    datadir, controller, prob, params, tsteps;
-    metadata=nothing, filename=nothing
+    filename, datadir, controller, prob, params, tsteps;
+    metadata=nothing
 )
+    controller_file = joinpath(datadir, filename*".bson")
+    BSON.@save controller_file controller
 
     times, states, controls = generate_data(controller, prob, params, tsteps)
 
@@ -134,8 +136,8 @@ function store_simulation(
         hcat(times, states', controls'),
         header = vcat(["t"], state_headers, control_headers)
     )
-    isnothing(filename) ? filename="data.csv" : filename=filename*".csv"
-    CSV.write(joinpath(datadir, filename), full_data)
+
+    CSV.write(joinpath(datadir, filename*".csv"), full_data)
 
     if !isnothing(metadata)
         open(joinpath(datadir, "metadata.json"), "w") do f
@@ -268,7 +270,7 @@ function constrained_training(
     metadata=nothing,
     # log_time
 )
-    barrier_modifications > 0
+    @assert barrier_modifications > 0
     @assert barrier_relaxation > 1
     @assert barrier_strengthening < 1
 
@@ -310,7 +312,7 @@ function constrained_training(
             f_tol,
         )
         θ = result.minimizer
-        @show objective, state_penalty, control_penalty, regularization = loss(θ, prob; δ, α, tsteps)
+        @show objective, state_penalty, control_penalty, _ = loss(θ, prob; δ, α, tsteps)
         if isinf(state_penalty) || state_penalty/objective > 1f4
             δ *= barrier_relaxation
             @show α = 1f4 * abs(objective / state_penalty)
@@ -329,8 +331,7 @@ function constrained_training(
                     :tsteps => tsteps,
                 )
                 store_simulation(
-                    datadir, controller, prob, θ, tsteps;
-                    filename="delta_$(round(δ, digits=2))",
+                    "delta_$(round(δ, digits=2))", datadir, controller, prob, θ, tsteps;
                     metadata=metadata
                 )
             end

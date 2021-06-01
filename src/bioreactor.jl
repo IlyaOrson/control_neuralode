@@ -4,7 +4,7 @@
 
 function bioreactor()
 
-datadir = generate_data_subdir(@__FILE__)
+@show datadir = generate_data_subdir(@__FILE__)
 
 function system!(du, u, p, t, controller, input=:state)
 
@@ -110,7 +110,7 @@ prob = remake(prob, p=θ)
 plot_simulation(controller, prob, θ, tsteps; only=:controls)
 display(histogram(θ, title="Number of params: $(length(θ))"))
 
-store_simulation(datadir, controller, prob, θ, tsteps; filename="precondition")
+store_simulation("precondition", datadir, controller, prob, θ, tsteps)
 
 # state constraints on control change
 # C_N(t) - 150 ≤ 0              t = T
@@ -214,4 +214,4 @@ for (i, type) in enumerate([:centered, :centered, :positive])
     ) |> display
 end
 
-end  # bioreactor
+end  # script wrapper

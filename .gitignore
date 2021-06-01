@@ -4,6 +4,8 @@
 # data
 *.csv
 *.txt
+*.json
+*.bson
 data/
 
 # images
