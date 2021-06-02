@@ -185,9 +185,16 @@ end
 # IFAC Proceedings Volumes, 47(3), 2481–2488.
 # https://doi.org/10.3182/20140824-6-ZA-1003.01022
 
-exp_relax(z, δ) = exp(1f0 - z/δ) - 1f0 - log(δ)
-relaxed_barrier(z; δ=0.3f0) = max(z > δ ? -log(z) : exp_relax(z, δ), 0f0)
-relaxed_barrier(z, lower, upper; δ=(upper-lower)/2f0) = relaxed_barrier(z - lower; δ) + relaxed_barrier(upper - z; δ)
+exponential_relaxation(z, δ) = exp(one(typeof(z)) - z/δ) - one(typeof(z)) - log(δ)
+relaxed_log_barrier(z; δ=0.3f0) = max(z > δ ? -log(z) : exponential_relaxation(z, δ), zero(typeof(z)))
+function relaxed_log_barrier(
+    z, lower, upper;
+    δ=(upper-lower)/convert(typeof(z), 2),
+)
+    return relaxed_log_barrier(z - lower; δ) + relaxed_log_barrier(upper - z; δ)
+end
+
+indicator_function(z; δ) = min(z, zero(typeof(z)))
 
 function preconditioner(
     controller, precondition, system!, t0, u0, time_fractions;

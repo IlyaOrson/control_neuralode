@@ -68,10 +68,10 @@ control_ranges = [(120f0, 400f0), (0f0, 40f0)]
 
 # set arquitecture of neural network controller
 controller = FastChain(
-    (x, p) -> [x[1], x[2]/10, x[3]*10],  # input scaling
-    FastDense(3, 16, tanh, initW = (x,y) -> (5/3)*Flux.glorot_uniform(x,y)),
-    FastDense(16, 16, tanh, initW = (x,y) -> (5/3)*Flux.glorot_uniform(x,y)),
-    FastDense(16, 2, initW = (x,y) -> (5/3)*Flux.glorot_uniform(x,y)),
+    (x, p) -> [x[1], x[2]/10f0, x[3]*10f0],  # input scaling
+    FastDense(3, 16, tanh, initW = (x,y) -> Float32(5/3)*Flux.glorot_uniform(x,y)),
+    FastDense(16, 16, tanh, initW = (x,y) -> Float32(5/3)*Flux.glorot_uniform(x,y)),
+    FastDense(16, 2, initW = (x,y) -> Float32(5/3)*Flux.glorot_uniform(x,y)),
     # I ∈ [120, 400] & F ∈ [0, 40] in Bradford 2020
     (x, p) -> [280f0*sigmoid(x[1]) + 120f0, 40f0*sigmoid(x[2])],
 )
@@ -102,7 +102,7 @@ end
 
 @info "Controls after preconditioning"
 θ = preconditioner(
-    controller, precondition, system!, t0, u0,tsteps[end÷5:end÷5:end];
+    controller, precondition, system!, t0, u0,tsteps[end÷10:end÷10:end];
     progressbar=false, control_range_scaling=[range[end] - range[1] for range in control_ranges]
 )
 
@@ -114,53 +114,57 @@ display(histogram(θ, title="Number of params: $(length(θ))"))
 
 store_simulation("precondition", datadir, controller, prob, θ, tsteps)
 
+function state_penalty_functional(solution_array, time_intervals; state_penalty=relaxed_log_barrier, δ=1f1)
+
+    @assert size(solution_array, 2) == length(time_intervals) + 1
+
+    ratio_X_N = 3f-2 / 800f0
+    C_N_over = map(y -> state_penalty(800f0 - y; δ), solution_array[2, 1:end])
+    C_X_over = map(
+        (x, z) -> state_penalty(3f-2 - (1.1f-2*x - z); δ=δ*ratio_X_N),
+        solution_array[1, 1:end], solution_array[3, 1:end]
+    )
+    C_N_over_last = state_penalty(150f0 - solution_array[2, end]; δ)
+
+    return sum((C_N_over .+ C_X_over)[1:end-1] .* time_intervals) + C_N_over_last
+end
+
 # state constraints on control change
 # C_N(t) - 150 ≤ 0              t = T
 # C_N(t) − 800 ≤ 0              ∀t
 # 0.011 C_X(t) - C_qc(t) ≤ 3f-2 ∀t
-function loss(params, prob; δ=1f1, α=1f0, tsteps=())
+function loss(
+    params, prob; state_penalty=relaxed_log_barrier,
+    δ=1f1, α=1f-3, μ=(3.125f-8, 3.125f-6), ρ=1f-1, tsteps=(),
+)
 
     # integrate ODE system
     sol_raw = solve(prob, BS3(), p=params, saveat=tsteps, abstol=1f-1, reltol=1f-1)
     sol = Array(sol_raw)
 
-    ratio_X_N = 3f-2 / 800f0
-
-    C_N_over = map(y -> relaxed_barrier(800f0 - y; δ), sol[2, 1:end])
-    C_X_over = map(
-        (x, z) -> relaxed_barrier(3f-2 - (1.1f-2*x - z);
-        δ=δ*ratio_X_N), sol[1, 1:end], sol[3, 1:end]
-    )
-    C_N_over_last = relaxed_barrier(150f0 - sol[2, end]; δ=δ)
-
-    # integral penalty
-    # constraint_penalty = Δt * (sum(C_N_over) + sum(C_X_over)) + C_N_over_last  # for fixed timesteps
+    # approximate integral penalty
+    # state_penalty = Δt * (sum(C_N_over) + sum(C_X_over)) + C_N_over_last  # for fixed timesteps
     Zygote.ignore() do
-        global delta_times = [sol_raw.t[i+1] - sol_raw.t[i] for i in eachindex(sol_raw.t[1:end-1])]
+        global time_intervals = [sol_raw.t[i+1] - sol_raw.t[i] for i in eachindex(sol_raw.t[1:end-1])]
     end
-    # Zygote does not support this one for some reason...
-    # sol_t = Array(sol_raw.t)
-    # for i in eachindex(sol_t[1:end-1])
-    #     δt = sol_t[i+1] - sol_t[i]
-    #     # constraint_penalty += C_N_over[i] * δt
-    #     # constraint_penalty += C_X_over[i] * δt
-    #     # constraint_penalty += (C_N_over[i] + C_X_over[i]) * δt
-    # end
-    constraint_penalty = sum((C_N_over .+ C_X_over)[1:end-1] .* delta_times) + C_N_over_last
+
+    state_penalty = α * state_penalty_functional(sol, time_intervals; δ, state_penalty)
 
     # penalty on change of controls
     control_penalty = 0f0
     for i in 1:size(sol, 2)-1
         prev = controller(sol[:,i], params)
         post = controller(sol[:,i+1], params)
-        control_penalty += 3.125f-8 * (prev[1]-post[1])^2 + 3.125f-6 * (prev[2]-post[2])^2
+        for j in 1:length(prev)
+            control_penalty += μ[j] * (prev[j]-post[j])^2
+        end
     end
 
-    regularization = 1f-1 * mean(abs2, θ)  # sum(abs2, θ)
+    regularization = ρ * mean(abs2, θ)  # sum(abs2, θ)
 
     objective = -sol[3, end]  # maximize C_qc
 
-    return objective, α * constraint_penalty, control_penalty, regularization
+    return objective, state_penalty, control_penalty, regularization
 end
 
 # α: penalty coefficient
@@ -219,7 +223,9 @@ function initial_perturbations(prob, θ, specs)
             # local prob = ODEProblem(dudt!, u0 + noise_vec, tspan, θ)
             prob = remake(prob, u0=prob.u0 + noise_vec)
 
-            objective, state_penalty, control_penalty, _ = loss(θ, prob; δ=δs[end], α=αs[end], tsteps)
+            objective, state_penalty, control_penalty, _ = loss(
+                θ, prob; tsteps, state_penalty=indicator_function,
+            )
             # plot_simulation(controller, prob, θ, tsteps; only=:states, vars=[2], yrefs=[800,150])
             # plot_simulation(controller, prob, θ, tsteps; only=:states, fun=(x,y,z) -> 1.1f-2x - z, yrefs=[3f-2])
 
