@@ -4,19 +4,19 @@
 
 # irreversible reaction
 const reaction = "irreversible"
-const time = 20f0  # final time (θ in original paper)
-const cf = 1f0
-const Tf = 300f0
-const Tc = 290f0
-const J = 100f0
+const time = 20.0f0  # final time (θ in original paper)
+const cf = 1.0f0
+const Tf = 300.0f0
+const Tc = 290.0f0
+const J = 100.0f0
 const α = 1.95f-4
-const k10 = 300f0
+const k10 = 300.0f0
 const N = 25.2f0
-const u_upper = 1500f0
-const u_lower = 0f0
+const u_upper = 1500.0f0
+const u_lower = 0.0f0
 const y1s = 0.408126f0
 const y2s = 3.29763f0
-const us = 370f0
+const us = 370.0f0
 
 # # reversible reaction
 # const reaction = "reversible"
@@ -37,8 +37,8 @@ const us = 370f0
 # const us = 3.234f0
 
 # adimensional constants
-const yf = Tf/(J*cf)
-const yc = Tc/(J*cf)
+const yf = Tf / (J * cf)
+const yc = Tc / (J * cf)
 
 # case 1
 # const α1 = 1f6
@@ -61,7 +61,7 @@ const yc = Tc/(J*cf)
 # const α3 = 0f0
 
 # custom case
-const α1 = 1f0
+const α1 = 1.0f0
 const α2 = 1f1
 const α3 = 1f-1
 
@@ -72,12 +72,12 @@ function system!(du, u, p, t, controller)
     c = controller(u, p)[1]  # controller output is a 1-element container
 
     # reaction rate
-    r = k10 * y1 * exp(-N/y2)  # irreversible (case 1 & case 2)
+    r = k10 * y1 * exp(-N / y2)  # irreversible (case 1 & case 2)
     # r = k10 * y1 * exp(-N/y2) - k20 * exp(-γ*N/y2) * (1-y1)  # reversible (case 3 & case 4)
 
     # dynamics of the controlled system
-    y1_prime = (1 - y1)/time - r
-    y2_prime = (yf - y2)/time + r - α*c*(y2-yc)
+    y1_prime = (1 - y1) / time - r
+    y2_prime = (yf - y2) / time + r - α * c * (y2 - yc)
 
     # update in-place
     @inbounds begin
@@ -91,27 +91,28 @@ controller = FastChain(
     FastDense(2, 16, tanh),
     FastDense(16, 16, tanh),
     FastDense(16, 2),
-    (x, p) -> [u_lower + (u_upper-u_lower) * σ(x[1])],  # controllers ∈ [u_lower, u_upper]
+    (x, p) -> [u_lower + (u_upper - u_lower) * σ(x[1])],  # controllers ∈ [u_lower, u_upper]
 )
 
 # define objective function to optimize
 function loss(params, prob, tsteps)
 
     # curious error with ROS3P()
-    sol = solve(prob, BS3(), p=params, saveat=tsteps) |> Array # integrate ODE system
+    sol = solve(prob, BS3(); p=params, saveat=tsteps) |> Array # integrate ODE system
 
-    sum_squares = 0f0
+    sum_squares = 0.0f0
     for state in eachcol(sol)
         control = controller(state, params)
-        sum_squares += α1*(state[1]-y1s)^2 + α2*(state[2]-y2s)^2 + α3*(control[1]-us)^2
+        sum_squares +=
+            α1 * (state[1] - y1s)^2 + α2 * (state[2] - y2s)^2 + α3 * (control[1] - us)^2
     end
     return sum_squares * 0.01f0
 end
 
 # initial conditions and timepoints
-@show u0 = [1f0, yf]
-@show tspan = (0f0, time)
-tsteps = 0f0:0.01f0:time
+@show u0 = [1.0f0, yf]
+@show tspan = (0.0f0, time)
+tsteps = 0.0f0:0.01f0:time
 
 # model weights are destructured into a vector of parameters
 θ = initial_params(controller)
@@ -122,26 +123,42 @@ prob = ODEProblem(dudt!, u0, tspan, θ)
 
 # closures to comply with required interface
 loss(params) = loss(params, prob, tsteps)
-plotting_callback(params, loss) = plot_simulation(prob, params, tsteps; only=:controls, show=loss)
+function plotting_callback(params, loss)
+    return plot_simulation(prob, params, tsteps; only=:controls, show=loss)
+end
 
 plot_simulation(prob, θ, tsteps; only=:controls, show=loss(θ))
 
 adtype = GalacticOptim.AutoZygote()
 optf = GalacticOptim.OptimizationFunction((x, p) -> loss(x), adtype)
 optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
-optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases = true)
-result = GalacticOptim.solve(optprob, LBFGS(); cb = plotting_callback)
+optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases=true)
+result = GalacticOptim.solve(optprob, LBFGS(); cb=plotting_callback)
 
-plot_simulation(prob, result.minimizer, tsteps, only=:states, vars=[1], show=loss(result.minimizer), yrefs=[y1s])
-plot_simulation(prob, result.minimizer, tsteps, only=:states, vars=[2], show=loss(result.minimizer), yrefs=[y2s])
-plot_simulation(prob, result.minimizer, tsteps, only=:controls, show=loss(result.minimizer), yrefs=[us])
+plot_simulation(
+    prob,
+    result.minimizer,
+    tsteps;
+    only=:states,
+    vars=[1],
+    show=loss(result.minimizer),
+    yrefs=[y1s],
+)
+plot_simulation(
+    prob,
+    result.minimizer,
+    tsteps;
+    only=:states,
+    vars=[2],
+    show=loss(result.minimizer),
+    yrefs=[y2s],
+)
+plot_simulation(
+    prob, result.minimizer, tsteps; only=:controls, show=loss(result.minimizer), yrefs=[us]
+)
 
 @info "Storing results"
 metadata = Dict(
-    :loss => loss(result.minimizer),
-    :reaction => reaction,
-    :α1 => α1,
-    :α2 => α2,
-    :α3 => α3,
+    :loss => loss(result.minimizer), :reaction => reaction, :α1 => α1, :α2 => α2, :α3 => α3
 )
 store_simulation(@__FILE__, prob, result.minimizer, tsteps; metadata=metadata)

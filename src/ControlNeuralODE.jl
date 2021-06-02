@@ -12,15 +12,9 @@ using OrdinaryDiffEq, DiffEqSensitivity, DiffEqFlux
 using UnicodePlots: lineplot, lineplot!, histogram, boxplot
 using BSON, JSON3, CSV, Tables
 
-function fun_plotter(fun, array; xlim=(0,0))
+function fun_plotter(fun, array; xlim=(0, 0))
     output = map(fun, eachrow(array)...)
-    lineplot(
-        output;
-        title="Custom Function",
-        name="fun",
-        ylim=extrema(output),
-        xlim
-    )
+    return lineplot(output; title="Custom Function", name="fun", ylim=extrema(output), xlim)
 end
 
 # handy terminal plots
@@ -35,15 +29,11 @@ function unicode_plotter(states, controls; only=nothing, vars=nothing, fun=nothi
         ylim = states |> extrema
         tag = isnothing(vars) ? "x1" : "x$(vars[1])"
         plt = lineplot(
-            states[1,:];
-            title = "State Evolution",
-            name = tag,
-            xlabel = "step",
-            ylim, xlim
+            states[1, :]; title="State Evolution", name=tag, xlabel="step", ylim, xlim
         )
-        for (i, s) in enumerate(eachrow(states[2:end,:]))
+        for (i, s) in enumerate(eachrow(states[2:end, :]))
             tag = isnothing(vars) ? "x$(i+1)" : "x$(vars[i+1])"
-            lineplot!(plt, collect(s), name = tag)
+            lineplot!(plt, collect(s); name=tag)
         end
     elseif only == :controls
         if !isnothing(fun)
@@ -53,15 +43,11 @@ function unicode_plotter(states, controls; only=nothing, vars=nothing, fun=nothi
         ylim = controls |> extrema
         tag = isnothing(vars) ? "c1" : "c$(vars[1])"
         plt = lineplot(
-            controls[1,:];
-            title = "Control Evolution",
-            name = tag,
-            xlabel = "step",
-            ylim, xlim
+            controls[1, :]; title="Control Evolution", name=tag, xlabel="step", ylim, xlim
         )
-        for (i, s) in enumerate(eachrow(controls[2:end,:]))
+        for (i, s) in enumerate(eachrow(controls[2:end, :]))
             tag = isnothing(vars) ? "c$(i+1)" : "c$(vars[i+1])"
-            lineplot!(plt, collect(s), name = tag)
+            lineplot!(plt, collect(s); name=tag)
         end
     else
         if !isnothing(fun)
@@ -69,27 +55,27 @@ function unicode_plotter(states, controls; only=nothing, vars=nothing, fun=nothi
         end
         ylim = Iterators.flatten((states, controls)) |> extrema
         plt = lineplot(
-            states[1,:];
-            title = "State and Control Evolution",
-            name = "x1",
-            xlabel = "step",
-            ylim, xlim
+            states[1, :];
+            title="State and Control Evolution",
+            name="x1",
+            xlabel="step",
+            ylim,
+            xlim,
         )
-        for (i, s) in enumerate(eachrow(states[2:end,:]))
-            lineplot!(plt, collect(s), name = "x$(i+1)")
+        for (i, s) in enumerate(eachrow(states[2:end, :]))
+            lineplot!(plt, collect(s); name="x$(i+1)")
         end
         for (i, c) in enumerate(eachrow(controls))
-            lineplot!(plt, collect(c), name = "c$i")
+            lineplot!(plt, collect(c); name="c$i")
         end
     end
     return plt
 end
 
-
 function generate_data(controller, prob, params, tsteps)
 
     # integrate with given parameters
-    solution = solve(prob, AutoTsit5(Rosenbrock23()), p = params, saveat = tsteps)
+    solution = solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps)
 
     # construct arrays with the same type used by the integrator
     elements_type = eltype(solution.t)
@@ -111,21 +97,16 @@ string_datetime() = replace(string(now()), (":" => "_"))
 function generate_data_subdir(callerfile; current_datetime=nothing)
     parent = dirname(@__DIR__)
     isnothing(current_datetime) && (current_datetime = string_datetime())
-    datadir = joinpath(
-        parent, "data",
-        basename(callerfile),
-        current_datetime
-    )
+    datadir = joinpath(parent, "data", basename(callerfile), current_datetime)
     @info "Generating data directory: $datadir"
     mkpath(datadir)
     return datadir
 end
 
 function store_simulation(
-    filename, datadir, controller, prob, params, tsteps;
-    metadata=nothing
+    filename, datadir, controller, prob, params, tsteps; metadata=nothing
 )
-    controller_file = joinpath(datadir, filename*".bson")
+    controller_file = joinpath(datadir, filename * ".bson")
     BSON.@save controller_file controller
 
     times, states, controls = generate_data(controller, prob, params, tsteps)
@@ -134,11 +115,10 @@ function store_simulation(
     control_headers = ["c$i" for i in 1:size(controls, 1)]
 
     full_data = Tables.table(
-        hcat(times, states', controls'),
-        header = vcat(["t"], state_headers, control_headers)
+        hcat(times, states', controls'); header=vcat(["t"], state_headers, control_headers)
     )
 
-    CSV.write(joinpath(datadir, filename*".csv"), full_data)
+    CSV.write(joinpath(datadir, filename * ".csv"), full_data)
 
     if !isnothing(metadata)
         open(joinpath(datadir, "metadata.json"), "w") do f
@@ -148,13 +128,18 @@ function store_simulation(
     end
 end
 
-
 # simulate evolution at each iteration and plot it
 function plot_simulation(
-    controller, prob, params, tsteps;
-    show=nothing, only=nothing, vars=nothing, fun=nothing, yrefs=nothing
+    controller,
+    prob,
+    params,
+    tsteps;
+    show=nothing,
+    only=nothing,
+    vars=nothing,
+    fun=nothing,
+    yrefs=nothing,
 )
-
     !isnothing(show) && @show show
 
     # TODO: use times in plotting?
@@ -162,7 +147,7 @@ function plot_simulation(
     plt = unicode_plotter(states, controls; only, vars, fun)
     if !isnothing(yrefs)
         for yref in yrefs
-            lineplot!(plt, x -> yref, name="$yref")
+            lineplot!(plt, x -> yref; name="$yref")
         end
     end
     display(plt)
@@ -177,7 +162,7 @@ function controller_shape(controller)
     # FastLayers have fields (:out, :in, :σ, :initial_params, :bias)
     dims_input = [l.in for l in controller.layers[1:end] if typeof(l) <: FastDense]
     dims_output = [l.out for l in controller.layers[1:end] if typeof(l) <: FastDense]
-    push!(dims_input, pop!(dims_output))
+    return push!(dims_input, pop!(dims_output))
 end
 
 # Feller, C., & Ebenbauer, C. (2014).
@@ -185,46 +170,54 @@ end
 # IFAC Proceedings Volumes, 47(3), 2481–2488.
 # https://doi.org/10.3182/20140824-6-ZA-1003.01022
 
-exponential_relaxation(z, δ) = exp(one(typeof(z)) - z/δ) - one(typeof(z)) - log(δ)
-relaxed_log_barrier(z; δ=0.3f0) = max(z > δ ? -log(z) : exponential_relaxation(z, δ), zero(typeof(z)))
-function relaxed_log_barrier(
-    z, lower, upper;
-    δ=(upper-lower)/convert(typeof(z), 2),
-)
+exponential_relaxation(z, δ) = exp(one(typeof(z)) - z / δ) - one(typeof(z)) - log(δ)
+function relaxed_log_barrier(z; δ=0.3f0)
+    return max(z > δ ? -log(z) : exponential_relaxation(z, δ), zero(typeof(z)))
+end
+function relaxed_log_barrier(z, lower, upper; δ=(upper - lower) / convert(typeof(z), 2))
     return relaxed_log_barrier(z - lower; δ) + relaxed_log_barrier(upper - z; δ)
 end
 
 indicator_function(z; δ) = min(z, zero(typeof(z)))
 
 function preconditioner(
-    controller, precondition, system!, t0, u0, time_fractions;
-    reg_coeff = 1f-1, f_tol=1f-3, saveat=(), progressbar=true, control_range_scaling=nothing
+    controller,
+    precondition,
+    system!,
+    t0,
+    u0,
+    time_fractions;
+    reg_coeff=1f-1,
+    f_tol=1f-3,
+    saveat=(),
+    progressbar=true,
+    control_range_scaling=nothing,
 )
     θ = initial_params(controller)
     fixed_dudt!(du, u, p, t) = system!(du, u, p, t, precondition, :time)
     prog = Progress(
         length(time_fractions);
         desc="Pretraining in subintervals...",
-        dt=0.5, showspeed=true, enabled=progressbar,
+        dt=0.5,
+        showspeed=true,
+        enabled=progressbar,
     )
     for partial_time in time_fractions
-
         tspan = (t0, partial_time)
         fixed_prob = ODEProblem(fixed_dudt!, u0, tspan)
-        fixed_sol = solve(fixed_prob, BS3(), abstol=1f-1, reltol=1f-1, saveat)
+        fixed_sol = solve(fixed_prob, BS3(); abstol=1f-1, reltol=1f-1, saveat)
 
         function precondition_loss(params; plot=false)
 
             # TODO: generalize or remove plotting?
             f1s, f2s, c1s, c2s = Float32[], Float32[], Float32[], Float32[]
-            sum_squares = 0f0
+            sum_squares = 0.0f0
 
             # for (time, state) in zip(fixed_sol.t, fixed_sol.u)  # Zygote error
             for (i, state) in enumerate(eachcol(Array(fixed_sol)))
-
                 fixed = precondition(fixed_sol.t[i], nothing)  # precondition(time, params)
                 pred = controller(state, params)
-                diff_square = (pred - fixed).^2
+                diff_square = (pred - fixed) .^ 2
                 if !isnothing(control_range_scaling)
                     diff_square ./ control_range_scaling
                 end
@@ -240,11 +233,11 @@ function preconditioner(
             end
             if plot
                 Zygote.ignore() do
-                    p1 = lineplot(f1s, name="fixed")
-                    lineplot!(p1, c1s, name="neural")
+                    p1 = lineplot(f1s; name="fixed")
+                    lineplot!(p1, c1s; name="neural")
                     display(p1)
-                    p2 = lineplot(f2s, name="fixed")
-                    lineplot!(p2, c2s, name="neural")
+                    p2 = lineplot(f2s; name="fixed")
+                    lineplot!(p2, c2s; name="neural")
                     display(p2)
                 end
             end
@@ -253,25 +246,32 @@ function preconditioner(
         end
 
         @time preconditioner = DiffEqFlux.sciml_train(
-            precondition_loss, θ, BFGS(initial_stepnorm=0.01);
+            precondition_loss,
+            θ,
+            BFGS(; initial_stepnorm=0.01);
             # maxiters=10,
             allow_f_increases=true,
-            f_tol
+            f_tol,
         )
         θ = preconditioner.minimizer
         @show ploss = precondition_loss(θ; plot=true)
-        next!(prog; showvalues = [(:loss, ploss)])
+        next!(prog; showvalues=[(:loss, ploss)])
     end
     return θ
 end
 
 function constrained_training(
-    controller, prob, loss, θ_0, α_0, δ_0;
-    barrier_modifications = 20,
-    barrier_strengthening = 0.8f0,
-    barrier_relaxation = 1.1f0,
-    show_progresbar = false,
-    plot_iterations = true,
+    controller,
+    prob,
+    loss,
+    θ_0,
+    α_0,
+    δ_0;
+    barrier_modifications=20,
+    barrier_strengthening=0.8f0,
+    barrier_relaxation=1.1f0,
+    show_progresbar=false,
+    plot_iterations=true,
     f_tol=1f-1,
     tsteps=(),
     datadir=nothing,
@@ -291,7 +291,6 @@ function constrained_training(
     counter = 1
     prog = ProgressUnknown(; desc="Training with constraints...", enabled=show_progresbar)
     while true
-
         @show δ, α
 
         # prob = ODEProblem(dudt!, u0, tspan, θ)
@@ -302,8 +301,18 @@ function constrained_training(
 
         if plot_iterations
             @info "Current states"
-            plot_simulation(controller, prob, θ, tsteps; only=:states, vars=[2], yrefs=[800, 150])
-            plot_simulation(controller, prob, θ, tsteps; only=:states, fun=(x,y,z)->1.1f-2x - z, yrefs=[3f-2])
+            plot_simulation(
+                controller, prob, θ, tsteps; only=:states, vars=[2], yrefs=[800, 150]
+            )
+            plot_simulation(
+                controller,
+                prob,
+                θ,
+                tsteps;
+                only=:states,
+                fun=(x, y, z) -> 1.1f-2x - z,
+                yrefs=[3f-2],
+            )
             @info "Current controls"
             plot_simulation(controller, prob, θ, tsteps; only=:controls)
         end
@@ -314,14 +323,16 @@ function constrained_training(
         # end
 
         @time result = DiffEqFlux.sciml_train(
-            loss_, θ, LBFGS(linesearch=LineSearches.BackTracking());
+            loss_,
+            θ,
+            LBFGS(; linesearch=LineSearches.BackTracking());
             # cb=print_callback,
             allow_f_increases=true,
             f_tol,
         )
         θ = result.minimizer
         @show objective, state_penalty, control_penalty, _ = loss(θ, prob; δ, α, tsteps)
-        if isinf(state_penalty) || state_penalty/objective > 1f4
+        if isinf(state_penalty) || state_penalty / objective > 1f4
             δ *= barrier_relaxation
             @show α = 1f4 * abs(objective / state_penalty)
         else
@@ -339,8 +350,13 @@ function constrained_training(
                     :tsteps => tsteps,
                 )
                 store_simulation(
-                    "delta_$(round(δ, digits=2))", datadir, controller, prob, θ, tsteps;
-                    metadata=metadata
+                    "delta_$(round(δ, digits=2))",
+                    datadir,
+                    controller,
+                    prob,
+                    θ,
+                    tsteps;
+                    metadata=metadata,
                 )
             end
             push!(αs, α)
@@ -351,14 +367,22 @@ function constrained_training(
             ProgressMeter.finish!(prog)
             return θ, δs, αs
         else
-            ProgressMeter.next!(prog; showvalues=[(:δ, δ), (:α, α), (:objective, objective), (:state_penalty, state_penalty)])
+            ProgressMeter.next!(
+                prog;
+                showvalues=[
+                    (:δ, δ),
+                    (:α, α),
+                    (:objective, objective),
+                    (:state_penalty, state_penalty),
+                ],
+            )
             counter += 1
         end
     end
 end
 
 function runner(script)
-    include(joinpath(@__DIR__, endswith(script, ".jl") ? script : "$script.jl"))
+    return include(joinpath(@__DIR__, endswith(script, ".jl") ? script : "$script.jl"))
 end
 
 include("bioreactor.jl")

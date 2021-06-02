@@ -20,14 +20,14 @@ end
 # define objective function to optimize
 function loss(params, prob, tsteps)
     # sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(false))
-    sol = solve(prob, Tsit5(), p = params, saveat = tsteps)  # integrate ODE system
+    sol = solve(prob, Tsit5(); p=params, saveat=tsteps)  # integrate ODE system
     return -Array(sol)[2, end]  # second variable, last value, maximize
 end
 
 # initial conditions and timepoints
-u0 = [1f0, 0f0]
-tspan = (0f0, 1f0)
-tsteps = 0f0:0.01f0:1f0
+u0 = [1.0f0, 0.0f0]
+tspan = (0.0f0, 1.0f0)
+tsteps = 0.0f0:0.01f0:1.0f0
 
 # set arquitecture of neural network controller
 controller = FastChain(
@@ -46,17 +46,25 @@ prob = ODEProblem(dudt!, u0, tspan, θ)
 
 # closures to comply with required interface
 loss(params) = loss(params, prob, tsteps)
-plotting_callback(params, loss) = plot_simulation(prob, params, tsteps; only=:controls, show=loss)
+function plotting_callback(params, loss)
+    return plot_simulation(prob, params, tsteps; only=:controls, show=loss)
+end
 
 @info "Optimizing"
 adtype = GalacticOptim.AutoZygote()
 optf = GalacticOptim.OptimizationFunction((x, p) -> loss(x), adtype)
 optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
-optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases = true)
-result = GalacticOptim.solve(optprob, LBFGS(); cb = plotting_callback)
+optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases=true)
+result = GalacticOptim.solve(optprob, LBFGS(); cb=plotting_callback)
 
 @info "Storing results"
-store_simulation(@__FILE__, prob, result.minimizer, tsteps; metadata=Dict(:loss => loss(result.minimizer)))
+store_simulation(
+    @__FILE__,
+    prob,
+    result.minimizer,
+    tsteps;
+    metadata=Dict(:loss => loss(result.minimizer)),
+)
 
 # https://fluxml.ai/Zygote.jl/latest/#Taking-Gradients
 # an example of how to extract gradients
