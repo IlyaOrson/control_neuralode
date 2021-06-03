@@ -1,6 +1,10 @@
 # Solution of a Class of Multistage Dynamic Optimization Problems.
 # 2.Problems with Path Constraints
 
+function van_der_pol()
+
+@show datadir = generate_data_subdir(@__FILE__)
+
 function system!(du, u, p, t, controller)
     # neural network outputs controls taken by the system
     x1, x2, x3 = u
@@ -24,7 +28,7 @@ t0 = 0.0f0;
 tf = 5.0f0;
 u0 = [0.0f0, 1.0f0, 0.0f0]
 tspan = (t0, tf)
-const dt = 0.1f0
+dt = 0.1f0
 tsteps = t0:dt:tf
 
 # set arquitecture of neural network controller
@@ -44,7 +48,9 @@ dudt!(du, u, p, t) = system!(du, u, p, t, controller)
 # closures to comply with required interface
 prob = ODEProblem(dudt!, u0, tspan, θ)
 function plotting_callback(params, loss)
-    return plot_simulation(prob, params, tsteps; only=:states, vars=[1], show=loss)
+    return plot_simulation(
+        controller, prob, params, tsteps; only=:states, vars=[1], show=loss
+    )
 end
 
 ### define objective function to optimize
@@ -63,7 +69,9 @@ result = GalacticOptim.solve(optprob, LBFGS(); cb=plotting_callback)
 
 @show result
 store_simulation(
-    @__FILE__,
+    "unconstrained",
+    datadir,
+    controller,
     prob,
     result.minimizer,
     tsteps;
@@ -82,23 +90,24 @@ end
 
 penalty_coefficients = [10.0f0, 10^2.0f0, 10^3.0f0, 10^4.0f0]
 for α in penalty_coefficients
-    global result , penalty_loss
+    global result
     @show result
     # @show α
 
     # set differential equation struct again
     constrained_prob = ODEProblem(dudt!, u0, tspan, result.minimizer)
-    function plotting_callback(params, loss)
-        return plot_simulation(
-            constrained_prob, params, tsteps; only=:states, vars=[1], show=loss
-        )
-    end
+    # function plotting_callback(params, loss)
+    #     return plot_simulation(
+    #         controller, constrained_prob, params, tsteps; only=:states, vars=[1], show=loss
+    #     )
+    # end
 
     # closures to comply with interface
-    penalty_loss(params) = penalty_loss(params, constrained_prob, tsteps, α)
+    local penalty_loss(params) = penalty_loss(params, constrained_prob, tsteps, α)
 
     @info "Initial Control"
     plot_simulation(
+        controller,
         constrained_prob,
         result.minimizer,
         tsteps;
@@ -114,13 +123,17 @@ for α in penalty_coefficients
     optprob = GalacticOptim.OptimizationProblem(
         optfunc, result.minimizer; allow_f_increases=true
     )
-    result = GalacticOptim.solve(optprob, LBFGS(); cb=plotting_callback)
+    result = GalacticOptim.solve(
+        optprob, LBFGS(; linesearch=LineSearches.BackTracking()); cb=plotting_callback
+    )
 end
 
 @info "Storing results"
 constrained_prob = ODEProblem(dudt!, u0, tspan, result.minimizer)
 store_simulation(
-    @__FILE__,
+    "constrained",
+    datadir,
+    controller,
     constrained_prob,
     result.minimizer,
     tsteps;
@@ -131,3 +144,5 @@ store_simulation(
         :constraint => "quadratic x2(t) > -0.4",
     ),
 )
+
+end  # wrapper script

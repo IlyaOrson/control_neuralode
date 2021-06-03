@@ -2,68 +2,72 @@
 # Approximation methods for optimal control synthesis.
 # The Canadian Journal of Chemical Engineering, 49(4), 522-528.
 
+function reference_tracking()
+
+@show datadir = generate_data_subdir(@__FILE__)
+
 # irreversible reaction
-const reaction = "irreversible"
-const time = 20.0f0  # final time (θ in original paper)
-const cf = 1.0f0
-const Tf = 300.0f0
-const Tc = 290.0f0
-const J = 100.0f0
-const α = 1.95f-4
-const k10 = 300.0f0
-const N = 25.2f0
-const u_upper = 1500.0f0
-const u_lower = 0.0f0
-const y1s = 0.408126f0
-const y2s = 3.29763f0
-const us = 370.0f0
+reaction = "irreversible"
+time = 20.0f0  # final time (θ in original paper)
+cf = 1.0f0
+Tf = 300.0f0
+Tc = 290.0f0
+J = 100.0f0
+α = 1.95f-4
+k10 = 300.0f0
+N = 25.2f0
+u_upper = 1500.0f0
+u_lower = 0.0f0
+y1s = 0.408126f0
+y2s = 3.29763f0
+us = 370.0f0
 
 # # reversible reaction
-# const reaction = "reversible"
-# const time = 1f0  # final time (θ in original paper)
-# const cf = 1f0
-# const Tf = 323f0
-# const Tc = 326f0
-# const J = 100f0
-# const α = 1f0
-# const k10 = 1.5f7
-# const k20 = 1.5f10
-# const N = 10f0
-# const γ = 1.5f0
-# const u_upper = 9.5f0
-# const u_lower = 0f0
-# const y1s = 0.433848f0
-# const y2s = 0.659684f0
-# const us = 3.234f0
+# reaction = "reversible"
+# time = 1f0  # final time (θ in original paper)
+# cf = 1f0
+# Tf = 323f0
+# Tc = 326f0
+# J = 100f0
+# α = 1f0
+# k10 = 1.5f7
+# k20 = 1.5f10
+# N = 10f0
+# γ = 1.5f0
+# u_upper = 9.5f0
+# u_lower = 0f0
+# y1s = 0.433848f0
+# y2s = 0.659684f0
+# us = 3.234f0
 
 # adimensional constants
-const yf = Tf / (J * cf)
-const yc = Tc / (J * cf)
+yf = Tf / (J * cf)
+yc = Tc / (J * cf)
 
 # case 1
-# const α1 = 1f6
-# const α2 = 2f3
-# const α3 = 1f-3
+# α1 = 1f6
+# α2 = 2f3
+# α3 = 1f-3
 
 # case 2
-# const α1 = 1f6
-# const α2 = 2f3
-# const α3 = 0f0
+# α1 = 1f6
+# α2 = 2f3
+# α3 = 0f0
 
 # case 3
-# const α1 = 10f0
-# const α2 = 1f0
-# const α3 = 0.1f0
+# α1 = 10f0
+# α2 = 1f0
+# α3 = 0.1f0
 
 # case 4
-# const α1 = 10f0
-# const α2 = 1f0
-# const α3 = 0f0
+# α1 = 10f0
+# α2 = 1f0
+# α3 = 0f0
 
 # custom case
-const α1 = 1.0f0
-const α2 = 1f1
-const α3 = 1f-1
+α1 = 1.0f0
+α2 = 1f1
+α3 = 1f-1
 
 function system!(du, u, p, t, controller)
 
@@ -124,10 +128,10 @@ prob = ODEProblem(dudt!, u0, tspan, θ)
 # closures to comply with required interface
 loss(params) = loss(params, prob, tsteps)
 function plotting_callback(params, loss)
-    return plot_simulation(prob, params, tsteps; only=:controls, show=loss)
+    return plot_simulation(controller, prob, params, tsteps; only=:controls, show=loss)
 end
 
-plot_simulation(prob, θ, tsteps; only=:controls, show=loss(θ))
+plot_simulation(controller, prob, θ, tsteps; only=:controls, show=loss(θ))
 
 adtype = GalacticOptim.AutoZygote()
 optf = GalacticOptim.OptimizationFunction((x, p) -> loss(x), adtype)
@@ -135,7 +139,7 @@ optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
 optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases=true)
 result = GalacticOptim.solve(optprob, LBFGS(); cb=plotting_callback)
 
-plot_simulation(
+plot_simulation(controller,
     prob,
     result.minimizer,
     tsteps;
@@ -144,7 +148,7 @@ plot_simulation(
     show=loss(result.minimizer),
     yrefs=[y1s],
 )
-plot_simulation(
+plot_simulation(controller,
     prob,
     result.minimizer,
     tsteps;
@@ -153,7 +157,7 @@ plot_simulation(
     show=loss(result.minimizer),
     yrefs=[y2s],
 )
-plot_simulation(
+plot_simulation(controller,
     prob, result.minimizer, tsteps; only=:controls, show=loss(result.minimizer), yrefs=[us]
 )
 
@@ -161,4 +165,8 @@ plot_simulation(
 metadata = Dict(
     :loss => loss(result.minimizer), :reaction => reaction, :α1 => α1, :α2 => α2, :α3 => α3
 )
-store_simulation(@__FILE__, prob, result.minimizer, tsteps; metadata=metadata)
+store_simulation(
+    reaction, datadir, controller, prob, result.minimizer, tsteps; metadata=metadata
+)
+
+end  # script wrapper

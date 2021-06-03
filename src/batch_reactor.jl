@@ -1,3 +1,7 @@
+function batch_reactor()
+
+@show datadir = generate_data_subdir(@__FILE__)
+
 function system!(du, u, p, t, controller)
     # fixed parameters
     α, β, γ, δ = 0.5f0, 1.0f0, 1.0f0, 1.0f0
@@ -47,7 +51,7 @@ prob = ODEProblem(dudt!, u0, tspan, θ)
 # closures to comply with required interface
 loss(params) = loss(params, prob, tsteps)
 function plotting_callback(params, loss)
-    return plot_simulation(prob, params, tsteps; only=:controls, show=loss)
+    return plot_simulation(controller, prob, params, tsteps; only=:controls, show=loss)
 end
 
 @info "Optimizing"
@@ -55,11 +59,15 @@ adtype = GalacticOptim.AutoZygote()
 optf = GalacticOptim.OptimizationFunction((x, p) -> loss(x), adtype)
 optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
 optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases=true)
-result = GalacticOptim.solve(optprob, LBFGS(); cb=plotting_callback)
+result = GalacticOptim.solve(
+    optprob, LBFGS(; linesearch=LineSearches.BackTracking()); cb=plotting_callback
+)
 
 @info "Storing results"
 store_simulation(
-    @__FILE__,
+    "optimized",
+    datadir,
+    controller,
     prob,
     result.minimizer,
     tsteps;
@@ -77,3 +85,5 @@ h = 0.01f0
 @show eltype(h * ∇θ)
 @show lₕ = loss(θ + h * ∇θ)
 @show ∇L = lₕ - l₀
+
+end  # script wrapper

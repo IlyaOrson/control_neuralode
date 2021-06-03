@@ -170,6 +170,7 @@ end
 # IFAC Proceedings Volumes, 47(3), 2481–2488.
 # https://doi.org/10.3182/20140824-6-ZA-1003.01022
 
+quadratic_relaxation(z, δ) = one(typeof(z))/2  * (((z - 2δ)/δ)^2 - one(typeof(z))) - log(δ)
 exponential_relaxation(z, δ) = exp(one(typeof(z)) - z / δ) - one(typeof(z)) - log(δ)
 function relaxed_log_barrier(z; δ=0.3f0)
     return max(z > δ ? -log(z) : exponential_relaxation(z, δ), zero(typeof(z)))
@@ -381,10 +382,14 @@ function constrained_training(
     end
 end
 
-function runner(script)
-    return include(joinpath(@__DIR__, endswith(script, ".jl") ? script : "$script.jl"))
-end
+# function runner(script)
+#     return include(joinpath(@__DIR__, endswith(script, ".jl") ? script : "$script.jl"))
+# end
 
+include("batch_reactor.jl")
+include("van_der_pol.jl")
+include("reference_tracking.jl")
 include("bioreactor.jl")
+include("semibatch_reactor.jl")
 
 end # module

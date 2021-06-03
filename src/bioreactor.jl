@@ -189,7 +189,6 @@ function bioreactor()
     α, δ = 1f-5, 100.0f0
     θ, δs, αs = constrained_training(controller, prob, loss, θ, α, δ; tsteps, datadir)
 
-    # final_objective, final_state_penalty, final_control_penalty, final_regularization = loss(θ, prob; δ, α, tsteps)
     final_values = NamedTuple{(
         :objective, :state_penalty, :control_penalty, :regularization
     )}(

@@ -6,6 +6,10 @@
 # Example 13–5 Multiple Reactions in a Semibatch Reactor
 # p. 658
 
+function semibatch_reactor()
+
+@show datadir = generate_data_subdir(@__FILE__)
+
 function system!(du, u, p, t, controller)
     # fixed parameters
     CpA = 30.0f0
@@ -111,7 +115,9 @@ end
 dudt!(du, u, p, t) = system!(du, u, p, t, controller)
 
 @info "Controls after default initialization (Xavier uniform)"
-plot_simulation(fixed_prob, θ, tsteps; only=:controls, show=precondition_loss(θ))
+plot_simulation(
+    controller, fixed_prob, θ, tsteps; only=:controls, show=precondition_loss(θ)
+)
 
 adtype = GalacticOptim.AutoZygote()
 optf = GalacticOptim.OptimizationFunction((x, p) -> precondition_loss(x), adtype)
@@ -121,6 +127,7 @@ result = GalacticOptim.solve(optprob, ADAM(); maxiters=10)
 
 @info "Controls preconditioned to Fogler's reference: $(fogler_ref)"
 plot_simulation(
+    controller,
     fixed_prob,
     result.minimizer,
     tsteps;
@@ -139,19 +146,12 @@ plot_simulation(
 T_up = 420
 V_up = 200
 
-# β(z, δ) = 0.5f0 * (((z - 2δ)/δ)^2 - 1f0) - log(δ)  # quadratic approximation to exponential
-β(z, δ) = exp(1.0f0 - z / δ) - 1.0f0 - log(δ)
-B(z; δ=0.3f0) = z > δ ? -log(z) : β(z, δ)
-function B(z, lower, upper; δ=(upper - lower) / 2.0f0)
-    return max(B(z - lower; δ) + B(upper - z; δ), 0.0f0)
-end
-
 # define objective function to optimize
 function loss(params, prob, tsteps, δ; T_up=T_up, V_up=V_up, α=1f-3)
     # integrate ODE system and extract loss from result
     sol = solve(prob, BS3(); p=params, saveat=tsteps) |> Array
-    out_temp = map(x -> B(x, 0, T_up; δ), sol[4, 1:end])
-    out_vols = map(x -> B(x, 0, V_up; δ), sol[5, 1:end])
+    out_temp = map(x -> relaxed_log_barrier(x, 0, T_up; δ), sol[4, 1:end])
+    out_vols = map(x -> relaxed_log_barrier(x, 0, V_up; δ), sol[5, 1:end])
 
     last_state = sol[:, end]
     # L = - (100 x₁ - x₂) + penalty  # minus to maximize
@@ -167,7 +167,7 @@ end
 δs = [δ0 * 0.7^i for i in 0:10]
 for δ in δs
     @show δ
-    global prob , loss , result
+    global prob, result
     local adtype , optf , optfunc , optprob
 
     # set differential equation struct
@@ -178,7 +178,12 @@ for δ in δs
 
     @info "Current Controls"
     plot_simulation(
-        prob, result.minimizer, tsteps; only=:controls, show=loss(result.minimizer)
+        controller,
+        prob,
+        result.minimizer,
+        tsteps;
+        only=:controls,
+        show=loss(result.minimizer),
     )
 
     adtype = GalacticOptim.AutoZygote()
@@ -190,25 +195,34 @@ for δ in δs
     result = GalacticOptim.solve(
         optprob,
         ADAM();
-        cb=(params, loss) ->
-            plot_simulation(prob, params, tsteps; only=:states, vars=[1, 2, 3], show=loss),
+        cb=(params, loss) -> plot_simulation(
+            controller, prob, params, tsteps; only=:states, vars=[1, 2, 3], show=loss
+        ),
         maxiters=5,
     )
 end
 @info "Final states"
-plot_simulation(prob, result.minimizer, tsteps; only=:states, vars=[1, 2, 3])
+plot_simulation(controller, prob, result.minimizer, tsteps; only=:states, vars=[1, 2, 3])
 plot_simulation(
-    prob, result.minimizer, tsteps; only=:states, vars=[4, 5], yrefs=[T_up, V_up]
+    controller,
+    prob,
+    result.minimizer,
+    tsteps;
+    only=:states,
+    vars=[4, 5],
+    yrefs=[T_up, V_up],
 )
 
 @info "Final controls"
-plot_simulation(prob, result.minimizer, tsteps; only=:controls, show=loss)#  only=:states, vars=[1,2,3])
+plot_simulation(controller, prob, result.minimizer, tsteps; only=:controls, show=loss)#  only=:states, vars=[1,2,3])
 
 @show final_objective, final_penalty = loss(result.minimizer, prob, tsteps, δs[end])
 
 @info "Storing results"
 store_simulation(
-    @__FILE__,
+    "constrained",
+    datadir,
+    controller,
     prob,
     result.minimizer,
     tsteps;
@@ -224,3 +238,5 @@ store_simulation(
         :Δt => Δt,
     ),
 )
+
+end  # function wrapper
