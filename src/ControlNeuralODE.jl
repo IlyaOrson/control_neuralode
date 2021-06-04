@@ -12,6 +12,8 @@ using OrdinaryDiffEq, DiffEqSensitivity, DiffEqFlux
 using UnicodePlots: lineplot, lineplot!, histogram, boxplot
 using BSON, JSON3, CSV, Tables
 
+export batch_reactor, van_der_pol, reference_tracking, bioreactor, semibatch_reactor
+
 function fun_plotter(fun, array; xlim=(0, 0))
     output = map(fun, eachrow(array)...)
     return lineplot(output; title="Custom Function", name="fun", ylim=extrema(output), xlim)
@@ -170,7 +172,9 @@ end
 # IFAC Proceedings Volumes, 47(3), 2481–2488.
 # https://doi.org/10.3182/20140824-6-ZA-1003.01022
 
-quadratic_relaxation(z, δ) = one(typeof(z))/2  * (((z - 2δ)/δ)^2 - one(typeof(z))) - log(δ)
+function quadratic_relaxation(z, δ)
+    return one(typeof(z)) / 2 * (((z - 2δ) / δ)^2 - one(typeof(z))) - log(δ)
+end
 exponential_relaxation(z, δ) = exp(one(typeof(z)) - z / δ) - one(typeof(z)) - log(δ)
 function relaxed_log_barrier(z; δ=0.3f0)
     return max(z > δ ? -log(z) : exponential_relaxation(z, δ), zero(typeof(z)))
