@@ -194,6 +194,22 @@ function bioreactor()
         return objective, state_penalty, control_penalty, regularization
     end
 
+    function plots_callback(controller, prob, θ, tsteps)
+        plot_simulation(
+            controller, prob, θ, tsteps; only=:states, vars=[2], yrefs=[800, 150]
+        )
+        plot_simulation(
+            controller,
+            prob,
+            θ,
+            tsteps;
+            only=:states,
+            fun=(x, y, z) -> 1.1f-2x - z,
+            yrefs=[3f-2],
+        )
+        return plot_simulation(controller, prob, θ, tsteps; only=:controls)
+    end
+
     # α: penalty coefficient
     # δ: barrier relaxation coefficient
     α0, δ0 = 1f-5, 100.0f0
@@ -209,8 +225,8 @@ function bioreactor()
         δs,
         tsteps,
         datadir,
-        show_progresbar=true,
-        plots_per_iteration=false,
+        plots_callback,
+        # show_progresbar=true,
     )
 
     final_values = NamedTuple{(

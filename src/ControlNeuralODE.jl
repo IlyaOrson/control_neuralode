@@ -271,11 +271,11 @@ function constrained_training(
     loss;
     αs,
     δs,
-    show_progresbar=false,
-    plots_per_iteration=true,  # TODO: generalize to iterable of plotting callbacks
-    f_tol=1f-1,
     tsteps=(),
     datadir=nothing,
+    show_progresbar=false,
+    plots_callback=nothing,
+    f_tol=1f-1,
     metadata=Dict(),
 )
     @assert length(αs) == length(δs)
@@ -283,30 +283,15 @@ function constrained_training(
         length(αs); desc="Training with constraints...", enabled=show_progresbar
     )
     for (α, δ) in zip(αs, δs)
-        @show α, δ
 
         # prob = ODEProblem(dudt!, u0, tspan, θ)
         prob = remake(prob; p=θ)
 
         # closure to comply with optimization interface
-        loss_(params) = reduce(+, loss(params, prob; δ, α, tsteps))
+        loss_(params) = reduce(+, loss(params, prob; α, δ, tsteps))
 
-        if plots_per_iteration
-            @info "Current states"
-            plot_simulation(
-                controller, prob, θ, tsteps; only=:states, vars=[2], yrefs=[800, 150]
-            )
-            plot_simulation(
-                controller,
-                prob,
-                θ,
-                tsteps;
-                only=:states,
-                fun=(x, y, z) -> 1.1f-2x - z,
-                yrefs=[3f-2],
-            )
-            @info "Current controls"
-            plot_simulation(controller, prob, θ, tsteps; only=:controls)
+        if !isnothing(plots_callback)
+            plots_callback(controller, prob, θ, tsteps)
         end
 
         # function print_callback(params, loss)
@@ -324,13 +309,18 @@ function constrained_training(
         )
         θ = result.minimizer
 
-        @show objective, state_penalty, control_penalty, _ = loss(θ, prob; δ, α, tsteps)
+        objective, state_penalty, control_penalty, regularization = loss(
+            θ, prob; α, δ, tsteps
+        )
+
+        @info "Current values" α, δ, objective, state_penalty, control_penalty, regularization
 
         if !isnothing(datadir)
             local_metadata = Dict(
                 :objective => objective,
                 :state_penalty => state_penalty,
                 :control_penalty => control_penalty,
+                :regularization_cost => regularization,
                 :parameters => θ,
                 :num_params => length(initial_params(controller)),
                 :layers => controller_shape(controller),
@@ -355,7 +345,7 @@ function constrained_training(
         ProgressMeter.next!(
             prog;
             showvalues=[
-                (:δ, δ), (:α, α), (:objective, objective), (:state_penalty, state_penalty)
+                (:α, α), (:δ, δ), (:objective, objective), (:state_penalty, state_penalty)
             ],
         )
     end
