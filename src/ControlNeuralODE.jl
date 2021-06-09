@@ -3,7 +3,6 @@ module ControlNeuralODE
 using Dates
 using Base.Filesystem
 
-# using Revise
 using ProgressMeter
 using Statistics: mean
 using LineSearches, Optim, GalacticOptim
@@ -268,35 +267,23 @@ end
 function constrained_training(
     controller,
     prob,
-    loss,
-    θ_0,
-    α_0,
-    δ_0;
-    barrier_modifications=20,
-    barrier_strengthening=0.8f0,
-    barrier_relaxation=1.1f0,
+    θ,
+    loss;
+    αs,
+    δs,
     show_progresbar=false,
-    plot_iterations=true,
+    plots_per_iteration=true,  # TODO: generalize to iterable of plotting callbacks
     f_tol=1f-1,
     tsteps=(),
     datadir=nothing,
-    metadata=nothing,
-    # log_time
+    metadata=Dict(),
 )
-    @assert barrier_modifications > 0
-    @assert barrier_relaxation > 1
-    @assert barrier_strengthening < 1
-
-    θ = θ_0
-    α = α_0
-    δ = δ_0
-    αs = typeof(α)[]
-    δs = typeof(δ)[]
-
-    counter = 1
-    prog = ProgressUnknown(; desc="Training with constraints...", enabled=show_progresbar)
-    while true
-        @show δ, α
+    @assert length(αs) == length(δs)
+    prog = Progress(
+        length(αs); desc="Training with constraints...", enabled=show_progresbar
+    )
+    for (α, δ) in zip(αs, δs)
+        @show α, δ
 
         # prob = ODEProblem(dudt!, u0, tspan, θ)
         prob = remake(prob; p=θ)
@@ -304,7 +291,7 @@ function constrained_training(
         # closure to comply with optimization interface
         loss_(params) = reduce(+, loss(params, prob; δ, α, tsteps))
 
-        if plot_iterations
+        if plots_per_iteration
             @info "Current states"
             plot_simulation(
                 controller, prob, θ, tsteps; only=:states, vars=[2], yrefs=[800, 150]
@@ -336,54 +323,43 @@ function constrained_training(
             f_tol,
         )
         θ = result.minimizer
+
         @show objective, state_penalty, control_penalty, _ = loss(θ, prob; δ, α, tsteps)
-        if isinf(state_penalty) || state_penalty / objective > 1f4
-            δ *= barrier_relaxation
-            @show α = 1f4 * abs(objective / state_penalty)
-        else
-            if !isnothing(datadir)
-                local metadata = Dict(
-                    :objective => objective,
-                    :state_penalty => state_penalty,
-                    :control_penalty => control_penalty,
-                    :parameters => θ,
-                    :num_params => length(initial_params(controller)),
-                    :layers => controller_shape(controller),
-                    :penalty_relaxations => δs,
-                    :penalty_coefficients => αs,
-                    :tspan => prob.tspan,
-                    :tsteps => tsteps,
-                )
-                store_simulation(
-                    "delta_$(round(δ, digits=2))",
-                    datadir,
-                    controller,
-                    prob,
-                    θ,
-                    tsteps;
-                    metadata=metadata,
-                )
-            end
-            push!(αs, α)
-            push!(δs, δ)
-            δ *= barrier_strengthening
-        end
-        if counter == barrier_modifications
-            ProgressMeter.finish!(prog)
-            return θ, δs, αs
-        else
-            ProgressMeter.next!(
-                prog;
-                showvalues=[
-                    (:δ, δ),
-                    (:α, α),
-                    (:objective, objective),
-                    (:state_penalty, state_penalty),
-                ],
+
+        if !isnothing(datadir)
+            local_metadata = Dict(
+                :objective => objective,
+                :state_penalty => state_penalty,
+                :control_penalty => control_penalty,
+                :parameters => θ,
+                :num_params => length(initial_params(controller)),
+                :layers => controller_shape(controller),
+                :penalty_relaxations => δs,
+                :penalty_coefficients => αs,
+                :tspan => prob.tspan,
+                :tsteps => tsteps,
             )
-            counter += 1
+            metadata = merge(metadata, local_metadata)
+            store_simulation(
+                "delta_$(round(δ, digits=2))",
+                datadir,
+                controller,
+                prob,
+                θ,
+                tsteps;
+                metadata,
+            )
         end
+        # ProgressMeter.finish!(prog)
+        # break
+        ProgressMeter.next!(
+            prog;
+            showvalues=[
+                (:δ, δ), (:α, α), (:objective, objective), (:state_penalty, state_penalty)
+            ],
+        )
     end
+    return θ
 end
 
 # function runner(script)

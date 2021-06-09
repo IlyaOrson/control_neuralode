@@ -58,12 +58,15 @@ function bioreactor()
     u0 = [C_X₀, C_N₀, C_qc₀]
     tspan = (t0, tf)
     tsteps = t0:Δt:tf
-
     control_ranges = [(120.0f0, 400.0f0), (0.0f0, 40.0f0)]
-    # function scaled_sigmoids(control_ranges)
-    #     control_type = control_ranges |> eltype |> eltype
-    #     return (x, p) -> [mean(range) + (range[end]-range[1]) * sigmoid(x[i]) for (i, range) in enumerate(control_ranges)]
-    # end
+
+    function scaled_sigmoids(control_ranges)
+        # control_type = control_ranges |> eltype |> eltype
+        return (x, p) -> [
+            (control_ranges[i][2] - control_ranges[i][1]) * sigmoid(x[i]) +
+            control_ranges[i][1] for i in eachindex(control_ranges)
+        ]
+    end
 
     # set arquitecture of neural network controller
     controller = FastChain(
@@ -72,7 +75,14 @@ function bioreactor()
         FastDense(16, 16, tanh; initW=(x, y) -> Float32(5 / 3) * Flux.glorot_uniform(x, y)),
         FastDense(16, 2; initW=(x, y) -> Float32(5 / 3) * Flux.glorot_uniform(x, y)),
         # I ∈ [120, 400] & F ∈ [0, 40] in Bradford 2020
-        (x, p) -> [280.0f0 * sigmoid(x[1]) + 120.0f0, 40.0f0 * sigmoid(x[2])],
+        # (x, p) -> [280.0f0 * sigmoid(x[1]) + 120.0f0, 40.0f0 * sigmoid(x[2])],
+        # Zygote does not support enumerate nor zip cosntructs :( It does handle eachindex :)
+        # (x, p) -> [(ub-lb) * sigmoid(x[i]) + lb for (i, (lb, ub)) in enumerate(control_ranges)],
+        # (x, p) -> [
+        #     (control_ranges[i][2] - control_ranges[i][1]) * sigmoid(x[i]) +
+        #     control_ranges[i][1] for i in eachindex(control_ranges)
+        # ],
+        scaled_sigmoids(control_ranges),
     )
 
     # initial parameters
@@ -186,13 +196,27 @@ function bioreactor()
 
     # α: penalty coefficient
     # δ: barrier relaxation coefficient
-    α, δ = 1f-5, 100.0f0
-    θ, δs, αs = constrained_training(controller, prob, loss, θ, α, δ; tsteps, datadir)
+    α0, δ0 = 1f-5, 100.0f0
+    barrier_iterations = 0:20
+    αs = [α0 for _ in barrier_iterations]
+    δs = [δ0 * 0.8f0^i for i in barrier_iterations]
+    θ = constrained_training(
+        controller,
+        prob,
+        θ,
+        loss;
+        αs,
+        δs,
+        tsteps,
+        datadir,
+        show_progresbar=true,
+        plots_per_iteration=false,
+    )
 
     final_values = NamedTuple{(
         :objective, :state_penalty, :control_penalty, :regularization
     )}(
-        loss(θ, prob; δ, α, tsteps)
+        loss(θ, prob; δ=δs[end], α=αs[end], tsteps)
     )
 
     @info "Final states"
