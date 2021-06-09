@@ -213,36 +213,38 @@ function preconditioner(
 
         function precondition_loss(params; plot=false)
 
-            # TODO: generalize or remove plotting?
-            f1s, f2s, c1s, c2s = Float32[], Float32[], Float32[], Float32[]
+            plot_arrays = Dict(
+                :reference => [],
+                :control => [],
+            )
             sum_squares = 0.0f0
 
             # for (time, state) in zip(fixed_sol.t, fixed_sol.u)  # Zygote error
             for (i, state) in enumerate(eachcol(Array(fixed_sol)))
-                fixed = precondition(fixed_sol.t[i], nothing)  # precondition(time, params)
-                pred = controller(state, params)
-                diff_square = (pred - fixed) .^ 2
+                reference = precondition(fixed_sol.t[i], nothing)  # precondition(time, params)
+                control = controller(state, params)
+                diff_square = (control - reference) .^ 2
                 if !isnothing(control_range_scaling)
                     diff_square ./ control_range_scaling
                 end
                 sum_squares += sum(diff_square)
-                if plot
-                    Zygote.ignore() do
-                        push!(f1s, fixed[1])
-                        push!(f2s, fixed[2])
-                        push!(c1s, pred[1])
-                        push!(c2s, pred[2])
+                Zygote.ignore() do
+                    if plot
+                        push!(plot_arrays[:reference], reference)
+                        push!(plot_arrays[:control], control)
                     end
                 end
             end
-            if plot
-                Zygote.ignore() do
-                    p1 = lineplot(f1s; name="fixed")
-                    lineplot!(p1, c1s; name="neural")
-                    display(p1)
-                    p2 = lineplot(f2s; name="fixed")
-                    lineplot!(p2, c2s; name="neural")
-                    display(p2)
+            Zygote.ignore() do
+                if plot
+                    refereces = reduce(hcat, plot_arrays[:reference])
+                    controls = reduce(hcat, plot_arrays[:control])
+                    @assert length(refereces) == length(controls)
+                    for r in 1:size(refereces, 1)
+                        p = lineplot(refereces[r,:]; name="fixed")
+                        lineplot!(p, controls[r,:]; name="neural")
+                        display(p)
+                    end
                 end
             end
             regularization = reg_coeff * mean(abs2, params)
