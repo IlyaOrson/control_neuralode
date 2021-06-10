@@ -13,49 +13,53 @@ using BSON, JSON3, CSV, Tables
 
 export batch_reactor, van_der_pol, reference_tracking, bioreactor, semibatch_reactor
 
-function fun_plotter(fun, array; xlim=(0, 0))
-    output = map(fun, eachrow(array)...)
-    return lineplot(output; title="Custom Function", name="fun", ylim=extrema(output), xlim)
+function fun_plotter(fun, times, states; xlim=(0, 0))
+    output = map(fun, eachrow(states)...)
+    return lineplot(times, output; title="Custom Function", name="fun", ylim=extrema(output), xlim)
 end
 
 # handy terminal plots
-function unicode_plotter(states, controls; only=nothing, vars=nothing, fun=nothing)
+function unicode_plotter(times, states, controls; only=nothing, vars=nothing, fun=nothing)
     @assert size(states, 2) == size(controls, 2)
     xlim = (0, size(states, 2))
     if only == :states
         if !isnothing(fun)
-            return fun_plotter(fun, states; xlim)
+            return fun_plotter(fun, times, states; xlim)
         end
         typeof(vars) <: Vector && (states = @view states[vars, :])
         ylim = states |> extrema
         tag = isnothing(vars) ? "x1" : "x$(vars[1])"
         plt = lineplot(
-            states[1, :]; title="State Evolution", name=tag, xlabel="step", ylim, xlim
+            times, states[1, :]; title="State Evolution", name=tag, xlabel="step", ylim, xlim
         )
         for (i, s) in enumerate(eachrow(states[2:end, :]))
             tag = isnothing(vars) ? "x$(i+1)" : "x$(vars[i+1])"
-            lineplot!(plt, collect(s); name=tag)
+            lineplot!(plt, times, collect(s); name=tag)
         end
     elseif only == :controls
         if !isnothing(fun)
-            return fun_plotter(fun, controls; xlim)
+            return fun_plotter(fun, times, controls; xlim)
         end
         typeof(vars) <: Vector && (controls = @view controls[vars, :])
         ylim = controls |> extrema
         tag = isnothing(vars) ? "c1" : "c$(vars[1])"
+        @info "check" typeof(times), size(times), size(controls[1, :]), times, controls[1, :]
+
         plt = lineplot(
-            controls[1, :]; title="Control Evolution", name=tag, xlabel="step", ylim, xlim
+            times, controls[1, :]; title="Control Evolution", name=tag, xlabel="step", ylim, xlim
         )
         for (i, s) in enumerate(eachrow(controls[2:end, :]))
             tag = isnothing(vars) ? "c$(i+1)" : "c$(vars[i+1])"
-            lineplot!(plt, collect(s); name=tag)
+            lineplot!(plt, times, collect(s); name=tag)
         end
+        # readline()
     else
         if !isnothing(fun)
-            return fun_plotter(fun, hcat(states, controls); xlim)
+            return fun_plotter(fun, times, hcat(states, controls); xlim)
         end
         ylim = Iterators.flatten((states, controls)) |> extrema
         plt = lineplot(
+            times,
             states[1, :];
             title="State and Control Evolution",
             name="x1",
@@ -64,10 +68,10 @@ function unicode_plotter(states, controls; only=nothing, vars=nothing, fun=nothi
             xlim,
         )
         for (i, s) in enumerate(eachrow(states[2:end, :]))
-            lineplot!(plt, collect(s); name="x$(i+1)")
+            lineplot!(plt, times, collect(s); name="x$(i+1)")
         end
         for (i, c) in enumerate(eachrow(controls))
-            lineplot!(plt, collect(c); name="c$i")
+            lineplot!(plt, times, collect(c); name="c$i")
         end
     end
     return plt
@@ -145,7 +149,9 @@ function plot_simulation(
 
     # TODO: use times in plotting?
     times, states, controls = generate_data(controller, prob, params, tsteps)
-    plt = unicode_plotter(states, controls; only, vars, fun)
+    plt = unicode_plotter(times, states, controls; only, vars, fun)
+    display(plt)
+    readline()
     if !isnothing(yrefs)
         for yref in yrefs
             lineplot!(plt, x -> yref; name="$yref")
