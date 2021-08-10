@@ -69,7 +69,19 @@ equation backwards, as in CVI and the adjoint sensitivity analysis.
 Commonly the control is seed as a function of time and is splitted in predefined intervals, where a
 polinomial parametrizes the control profile. This converts the problem into a discrete NLP problem.
 
-## Acknowledgements
+# Acknowledgements
+The idea was inspired heavily by the trebuchet demo of Flux and the differentiable control
+example of DiffEqFlux. Chris Rackauckas advise was very useful.
 
-The idea was inspired heavily by the trebuchet demo of Flux, and the differentiable control
-tests of DiffEqFlux. Chris Rackauckas advise was very useful.
+## Citation
+
+If you find this work helpful please consider citing the following paper:
+```bibtex
+@article{sandoval2022NODEpolicies,
+  title    = {Neural ODEs as Feedback Policies for Nonlinear Optimal Control},
+  author   = {Sandoval, Ilya Orson and Petsagkourakis, Panagiotis and del Rio-Chanona, Ehecatl Antonio},
+  date     = {2022},
+  pubstate = {submitted},
+  note     = {submitted},
+}
+```

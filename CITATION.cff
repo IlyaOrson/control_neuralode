@@ -1,0 +1,28 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the associated publication (submitted)."
+authors:
+- family-names: "Sandoval"
+  given-names: "Ilya Orson"
+  orcid: "https://orcid.org/0000-0001-9648-5265"
+- family-names: "Petsagkourakis"
+  given-names: "Panagiotis"
+  orcid: "https://orcid.org/0000-0002-2024-3371"
+- family-names: "del Rio-Chanona"
+  given-names: "Ehecatl Antonio"
+  orcid: "https://orcid.org/0000-0003-0274-2852"
+title: "Neural ODEs as Feedback Policies for Nonlinear Optimal Control"
+version: juliacon2021
+license: "MIT"
+date-released: 2021-07-04
+url: "https://github.com/IlyaOrson/control_neuralode/tree/juliacon2021"
+preferred-citation:
+    type: article
+    title: "Neural ODEs as Feedback Policies for Nonlinear Optimal Control"
+    authors:
+      - family-names: "Sandoval"
+        given-names: "Ilya Orson"
+      - family-names: "Petsagkourakis"
+        given-names: "Panagiotis"
+      - family-names: "del Rio-Chanona"
+        given-names: "Ehecatl Antonio"
+    year: 2022
