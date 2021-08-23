@@ -53,7 +53,7 @@ mpl.rc("legend", **legend)
 # plt.savefig("./plots/photo_production_controls.svg")
 
 
-#################################### semibatch_reactor ####################################
+#################################### bioreactor ####################################
 
 # 2021-04-20T15_37_02.048  # 2021-04-27T15_26_07.084
 results_dir = Path("./data/bioreactor.jl/2021-05-01T14_04_16.822/")
@@ -128,13 +128,45 @@ data = pd.read_csv(results_dir / f"delta_{delta}.csv")
 # plt.savefig("./plots/bioreactor_x1_x3_c1_c2.svg")
 # plt.show()
 
+def two_axis(data, cols, labels=None, refs=None, colors=None, ref_colors=None, alpha=None, ref_alpha=None, saveas=None):
+    assert len(cols) == 2
+    fig, ax1 = plt.subplots(
+        # constrained_layout=True,  # incompatible with subplots_adjust and or tight_layout
+        squeeze=True,
+    )
+    ax2 = ax1.twinx()
+    axs = [ax1, ax2]
+    if not labels:
+        labels = cols
+    if not colors:
+        colors = palette
+    if not ref_colors:
+        ref_colors = palette
+
+    for i in range(len(cols)):
+        data.plot("t", cols[i], ax=axs[i], color=colors[i], label=labels[i], legend=False, alpha=alpha)
+        # plt.setp(axs[i].spines.values(), color=palette[i])  # colors full box :(
+        plt.setp(axs[i].spines["right"], color=colors[i])
+        axs[i].tick_params(axis="y", colors=colors[i])
+        if refs and refs[i]:
+            axs[i].axhline(y=refs[i], zorder=100, color=ref_colors[i], ls="dashdot", alpha=ref_alpha)
+
+    ax1.set_xlabel('time')
+    fig.tight_layout()  # otherwise the right y-label is slightly clipped
+    fig.legend(bbox_to_anchor=(0.92,0.22), loc="lower right", fontsize="medium")
+    plt.savefig(saveas, bbox_inches="tight")
+    plt.show()
+
 def four_axis(data, cols, labels=None, refs=None, alpha=None, saveas=None):
     assert len(cols) < 5
     fig, ax = plt.subplots(
         # constrained_layout=True,  # incompatible with subplots_adjust and or tight_layout
         squeeze=True,
     )
-    axs = [ax, ax.twinx(), ax.twinx(), ax.twinx()]
+    axs = [ax]
+    if len(cols) > 1:
+        for _ in range(len(cols)-1):
+            axs.append(ax.twinx())
     fig.subplots_adjust(right=0.8)
     # plt.setp(axs[0].spines["left"], color=palette[0])  # https://stackoverflow.com/a/20371140/6313433
 
@@ -162,18 +194,18 @@ def four_axis(data, cols, labels=None, refs=None, alpha=None, saveas=None):
     plt.savefig(saveas, bbox_inches="tight")
     plt.show()
 
-four_axis(
-    data,
-    cols=["x1", "x3", "c1", "c2"],
-    labels=[r"$C_X$", r"$C_{q_c}$", r"$I$", r"$F_N$"],
-    saveas="./plots/bioreactor_x1_x3_c1_c2.pdf"
-)
-four_axis(
-    data,
-    cols=["x1", "x3", "c1", "c2"],
-    labels=[r"$C_X$", r"$C_{q_c}$", r"$I$", r"$F_N$"],
-    saveas="./plots/bioreactor_x1_x3_c1_c2.svg"
-)
+# four_axis(
+#     data,
+#     cols=["x1", "x3", "c1", "c2"],
+#     labels=[r"$C_X$", r"$C_{q_c}$", r"$I$", r"$F_N$"],
+#     saveas="./plots/bioreactor_x1_x3_c1_c2.pdf"
+# )
+# four_axis(
+#     data,
+#     cols=["x1", "x3", "c1", "c2"],
+#     labels=[r"$C_X$", r"$C_{q_c}$", r"$I$", r"$F_N$"],
+#     saveas="./plots/bioreactor_x1_x3_c1_c2.svg"
+# )
 
 #################################### semibatch_reactor ####################################
 
@@ -187,35 +219,59 @@ plt.savefig("./plots/semibatch_x1_x2_x3.pdf")
 plt.savefig("./plots/semibatch_x1_x2_x3.svg")
 plt.show()
 
-fig, axs = plt.subplots(4, 1, sharex=True, constrained_layout=True, squeeze=True, figsize=(8, 4*4))
-# fig.set_xlabel("time")
-data.plot("t", "x4", ax=axs[0], color=palette[3], label=r"$T$")
-axs[0].axhline(y=420, zorder=100, color="orange", ls="--", alpha=0.7)
-axs[0].legend(loc='center right')
-data.plot("t", "x5", ax=axs[1], color=palette[4], label=r"$V$")
-axs[1].axhline(y=200, zorder=100, color="orange", ls="--", alpha=0.7)
-axs[1].legend(loc='center right')
-data.plot("t", "c1", ax=axs[2], color=palette[6], label=r"$F$")
-axs[2].legend(loc='center right')
-data.plot("t", "c2", ax=axs[3], color=palette[7], label=r"$T_a$")
-# axs[3].axhline(y=500, zorder=100, color="orange", ls="--", alpha=0.7)
-axs[3].legend(loc="center right")
-axs[3].set_xlabel("time")
-plt.savefig("./plots/semibatch_x4_x5_c1_c2.pdf")
-plt.savefig("./plots/semibatch_x4_x5_c1_c2.svg")
+fig, axs = plt.subplots(1, 1, sharex=True, constrained_layout=True, squeeze=True, figsize=(8, 4*1))
+data.plot("t", "x4", ax=axs, color=palette[3], label=r"$T$")
+axs.axhline(y=420, zorder=100, color="orange", ls="--", alpha=0.7)
+axs.legend(loc='center right')
+axs.set_xlabel("time")
+plt.savefig("./plots/semibatch_x4.pdf")
+plt.savefig("./plots/semibatch_x4.svg")
 plt.show()
+
+fig, axs = plt.subplots(1, 1, sharex=True, constrained_layout=True, squeeze=True, figsize=(8, 4*1))
+data.plot("t", "x5", ax=axs, color=palette[4], label=r"$V$")
+axs.axhline(y=200, zorder=100, color="orange", ls="--", alpha=0.7)
+axs.legend(loc='center right')
+axs.set_xlabel("time")
+plt.savefig("./plots/semibatch_x5.pdf")
+plt.savefig("./plots/semibatch_x5.svg")
+plt.show()
+
+two_axis(
+    data,
+    cols=["c1", "c2"],
+    labels=[r"$F$", r"$T_a$"],
+    saveas="./plots/semibatch_c1_c2.pdf"
+)
+two_axis(
+    data,
+    cols=["c1", "c2"],
+    labels=[r"$F$", r"$T_a$"],
+    saveas="./plots/semibatch_c1_c2.svg"
+)
+
+# these do not work out-of-the-box due to the overlapping horizontal line reference
+
+# two_axis(
+#     data,
+#     cols=["x4", "x5"],
+#     labels=[r"$T$", r"$V$"],
+#     refs=[420, 200],
+#     ref_alpha=0.6,
+#     saveas="./plots/semibatch_x4_x5.svg"
+# )
 
 # four_axis(
 #     data,
 #     cols=["x4", "x5", "c1", "c2"],
 #     labels=[r"$T$", r"$V$", r"$F$", r"$T_a$"],
 #     refs=[420, 200, None, None],
-#     saveas="./plots/semibatch_x4_x5_c1_c2.pdf"
+#     saveas="./plots/semibatch_x4_x5_c1_c2_alt.svg"
 # )
 
 
 #################################### set-point tracking ####################################
-
+'''
 def ref_track(data, reversible, saveas=None):
     assert reversible is not None
     if reversible:
@@ -258,3 +314,4 @@ ref_track(data, reversible=False, saveas="./plots/reftrack_case4.pdf")
 ref_track(data, reversible=False, saveas="./plots/reftrack_case4.svg")
 
 # custom case
+'''
