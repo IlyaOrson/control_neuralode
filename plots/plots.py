@@ -240,12 +240,14 @@ plt.show()
 two_axis(
     data,
     cols=["c1", "c2"],
+    colors=[palette[6], palette[7]],
     labels=[r"$F$", r"$T_a$"],
     saveas="./plots/semibatch_c1_c2.pdf"
 )
 two_axis(
     data,
     cols=["c1", "c2"],
+    colors=[palette[6], palette[7]],
     labels=[r"$F$", r"$T_a$"],
     saveas="./plots/semibatch_c1_c2.svg"
 )
