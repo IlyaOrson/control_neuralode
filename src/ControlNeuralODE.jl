@@ -4,8 +4,10 @@ using Dates
 using Base.Filesystem
 
 using ProgressMeter
+using Infiltrator
 using Statistics: mean
-using LineSearches, Optim, GalacticOptim
+using LineSearches: BackTracking
+using Optim, GalacticOptim
 using Zygote, Flux
 using OrdinaryDiffEq, DiffEqSensitivity, DiffEqFlux
 using UnicodePlots: lineplot, lineplot!, histogram, boxplot
@@ -105,8 +107,17 @@ function generate_data_subdir(callerfile; current_datetime=nothing)
 end
 
 function store_simulation(
-    filename, datadir, controller, prob, params, tsteps; metadata=nothing
+    filename::Union{String, Nothing},
+    datadir::Union{String, Nothing},
+    controller::DiffEqFlux.FastChain,
+    prob::ODEProblem,
+    params::AbstractVector{<:Real},
+    tsteps::AbstractVector{<:Real}; metadata=nothing::Union{Nothing, Dict}
 )
+    if isnothing(datadir) || isnothing(filename)
+        @info "Results not stored due to missing filename/datadir." maxlog=1
+        return
+    end
     controller_file = joinpath(datadir, filename * ".bson")
     BSON.@save controller_file controller
 
@@ -141,7 +152,7 @@ function plot_simulation(
     fun=nothing,
     yrefs=nothing,
 )
-    !isnothing(show) && @show show
+    !isnothing(show) && @info show
 
     # TODO: use times in plotting?
     times, states, controls = generate_data(controller, prob, params, tsteps)
@@ -275,14 +286,14 @@ function constrained_training(
     δs,
     tsteps=(),
     datadir=nothing,
-    show_progresbar=false,
+    show_progressbar=false,
     plots_callback=nothing,
     f_tol=1f-1,
     metadata=Dict(),
 )
     @assert length(αs) == length(δs)
     prog = Progress(
-        length(αs); desc="Training with constraints...", enabled=show_progresbar
+        length(αs); desc="Training with constraints...", enabled=show_progressbar
     )
     for (α, δ) in zip(αs, δs)
 
@@ -304,7 +315,7 @@ function constrained_training(
         @time result = DiffEqFlux.sciml_train(
             loss_,
             θ,
-            LBFGS(; linesearch=LineSearches.BackTracking());
+            LBFGS(; linesearch=BackTracking());
             # cb=print_callback,
             allow_f_increases=true,
             f_tol,
@@ -317,31 +328,29 @@ function constrained_training(
 
         @info "Current values" α, δ, objective, state_penalty, control_penalty, regularization
 
-        if !isnothing(datadir)
-            local_metadata = Dict(
-                :objective => objective,
-                :state_penalty => state_penalty,
-                :control_penalty => control_penalty,
-                :regularization_cost => regularization,
-                :parameters => θ,
-                :num_params => length(initial_params(controller)),
-                :layers => controller_shape(controller),
-                :penalty_relaxations => δs,
-                :penalty_coefficients => αs,
-                :tspan => prob.tspan,
-                :tsteps => tsteps,
-            )
-            metadata = merge(metadata, local_metadata)
-            store_simulation(
-                "delta_$(round(δ, digits=2))",
-                datadir,
-                controller,
-                prob,
-                θ,
-                tsteps;
-                metadata,
-            )
-        end
+        local_metadata = Dict(
+            :objective => objective,
+            :state_penalty => state_penalty,
+            :control_penalty => control_penalty,
+            :regularization_cost => regularization,
+            :parameters => θ,
+            :num_params => length(initial_params(controller)),
+            :layers => controller_shape(controller),
+            :penalty_relaxations => δs,
+            :penalty_coefficients => αs,
+            :tspan => prob.tspan,
+            :tsteps => tsteps,
+        )
+        metadata = merge(metadata, local_metadata)
+        store_simulation(
+            "delta_$(round(δ, digits=2))",
+            datadir,
+            controller,
+            prob,
+            θ,
+            tsteps;
+            metadata,
+        )
         # ProgressMeter.finish!(prog)
         # break
         ProgressMeter.next!(

@@ -137,7 +137,7 @@ function reference_tracking()
     optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
     optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases=true)
     result = GalacticOptim.solve(
-        optprob, LBFGS(; linesearch=LineSearches.BackTracking()); cb=plotting_callback
+        optprob, LBFGS(; linesearch=BackTracking()); cb=plotting_callback
     )
 
     plot_simulation(

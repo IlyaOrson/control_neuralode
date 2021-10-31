@@ -136,11 +136,6 @@ function semibatch_reactor()
         show=precondition_loss(result.minimizer),
     )
 
-    # Feller, C., & Ebenbauer, C. (2014).
-    # Continuous-time linear MPC algorithms based on relaxed logarithmic barrier functions.
-    # IFAC Proceedings Volumes, 47(3), 2481–2488.
-    # https://doi.org/10.3182/20140824-6-ZA-1003.01022
-
     # constraints with barrier methods
     # T ∈ (0, 420]
     # Vol ∈ (0, 800]
@@ -233,7 +228,7 @@ function semibatch_reactor()
     @show final_objective, final_penalty = loss(result.minimizer, prob, tsteps; δ=δs[end])
 
     @info "Storing results"
-    return store_simulation(
+    store_simulation(
         "constrained",
         datadir,
         controller,

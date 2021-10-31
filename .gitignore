@@ -14,7 +14,7 @@ data/
 *.png
 
 # profiling
-statprof/
+statprof*/
 
 __pycache__/
 .vscode/

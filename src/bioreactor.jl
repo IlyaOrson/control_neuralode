@@ -226,7 +226,7 @@ function bioreactor()
         tsteps,
         datadir,
         plots_callback,
-        # show_progresbar=true,
+        # show_progressbar=true,
     )
 
     final_values = NamedTuple{(

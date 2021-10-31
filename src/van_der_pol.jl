@@ -65,13 +65,14 @@ function van_der_pol()
     # optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
     # optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases=true)
     # result = GalacticOptim.solve(
-    #     optprob, LBFGS(; linesearch=LineSearches.BackTracking()); cb=plotting_callback
+    #     optprob, LBFGS(; linesearch=BackTracking()); cb=plotting_callback
     # )
+
     result = DiffEqFlux.sciml_train(
         loss,
         θ,
-        LBFGS(; linesearch=LineSearches.BackTracking());
-        cb=plotting_callback,
+        LBFGS(; linesearch=BackTracking());
+        # cb=plotting_callback,
         allow_f_increases=true,
         f_tol=1f-1,
     )
@@ -89,8 +90,9 @@ function van_der_pol()
     ### now add state constraint x2(t) > -0.4 with
     function penalty_loss(params, prob, tsteps; α=10.0f0)
         # integrate ODE system (stiff problem)
-        sol = Array(solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps))
-        fault = min.(sol[1, 1:end] .+ 0.4f0, 0)
+        sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true), checkpointing=true)
+        sol = solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, sensealg) |> Array
+        fault = min.(sol[1, 1:end] .+ 0.4f0, 0f0)
         penalty = α * dt * sum(fault .^ 2)  # quadratic penalty
         return sol[3, end] + penalty
     end
@@ -109,10 +111,9 @@ function van_der_pol()
         # end
 
         # closures to comply with interface
-        @show α
         penalty_loss_(params) = penalty_loss(params, constrained_prob, tsteps; α)
 
-        @info "Initial Control"
+        @info "Control Profile" α
         plot_simulation(
             controller,
             constrained_prob,
@@ -122,22 +123,32 @@ function van_der_pol()
             show=penalty_loss_(result.minimizer),
         )
 
-        adtype = GalacticOptim.AutoZygote()
-        optf = GalacticOptim.OptimizationFunction((x, p) -> penalty_loss_(x), adtype)
+        adtype = AutoZygote()
+        optf = OptimizationFunction((x, p) -> penalty_loss_(x), adtype)
         optfunc = GalacticOptim.instantiate_function(
             optf, result.minimizer, adtype, nothing
         )
-        optprob = GalacticOptim.OptimizationProblem(
+        optprob = OptimizationProblem(
             optfunc, result.minimizer; allow_f_increases=true
         )
+        linesearch = BackTracking(iterations=20)
         result = GalacticOptim.solve(
-            optprob, LBFGS(; linesearch=LineSearches.BackTracking()); cb=plotting_callback
+            optprob, LBFGS(; linesearch)#; cb=plotting_callback
         )
     end
 
-    @info "Storing results"
     constrained_prob = ODEProblem(dudt!, u0, tspan, result.minimizer)
-    return store_simulation(
+
+    penalty_loss(params, constrained_prob, tsteps; α)
+    plot_simulation(
+        controller,
+        constrained_prob,
+        result.minimizer,
+        tsteps;
+        only=:controls,
+        )
+
+    store_simulation(
         "constrained",
         datadir,
         controller,

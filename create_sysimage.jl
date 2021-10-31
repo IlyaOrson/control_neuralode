@@ -6,7 +6,6 @@ using PackageCompiler: create_sysimage
 Pkg.activate(".")
 deps = [pair.second for pair in Pkg.dependencies()]
 direct_deps = filter(p -> p.is_direct_dep, deps)
-[(x.name, x.version) for x in direct_deps]
 pkg_name_version = [(x.name, x.version) for x in direct_deps]
 pkg_list = [Symbol(x.name) for x in direct_deps]
 create_sysimage(

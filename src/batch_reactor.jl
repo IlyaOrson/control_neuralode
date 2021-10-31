@@ -1,5 +1,9 @@
-function batch_reactor()
-    @show datadir = generate_data_subdir(@__FILE__)
+function batch_reactor(; store_results=true::Bool)
+
+    datadir = nothing
+    if store_results
+        @show datadir = generate_data_subdir(@__FILE__)
+    end
 
     function system!(du, u, p, t, controller)
         # fixed parameters
@@ -22,8 +26,8 @@ function batch_reactor()
 
     # define objective function to optimize
     function loss(params, prob, tsteps)
-        # sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(false))
-        sol = solve(prob, Tsit5(); p=params, saveat=tsteps)  # integrate ODE system
+        sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true), checkpointing=true)
+        sol = solve(prob, Tsit5(); p=params, saveat=tsteps, sensealg)  # integrate ODE system
         return -Array(sol)[2, end]  # second variable, last value, maximize
     end
 
@@ -40,7 +44,7 @@ function batch_reactor()
         (x, p) -> 5 * σ.(x),  # controllers ∈ (0, 5)
     )
 
-    # model weights are destructured into a vector of parameters
+    # current model weights are destructured into a vector of parameters
     θ = initial_params(controller)
 
     # set differential equation problem and solve it
@@ -55,14 +59,12 @@ function batch_reactor()
 
     @info "Optimizing"
     adtype = GalacticOptim.AutoZygote()
-    optf = GalacticOptim.OptimizationFunction((x, p) -> loss(x), adtype)
+    optf = OptimizationFunction((x, p) -> loss(x), adtype)
     optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
-    optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases=true)
-    result = GalacticOptim.solve(
-        optprob, LBFGS(; linesearch=LineSearches.BackTracking()); cb=plotting_callback
-    )
+    optprob = OptimizationProblem(optfunc, θ; allow_f_increases=true)
+    linesearch = BackTracking(iterations=10)
+    result = GalacticOptim.solve(optprob, LBFGS(; linesearch))#; cb=plotting_callback)
 
-    @info "Storing results"
     store_simulation(
         "optimized",
         datadir,
@@ -72,16 +74,5 @@ function batch_reactor()
         tsteps;
         metadata=Dict(:loss => loss(result.minimizer)),
     )
-
-    # https://fluxml.ai/Zygote.jl/latest/#Taking-Gradients
-    # an example of how to extract gradients
-    @show eltype(θ)
-    @show l₀ = loss(θ)
-    @time ∇θ = Zygote.gradient(loss, θ)[1]
-    @show typeof(∇θ)
-    @show eltype(∇θ)
-    h = 0.01f0
-    @show eltype(h * ∇θ)
-    @show lₕ = loss(θ + h * ∇θ)
-    @show ∇L = lₕ - l₀
+    plot_simulation(controller, prob, result.minimizer, tsteps; only=:controls)
 end  # script wrapper
