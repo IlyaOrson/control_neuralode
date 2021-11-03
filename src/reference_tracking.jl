@@ -2,8 +2,12 @@
 # Approximation methods for optimal control synthesis.
 # The Canadian Journal of Chemical Engineering, 49(4), 522-528.
 
-function reference_tracking()
-    @show datadir = generate_data_subdir(@__FILE__)
+function reference_tracking(; store_results=true::Bool)
+
+    datadir = nothing
+    if store_results
+        datadir = generate_data_subdir(@__FILE__)
+    end
 
     # irreversible reaction
     reaction = "irreversible"
@@ -178,7 +182,7 @@ function reference_tracking()
         :α2 => α2,
         :α3 => α3,
     )
-    return store_simulation(
-        reaction, datadir, controller, prob, result.minimizer, tsteps; metadata=metadata
+    store_simulation(
+        reaction, controller, prob, result.minimizer, tsteps; metadata, datadir
     )
 end  # script wrapper

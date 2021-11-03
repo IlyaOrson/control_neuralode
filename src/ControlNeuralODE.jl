@@ -75,7 +75,7 @@ function unicode_plotter(states, controls; only=nothing, vars=nothing, fun=nothi
     return plt
 end
 
-function generate_data(controller, prob, params, tsteps)
+function run_simulation(controller, prob, params, tsteps)
 
     # integrate with given parameters
     solution = solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps)
@@ -101,27 +101,54 @@ function generate_data_subdir(callerfile; current_datetime=nothing)
     parent = dirname(@__DIR__)
     isnothing(current_datetime) && (current_datetime = string_datetime())
     datadir = joinpath(parent, "data", basename(callerfile), current_datetime)
-    @info "Generating data directory: $datadir"
+    @info "Generating data directory" datadir
     mkpath(datadir)
     return datadir
 end
 
+function test_initial_conditions_variations(controller, prob, params, tsteps, u0, δu, N, M)
+
+    for initial_condition in [u0 .+ [n * δu[1], m * δu[2]] for n=1:N, m=1:M]
+        # prob = ODEProblem(dudt!, u0, tspan, θ)
+        prob = remake(prob; u0=initial_condition)
+        objective = loss(params, prob, tsteps)
+        store_simulation(
+            "Δu = u0 + ($n,$m) * δu",
+            controller,
+            prob,
+            params,
+            tsteps;
+            datadir,
+            metadata = Dict(
+                :loss => objective,
+                :u0 => initial_condition,
+                :δu => [n * δu[1], m * δu[2]],
+            )
+        )
+    end
+end
+
 function store_simulation(
-    filename::Union{String, Nothing},
-    datadir::Union{String, Nothing},
+    filename::Union{Nothing, String},
     controller::DiffEqFlux.FastChain,
     prob::ODEProblem,
     params::AbstractVector{<:Real},
-    tsteps::AbstractVector{<:Real}; metadata=nothing::Union{Nothing, Dict}
+    tsteps::AbstractVector{<:Real};
+    metadata=nothing::Union{Nothing, Dict},
+    datadir=nothing::Union{Nothing, String},
 )
     if isnothing(datadir) || isnothing(filename)
         @info "Results not stored due to missing filename/datadir." maxlog=1
         return
     end
-    controller_file = joinpath(datadir, filename * ".bson")
-    BSON.@save controller_file controller
 
-    times, states, controls = generate_data(controller, prob, params, tsteps)
+    bson_path = joinpath(datadir, filename * ".bson")
+    BSON.@save bson_path controller
+
+    weights_path = joinpath(datadir, filename * "_weights.csv")
+    CSV.write(weights_path, Tables.table(initial_params(controller)), writeheader=false)
+
+    times, states, controls = run_simulation(controller, prob, params, tsteps)
 
     state_headers = ["x$i" for i in 1:size(states, 1)]
     control_headers = ["c$i" for i in 1:size(controls, 1)]
@@ -133,7 +160,7 @@ function store_simulation(
     CSV.write(joinpath(datadir, filename * ".csv"), full_data)
 
     if !isnothing(metadata)
-        open(joinpath(datadir, "metadata.json"), "w") do f
+        open(joinpath(datadir, filename * "_meta.json"), "w") do f
             JSON3.pretty(f, JSON3.write(metadata))
             println(f)
         end
@@ -155,7 +182,7 @@ function plot_simulation(
     !isnothing(show) && @info show
 
     # TODO: use times in plotting?
-    times, states, controls = generate_data(controller, prob, params, tsteps)
+    times, states, controls = run_simulation(controller, prob, params, tsteps)
     plt = unicode_plotter(states, controls; only, vars, fun)
     if !isnothing(yrefs)
         for yref in yrefs
@@ -285,11 +312,11 @@ function constrained_training(
     αs,
     δs,
     tsteps=(),
-    datadir=nothing,
     show_progressbar=false,
     plots_callback=nothing,
     f_tol=1f-1,
-    metadata=Dict(),
+    datadir=nothing,
+    metadata=Dict(),  # metadata is added to this dict always
 )
     @assert length(αs) == length(δs)
     prog = Progress(
@@ -344,12 +371,12 @@ function constrained_training(
         metadata = merge(metadata, local_metadata)
         store_simulation(
             "delta_$(round(δ, digits=2))",
-            datadir,
             controller,
             prob,
             θ,
             tsteps;
             metadata,
+            datadir,
         )
         # ProgressMeter.finish!(prog)
         # break
@@ -362,10 +389,6 @@ function constrained_training(
     end
     return θ
 end
-
-# function runner(script)
-#     return include(joinpath(@__DIR__, endswith(script, ".jl") ? script : "$script.jl"))
-# end
 
 include("batch_reactor.jl")
 include("van_der_pol.jl")

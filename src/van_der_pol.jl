@@ -1,8 +1,12 @@
 # Solution of a Class of Multistage Dynamic Optimization Problems.
 # 2.Problems with Path Constraints
 
-function van_der_pol()
-    @show datadir = generate_data_subdir(@__FILE__)
+function van_der_pol(; store_results=true::Bool)
+
+    datadir = nothing
+    if store_results
+        datadir = generate_data_subdir(@__FILE__)
+    end
 
     function system!(du, u, p, t, controller)
         # neural network outputs controls taken by the system
@@ -79,11 +83,11 @@ function van_der_pol()
 
     store_simulation(
         "unconstrained",
-        datadir,
         controller,
         prob,
         result.minimizer,
         tsteps;
+        datadir,
         metadata=Dict(:loss => loss(result.minimizer), :constraint => "none"),
     )
 
@@ -150,11 +154,11 @@ function van_der_pol()
 
     store_simulation(
         "constrained",
-        datadir,
         controller,
         constrained_prob,
         result.minimizer,
         tsteps;
+        datadir,
         metadata=Dict(
             :loss => penalty_loss(
                 result.minimizer, constrained_prob, tsteps; α=penalty_coefficients[end]

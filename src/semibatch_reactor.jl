@@ -6,8 +6,12 @@
 # Example 13–5 Multiple Reactions in a Semibatch Reactor
 # p. 658
 
-function semibatch_reactor()
-    @show datadir = generate_data_subdir(@__FILE__)
+function semibatch_reactor(; store_results=true::Bool)
+
+    datadir = nothing
+    if store_results
+        datadir = generate_data_subdir(@__FILE__)
+    end
 
     function system!(du, u, p, t, controller)
         # fixed parameters
@@ -230,11 +234,11 @@ function semibatch_reactor()
     @info "Storing results"
     store_simulation(
         "constrained",
-        datadir,
         controller,
         prob,
         result.minimizer,
         tsteps;
+        datadir,
         metadata=Dict(
             :loss => final_objective + final_penalty,
             :objective => final_objective,

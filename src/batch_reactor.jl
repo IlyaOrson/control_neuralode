@@ -2,7 +2,7 @@ function batch_reactor(; store_results=true::Bool)
 
     datadir = nothing
     if store_results
-        @show datadir = generate_data_subdir(@__FILE__)
+        datadir = generate_data_subdir(@__FILE__)
     end
 
     function system!(du, u, p, t, controller)
@@ -67,12 +67,36 @@ function batch_reactor(; store_results=true::Bool)
 
     store_simulation(
         "optimized",
-        datadir,
         controller,
         prob,
         result.minimizer,
         tsteps;
         metadata=Dict(:loss => loss(result.minimizer)),
+        datadir
     )
     plot_simulation(controller, prob, result.minimizer, tsteps; only=:controls)
+
+    θ_opt = result.minimizer
+
+    δu = (-.2, .2)
+    for n=1:10, m=1:10 # FIXME
+        initial_condition = u0 .+ [n * δu[1], m * δu[2]]
+        # prob = ODEProblem(dudt!, u0, tspan, θ)
+        prob = remake(prob; u0=initial_condition)
+        objective = loss(θ_opt, prob, tsteps)
+        store_simulation(
+            "Δu = u0 + ($n,$m) * δu",
+            controller,
+            prob,
+            θ_opt,
+            tsteps;
+            datadir,
+            metadata = Dict(
+                :loss => objective
+                :u0 => initial_condition,
+                :u0_original => u0,
+                :tspan => tspan,
+            )
+        )
+    end
 end  # script wrapper

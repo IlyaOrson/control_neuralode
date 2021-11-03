@@ -2,8 +2,12 @@
 # Stochastic data-driven model predictive control using Gaussian processes.
 # Computers & Chemical Engineering, 139, 106844.
 
-function bioreactor()
-    @show datadir = generate_data_subdir(@__FILE__)
+function bioreactor(; store_results=true::Bool)
+
+    datadir = nothing
+    if store_results
+        datadir = generate_data_subdir(@__FILE__)
+    end
 
     function system!(du, u, p, t, controller, input=:state)
 
@@ -129,7 +133,7 @@ function bioreactor()
     plot_simulation(controller, prob, θ, tsteps; only=:controls)
     display(histogram(θ; title="Number of params: $(length(θ))"))
 
-    store_simulation("precondition", datadir, controller, prob, θ, tsteps)
+    store_simulation("precondition", controller, prob, θ, tsteps; datadir)
 
     function state_penalty_functional(
         solution_array, time_intervals; state_penalty=relaxed_log_barrier, δ=1f1
@@ -224,9 +228,9 @@ function bioreactor()
         αs,
         δs,
         tsteps,
-        datadir,
-        plots_callback,
         # show_progressbar=true,
+        plots_callback,
+        datadir,
     )
 
     final_values = NamedTuple{(
