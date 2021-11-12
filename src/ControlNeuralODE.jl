@@ -13,6 +13,28 @@ using OrdinaryDiffEq, DiffEqSensitivity, DiffEqFlux
 using UnicodePlots: lineplot, lineplot!, histogram, boxplot
 using BSON, JSON3, CSV, Tables
 
+import PyPlot as plt
+const mpl = plt.matplotlib
+# const GridSpec = mpl.gridspec.GridSpec
+
+# plt.style.use("seaborn-colorblind")  # "ggplot"
+mpl.pyplot.style.use("seaborn-colorblind")  # "ggplot"
+palette = plt.cm.Dark2.colors
+
+font = Dict(:family => "STIXGeneral", :size => 16)
+savefig = Dict(:dpi => 600, :bbox => "tight")
+lines = Dict(:linewidth => 4)
+figure = Dict(:figsize => (8, 4))
+axes = Dict(:prop_cycle => mpl.cycler(color=palette))
+legend = Dict(:fontsize => "x-large")  # medium for presentations, x-large for papers
+
+mpl.rc("font"; font...)
+mpl.rc("savefig"; savefig...)
+mpl.rc("lines"; lines...)
+mpl.rc("figure"; figure...)
+mpl.rc("axes"; axes...)
+mpl.rc("legend"; legend...)
+
 export batch_reactor, van_der_pol, reference_tracking, bioreactor, semibatch_reactor
 
 function fun_plotter(fun, array; xlim=(0, 0))
@@ -106,24 +128,30 @@ function generate_data_subdir(callerfile; current_datetime=nothing)
     return datadir
 end
 
-function test_initial_conditions_variations(controller, prob, params, tsteps, u0, δu, N, M)
-
-    for initial_condition in [u0 .+ [n * δu[1], m * δu[2]] for n=1:N, m=1:M]
+function initial_conditions_variations(
+    loss::Function, controller::Function, prob, params, tsteps, datadir, u0, δu, N, M
+)
+    @showprogress for n=1:N, m=1:M
+        initial_condition = u0 + [n * δu[1], m * δu[2]]
         # prob = ODEProblem(dudt!, u0, tspan, θ)
         prob = remake(prob; u0=initial_condition)
         objective = loss(params, prob, tsteps)
         store_simulation(
-            "Δu = u0 + ($n,$m) * δu",
+            "u0+($n,$m)δu",
             controller,
             prob,
             params,
             tsteps;
             datadir,
+            store_policy=false,
             metadata = Dict(
                 :loss => objective,
                 :u0 => initial_condition,
-                :δu => [n * δu[1], m * δu[2]],
-            )
+                :u0_original => u0,
+                :δu => δu,
+                :N => N,
+                :M => M,
+            ),
         )
     end
 end
@@ -136,17 +164,20 @@ function store_simulation(
     tsteps::AbstractVector{<:Real};
     metadata=nothing::Union{Nothing, Dict},
     datadir=nothing::Union{Nothing, String},
+    store_policy=true::Bool,
 )
     if isnothing(datadir) || isnothing(filename)
         @info "Results not stored due to missing filename/datadir." maxlog=1
         return
     end
 
-    bson_path = joinpath(datadir, filename * ".bson")
-    BSON.@save bson_path controller
+    if store_policy
+        bson_path = joinpath(datadir, filename * ".bson")
+        BSON.@save bson_path controller
 
-    weights_path = joinpath(datadir, filename * "_weights.csv")
-    CSV.write(weights_path, Tables.table(initial_params(controller)), writeheader=false)
+        # weights_path = joinpath(datadir, filename * "_nnweights.csv")
+        # CSV.write(weights_path, Tables.table(initial_params(controller)), writeheader=false)
+    end
 
     times, states, controls = run_simulation(controller, prob, params, tsteps)
 

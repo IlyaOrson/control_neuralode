@@ -150,7 +150,7 @@ function van_der_pol(; store_results=true::Bool)
         result.minimizer,
         tsteps;
         only=:controls,
-        )
+    )
 
     store_simulation(
         "constrained",

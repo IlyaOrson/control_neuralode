@@ -78,25 +78,49 @@ function batch_reactor(; store_results=true::Bool)
 
     θ_opt = result.minimizer
 
-    δu = (-.2, .2)
-    for n=1:10, m=1:10 # FIXME
-        initial_condition = u0 .+ [n * δu[1], m * δu[2]]
-        # prob = ODEProblem(dudt!, u0, tspan, θ)
-        prob = remake(prob; u0=initial_condition)
-        objective = loss(θ_opt, prob, tsteps)
-        store_simulation(
-            "Δu = u0 + ($n,$m) * δu",
-            controller,
-            prob,
-            θ_opt,
-            tsteps;
-            datadir,
-            metadata = Dict(
-                :loss => objective
-                :u0 => initial_condition,
-                :u0_original => u0,
-                :tspan => tspan,
-            )
-        )
+    xlims, ylims = (0f0,1f0), (0f0,1f0)
+    xpoints, ypoints = range(xlims...; length=100), range(ylims...; length=100)
+
+    function stream_interface(coords...)
+        u = zeros(Float32, 2)
+        du = zeros(Float32, 2)
+        copyto!(u, coords)
+        # du = deepcopy(coords)
+        system!(du, u, θ_opt, 0f0, controller)
+        return du
     end
+
+    phase_array_tuples = stream_interface.(xpoints', ypoints)
+    xphase = getindex.(phase_array_tuples, 1)
+    yphase = getindex.(phase_array_tuples, 2)
+    magnitude = map((x) -> sum(x.^2), phase_array_tuples)
+
+    # controlling the starting points of the streamlines
+    seed_points = hcat(range(xlims...; length=5), range(ylims...; length=5))
+
+    fig = plt.figure()
+    # gs = GridSpec(nrows=3, ncols=2, height_ratios=[1, 1, 2])
+
+    ax = fig.add_subplot()
+    strm = ax.streamplot(
+        xpoints, ypoints, xphase, yphase,
+        color=magnitude, linewidth=2, cmap="autumn", start_points=seed_points
+    )
+    fig.colorbar(strm.lines)
+    ax.set_title("Controlling Starting Points")
+
+    # displaying the starting points
+    ax.plot(u0[0], u0[1], "ro")
+    ax.plot(seed_points[0], seed_points[1], "bo")
+    ax.set(xlim=(-w, w), ylim=(-w, w))
+
+    plt.tight_layout()
+    plt.show()
+
+    # δu = (-.2f0, .2f0)
+    # N = 10
+    # M = 10
+    # initial_conditions_variations(
+    #     loss, controller, prob, θ_opt, tsteps, datadir, u0, δu, N, M
+    # )
 end  # script wrapper
