@@ -63,7 +63,7 @@ function batch_reactor(; store_results=true::Bool)
     optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
     optprob = OptimizationProblem(optfunc, θ; allow_f_increases=true)
     linesearch = BackTracking(iterations=10)
-    result = GalacticOptim.solve(optprob, LBFGS(; linesearch))#; cb=plotting_callback)
+    result = GalacticOptim.solve(optprob, LBFGS(; linesearch), iterations=20)#; cb=plotting_callback)
 
     store_simulation(
         "optimized",
@@ -78,44 +78,17 @@ function batch_reactor(; store_results=true::Bool)
 
     θ_opt = result.minimizer
 
+    _, states_opt, _ = run_simulation(controller, prob, θ_opt , tsteps)
+
+    phase_time = 0f0
     xlims, ylims = (0f0,1f0), (0f0,1f0)
-    xpoints, ypoints = range(xlims...; length=100), range(ylims...; length=100)
-
-    function stream_interface(coords...)
-        u = zeros(Float32, 2)
-        du = zeros(Float32, 2)
-        copyto!(u, coords)
-        # du = deepcopy(coords)
-        system!(du, u, θ_opt, 0f0, controller)
-        return du
-    end
-
-    phase_array_tuples = stream_interface.(xpoints', ypoints)
-    xphase = getindex.(phase_array_tuples, 1)
-    yphase = getindex.(phase_array_tuples, 2)
-    magnitude = map((x) -> sum(x.^2), phase_array_tuples)
-
-    # controlling the starting points of the streamlines
-    seed_points = hcat(range(xlims...; length=5), range(ylims...; length=5))
-
-    fig = plt.figure()
-    # gs = GridSpec(nrows=3, ncols=2, height_ratios=[1, 1, 2])
-
-    ax = fig.add_subplot()
-    strm = ax.streamplot(
-        xpoints, ypoints, xphase, yphase,
-        color=magnitude, linewidth=2, cmap="autumn", start_points=seed_points
+    start_points_x = range(u0[1], u0[1] - .2; length=2)
+    start_points_y = range(u0[2], u0[2] + .2; length=2)
+    phase_plot(
+        system!, controller, θ_opt, phase_time, xlims, ylims;
+        initial_point=states_opt[:,1], final_point=states_opt[:,end],
+        start_points_x, start_points_y,
     )
-    fig.colorbar(strm.lines)
-    ax.set_title("Controlling Starting Points")
-
-    # displaying the starting points
-    ax.plot(u0[0], u0[1], "ro")
-    ax.plot(seed_points[0], seed_points[1], "bo")
-    ax.set(xlim=(-w, w), ylim=(-w, w))
-
-    plt.tight_layout()
-    plt.show()
 
     # δu = (-.2f0, .2f0)
     # N = 10

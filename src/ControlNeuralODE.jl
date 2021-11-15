@@ -2,6 +2,7 @@ module ControlNeuralODE
 
 using Dates
 using Base.Filesystem
+using LazyGrids: ndgrid
 
 using ProgressMeter
 using Infiltrator
@@ -222,6 +223,73 @@ function plot_simulation(
     end
     display(plt)
     return false  # if return true, then optimization stops
+end
+
+function phase_plot(
+    inplace_system, controller, params, phase_time, xlims, ylims; num_points=200,
+    initial_point=nothing, final_point=nothing,
+    start_points=nothing, start_points_x=nothing, start_points_y=nothing,
+    kwargs...,
+)
+    xpoints = range(xlims...; length=num_points) |> collect
+    ypoints = range(ylims...; length=num_points) |> collect
+
+    function stream_interface(coords...)
+        u = zeros(Float32, 2)
+        du = zeros(Float32, 2)
+        copyto!(u, coords)
+        # du = deepcopy(coords)
+        inplace_system(du, u, params, phase_time, controller)
+        return du
+    end
+
+    phase_array_tuples = stream_interface.(xpoints', ypoints)
+    xphase = getindex.(phase_array_tuples, 1)
+    yphase = getindex.(phase_array_tuples, 2)
+    magnitude = map((x) -> sqrt(sum(x.^2)), phase_array_tuples)
+
+    fig = plt.figure()
+    # gs = GridSpec(nrows=3, ncols=2, height_ratios=[1, 1, 2])
+
+    if isnothing(start_points) && !isnothing(start_points_x) && !isnothing(start_points_y)
+        @assert size(start_points_x) == size(start_points_y)
+        start_grid_x, start_grid_y = ndgrid(start_points_x, start_points_y)
+        start_points = hcat(reshape(start_grid_x, :, 1), reshape(start_grid_y, :, 1))
+    end
+
+    # integration_direction = isnothing(start_points) ? "both" : "forward"
+
+    ax = fig.add_subplot()
+    strm = ax.streamplot(
+        xpoints, ypoints, xphase, yphase;
+        color=magnitude, linewidth=1.5, density=1.5, cmap="summer", kwargs...
+    )
+    fig.colorbar(strm.lines)
+    ax.set_title("Phase plot with controller")
+
+    if !isnothing(start_points)
+        ax.plot(start_points[:,1], start_points[:,2], "kX")
+        strm = ax.streamplot(
+            xpoints, ypoints, xphase, yphase;
+            color="darkorchid", linewidth=3, density=20,
+            start_points, integration_direction="forward", kwargs...
+        )
+    end
+
+    # displaying the starting points
+    if !isnothing(initial_point)
+        ax.plot(initial_point[1], initial_point[2], "c*", markersize=20, label="Initial state")
+    end
+    if !isnothing(final_point)
+        ax.plot(final_point[1], final_point[2], "m*", markersize=20, label="Final state")
+    end
+
+    ax.set(xlim = xlims .+ (-.05, .05), ylim = ylims .+ (-.05, .05))
+    ax.set_xlabel("x")
+    ax.set_ylabel("y")
+    ax.legend()
+    plt.tight_layout()
+    plt.show()
 end
 
 function controller_shape(controller)

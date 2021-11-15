@@ -603,6 +603,12 @@ version = "0.1.4"
 deps = ["Artifacts", "Pkg"]
 uuid = "4af54fe1-eca0-43a8-85a7-787d91b784e3"
 
+[[LazyGrids]]
+deps = ["Statistics"]
+git-tree-sha1 = "d0b3d29c09c15d49b51c7a11ddf38a3868eaf060"
+uuid = "7031d0ef-c40d-4431-b2f8-61a8d2f650db"
+version = "0.2.0"
+
 [[LeftChildRightSiblingTrees]]
 deps = ["AbstractTrees"]
 git-tree-sha1 = "71be1eb5ad19cb4f61fa8c73395c0338fd092ae0"
