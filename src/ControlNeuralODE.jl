@@ -14,12 +14,11 @@ using OrdinaryDiffEq, DiffEqSensitivity, DiffEqFlux
 using UnicodePlots: lineplot, lineplot!, histogram, boxplot
 using BSON, JSON3, CSV, Tables
 
-import PyPlot as plt
-const mpl = plt.matplotlib
+using PyPlot: plt, matplotlib
+const mpl = matplotlib
 # const GridSpec = mpl.gridspec.GridSpec
 
-# plt.style.use("seaborn-colorblind")  # "ggplot"
-mpl.pyplot.style.use("seaborn-colorblind")  # "ggplot"
+plt.style.use("seaborn-colorblind")  # "ggplot"
 palette = plt.cm.Dark2.colors
 
 font = Dict(:family => "STIXGeneral", :size => 16)
@@ -226,27 +225,37 @@ function plot_simulation(
 end
 
 function phase_plot(
-    inplace_system, controller, params, phase_time, xlims, ylims; num_points=200,
-    initial_point=nothing, final_point=nothing,
+    system!, controller, params, phase_time, coord_lims;  #xlims, ylims
+    points_per_dim=1000, dimension=2, projection=[1,2], markers=nothing,
     start_points=nothing, start_points_x=nothing, start_points_y=nothing,
-    kwargs...,
+    title=nothing, kwargs...,
 )
-    xpoints = range(xlims...; length=num_points) |> collect
-    ypoints = range(ylims...; length=num_points) |> collect
+    @assert length(projection) == 2
+    @assert all(x -> isa(x, Tuple) && length(x) == 2, coord_lims)
 
     function stream_interface(coords...)
-        u = zeros(Float32, 2)
-        du = zeros(Float32, 2)
+        u = zeros(Float32, dimension)
+        du = zeros(Float32, dimension)
         copyto!(u, coords)
         # du = deepcopy(coords)
-        inplace_system(du, u, params, phase_time, controller)
+        system!(du, u, params, phase_time, controller)
         return du
     end
 
-    phase_array_tuples = stream_interface.(xpoints', ypoints)
-    xphase = getindex.(phase_array_tuples, 1)
-    yphase = getindex.(phase_array_tuples, 2)
-    magnitude = map((x) -> sqrt(sum(x.^2)), phase_array_tuples)
+    # evaluate system over each combination of coords in the specified ranges
+
+    # NOTE: float64 is relevant for the conversion to pyplot due to inner
+    #       numerical checks of equidistant input in the streamplot function
+    ranges = [range(Float64.(lims)...; length=points_per_dim) for lims in coord_lims]
+    xpoints, ypoints = collect.(ranges[projection])
+
+    # NOTE: the transpose is required to get f.(a',b) instead of the default f.(a, b')
+    phase_array_tuples = stream_interface.(ndgrid(xpoints, ypoints)...)'
+    # phase_array_tuples = stream_interface.(xpoints', ypoints)
+
+    xphase, yphase = [getindex.(phase_array_tuples, dim) for dim in projection]
+
+    magnitude = map((x, y) -> sqrt(sum(x^2 + y^2)), xphase, yphase)
 
     fig = plt.figure()
     # gs = GridSpec(nrows=3, ncols=2, height_ratios=[1, 1, 2])
@@ -258,17 +267,14 @@ function phase_plot(
     end
 
     # integration_direction = isnothing(start_points) ? "both" : "forward"
-
     ax = fig.add_subplot()
     strm = ax.streamplot(
         xpoints, ypoints, xphase, yphase;
         color=magnitude, linewidth=1.5, density=1.5, cmap="summer", kwargs...
     )
-    fig.colorbar(strm.lines)
-    ax.set_title("Phase plot with controller")
-
     if !isnothing(start_points)
-        ax.plot(start_points[:,1], start_points[:,2], "kX")
+        start_points = start_points[:, projection]
+        ax.plot(start_points[:,1], start_points[:,2], "kX", markersize=12)
         strm = ax.streamplot(
             xpoints, ypoints, xphase, yphase;
             color="darkorchid", linewidth=3, density=20,
@@ -277,18 +283,31 @@ function phase_plot(
     end
 
     # displaying the starting points
-    if !isnothing(initial_point)
-        ax.plot(initial_point[1], initial_point[2], "c*", markersize=20, label="Initial state")
+    if !isnothing(markers)
+        for (point, style, label) in markers
+            point_projected = point[projection]
+            ax.plot(point_projected[1], point_projected[2], style, markersize=20, label=label)
+        end
     end
-    if !isnothing(final_point)
-        ax.plot(final_point[1], final_point[2], "m*", markersize=20, label="Final state")
-    end
+
+    xlims, ylims = coord_lims[projection]
 
     ax.set(xlim = xlims .+ (-.05, .05), ylim = ylims .+ (-.05, .05))
     ax.set_xlabel("x")
     ax.set_ylabel("y")
+    !isnothing(title) && ax.set_title(title)
+
+    fig.colorbar(strm.lines)
     ax.legend()
+
+    # remove frame
+    ax.spines["top"].set_visible(false)
+    ax.spines["right"].set_visible(false)
+    ax.spines["bottom"].set_visible(false)
+    ax.spines["left"].set_visible(false)
+
     plt.tight_layout()
+
     plt.show()
 end
 

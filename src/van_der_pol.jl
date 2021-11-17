@@ -45,11 +45,33 @@ function van_der_pol(; store_results=true::Bool)
     # model weights are destructured into a vector of parameters
     θ = initial_params(controller)
 
-    # set differential equation problem and solve it
+    # set differential equation problem
     dudt!(du, u, p, t) = system!(du, u, p, t, controller)
+    prob = ODEProblem(dudt!, u0, tspan, θ)
+
+    phase_time = 0f0
+    half_arista = 4.0
+    low_bounds = u0 .- repeat([half_arista], length(u0))
+    high_bounds = u0 .+ repeat([half_arista], length(u0))
+    bounds = [(l,h) for (l, h) in zip(low_bounds, high_bounds)]
+    widths = map(tup -> tup[2] - tup[1], bounds)
+    points_per_side = 3
+    points_ranges = [range(u0[1]-widths[i]/5, u0[1]+widths[i]/5, length=points_per_side) for i in eachindex(u0)]
+
+    _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
+    phase_plot(
+        system!, controller, θ, phase_time, bounds;
+        dimension=3, projection=[1,2],
+        markers = [
+            # (states_raw[:,1], "m*", "Initial state"),
+            (states_raw[:,end], "r*", "Final state"),
+        ],
+        # start_points_x, start_points_y,
+        start_points=reshape(u0 .+ repeat([-1e-4], 3), 1, 3),
+        title="Initial policy",
+    )
 
     # closures to comply with required interface
-    prob = ODEProblem(dudt!, u0, tspan, θ)
     function plotting_callback(params, loss)
         return plot_simulation(
             controller, prob, params, tsteps; only=:states, vars=[1], show=loss
@@ -127,7 +149,7 @@ function van_der_pol(; store_results=true::Bool)
             show=penalty_loss_(result.minimizer),
         )
 
-        adtype = AutoZygote()
+        adtype = GalacticOptim.AutoZygote()
         optf = OptimizationFunction((x, p) -> penalty_loss_(x), adtype)
         optfunc = GalacticOptim.instantiate_function(
             optf, result.minimizer, adtype, nothing
@@ -137,13 +159,15 @@ function van_der_pol(; store_results=true::Bool)
         )
         linesearch = BackTracking(iterations=20)
         result = GalacticOptim.solve(
-            optprob, LBFGS(; linesearch)#; cb=plotting_callback
+            optprob, LBFGS(; linesearch);
+            iterations=5,  # FIXME
+            # cb=plotting_callback,
         )
     end
 
     constrained_prob = ODEProblem(dudt!, u0, tspan, result.minimizer)
 
-    penalty_loss(params, constrained_prob, tsteps; α)
+    penalty_loss(result.minimizer, constrained_prob, tsteps; α = penalty_coefficients[end])
     plot_simulation(
         controller,
         constrained_prob,
@@ -166,4 +190,20 @@ function van_der_pol(; store_results=true::Bool)
             :constraint => "quadratic x2(t) > -0.4",
         ),
     )
+
+    θ_opt = result.minimizer
+    _, states_opt, _ = run_simulation(controller, prob, θ_opt, tsteps)
+
+    phase_plot(
+        system!, controller, θ_opt, phase_time, bounds;
+        dimension=3, projection=[1,2],
+        markers = [
+            # (states_opt[:,1], "m*", "Initial state"),
+            (states_opt[:,end], "r*", "Final state"),
+        ],
+        # start_points_x, start_points_y,
+        start_points=reshape(u0 .+ repeat([-1e-4], 3), 1, 3),
+        title="Optimized policy"
+    )
+
 end  # wrapper script

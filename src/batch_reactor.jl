@@ -47,9 +47,34 @@ function batch_reactor(; store_results=true::Bool)
     # current model weights are destructured into a vector of parameters
     θ = initial_params(controller)
 
-    # set differential equation problem and solve it
+    # set differential equation problem
     dudt!(du, u, p, t) = system!(du, u, p, t, controller)
     prob = ODEProblem(dudt!, u0, tspan, θ)
+
+    # variables for streamplots
+    phase_time = 0f0
+    xlims, ylims = (0f0,1.5f0), (0f0,1.5f0)
+    coord_lims = [xlims, ylims]
+    xwidth = xlims[end] - xlims[1]
+    ywidth = ylims[end] - ylims[1]
+
+    # bug in streamplot won't plot points on the right and upper edges
+    # https://github.com/matplotlib/matplotlib/issues/21649
+    # start_points_x = range(u0[1] - 1e-4, u0[1] - xwidth/5; length=3)
+    # start_points_y = range(u0[2] + 1e-4, u0[2] + ywidth/5; length=3)
+
+    _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
+
+    phase_plot(
+        system!, controller, θ, phase_time, coord_lims;
+        markers = [
+            # (states_raw[:,1], "m*", "Initial state"),
+            (states_raw[:,end], "m*", "Final state"),
+        ],
+        # start_points_x, start_points_y,
+        start_points=reshape(u0 .+ (-1e-4,0),1,2),
+        title="Initial policy",
+    )
 
     # closures to comply with required interface
     loss(params) = loss(params, prob, tsteps)
@@ -63,7 +88,7 @@ function batch_reactor(; store_results=true::Bool)
     optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
     optprob = OptimizationProblem(optfunc, θ; allow_f_increases=true)
     linesearch = BackTracking(iterations=10)
-    result = GalacticOptim.solve(optprob, LBFGS(; linesearch), iterations=20)#; cb=plotting_callback)
+    result = GalacticOptim.solve(optprob, LBFGS(; linesearch), iterations=100)#; cb=plotting_callback)
 
     store_simulation(
         "optimized",
@@ -80,14 +105,15 @@ function batch_reactor(; store_results=true::Bool)
 
     _, states_opt, _ = run_simulation(controller, prob, θ_opt , tsteps)
 
-    phase_time = 0f0
-    xlims, ylims = (0f0,1f0), (0f0,1f0)
-    start_points_x = range(u0[1], u0[1] - .2; length=2)
-    start_points_y = range(u0[2], u0[2] + .2; length=2)
     phase_plot(
-        system!, controller, θ_opt, phase_time, xlims, ylims;
-        initial_point=states_opt[:,1], final_point=states_opt[:,end],
-        start_points_x, start_points_y,
+        system!, controller, θ_opt, phase_time, coord_lims;
+        markers = [
+            # (states_opt[:,1], "m*", "Initial state"),
+            (states_opt[:,end], "m*", "Final state"),
+        ],
+        # start_points_x, start_points_y,
+        start_points=reshape(u0 .+ (-1e-4,0),1,2),
+        title="Optimized policy",
     )
 
     # δu = (-.2f0, .2f0)
