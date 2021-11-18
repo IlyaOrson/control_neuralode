@@ -3,7 +3,6 @@
 # Computers & Chemical Engineering, 139, 106844.
 
 function bioreactor(; store_results=true::Bool)
-
     datadir = nothing
     if store_results
         datadir = generate_data_subdir(@__FILE__)

@@ -25,7 +25,7 @@ font = Dict(:family => "STIXGeneral", :size => 16)
 savefig = Dict(:dpi => 600, :bbox => "tight")
 lines = Dict(:linewidth => 4)
 figure = Dict(:figsize => (8, 4))
-axes = Dict(:prop_cycle => mpl.cycler(color=palette))
+axes = Dict(:prop_cycle => mpl.cycler(; color=palette))
 legend = Dict(:fontsize => "x-large")  # medium for presentations, x-large for papers
 
 mpl.rc("font"; font...)
@@ -131,7 +131,7 @@ end
 function initial_conditions_variations(
     loss::Function, controller::Function, prob, params, tsteps, datadir, u0, δu, N, M
 )
-    @showprogress for n=1:N, m=1:M
+    @showprogress for n in 1:N, m in 1:M
         initial_condition = u0 + [n * δu[1], m * δu[2]]
         # prob = ODEProblem(dudt!, u0, tspan, θ)
         prob = remake(prob; u0=initial_condition)
@@ -144,7 +144,7 @@ function initial_conditions_variations(
             tsteps;
             datadir,
             store_policy=false,
-            metadata = Dict(
+            metadata=Dict(
                 :loss => objective,
                 :u0 => initial_condition,
                 :u0_original => u0,
@@ -157,18 +157,18 @@ function initial_conditions_variations(
 end
 
 function store_simulation(
-    filename::Union{Nothing, String},
+    filename::Union{Nothing,String},
     controller::DiffEqFlux.FastChain,
     prob::ODEProblem,
     params::AbstractVector{<:Real},
     tsteps::AbstractVector{<:Real};
-    metadata=nothing::Union{Nothing, Dict},
-    datadir=nothing::Union{Nothing, String},
+    metadata=nothing::Union{Nothing,Dict},
+    datadir=nothing::Union{Nothing,String},
     store_policy=true::Bool,
 )
     if isnothing(datadir) || isnothing(filename)
-        @info "Results not stored due to missing filename/datadir." maxlog=1
-        return
+        @info "Results not stored due to missing filename/datadir." maxlog = 1
+        return nothing
     end
 
     if store_policy
@@ -225,10 +225,20 @@ function plot_simulation(
 end
 
 function phase_plot(
-    system!, controller, params, phase_time, coord_lims;  #xlims, ylims
-    points_per_dim=1000, dimension=2, projection=[1,2], markers=nothing,
-    start_points=nothing, start_points_x=nothing, start_points_y=nothing,
-    title=nothing, kwargs...,
+    system!,
+    controller,
+    params,
+    phase_time,
+    coord_lims;  #xlims, ylims
+    points_per_dim=1000,
+    dimension=2,
+    projection=[1, 2],
+    markers=nothing,
+    start_points=nothing,
+    start_points_x=nothing,
+    start_points_y=nothing,
+    title=nothing,
+    kwargs...,
 )
     @assert length(projection) == 2
     @assert all(x -> isa(x, Tuple) && length(x) == 2, coord_lims)
@@ -269,16 +279,30 @@ function phase_plot(
     # integration_direction = isnothing(start_points) ? "both" : "forward"
     ax = fig.add_subplot()
     strm = ax.streamplot(
-        xpoints, ypoints, xphase, yphase;
-        color=magnitude, linewidth=1.5, density=1.5, cmap="summer", kwargs...
+        xpoints,
+        ypoints,
+        xphase,
+        yphase;
+        color=magnitude,
+        linewidth=1.5,
+        density=1.5,
+        cmap="summer",
+        kwargs...,
     )
     if !isnothing(start_points)
         start_points = start_points[:, projection]
-        ax.plot(start_points[:,1], start_points[:,2], "kX", markersize=12)
+        ax.plot(start_points[:, 1], start_points[:, 2], "kX"; markersize=12)
         strm = ax.streamplot(
-            xpoints, ypoints, xphase, yphase;
-            color="darkorchid", linewidth=3, density=20,
-            start_points, integration_direction="forward", kwargs...
+            xpoints,
+            ypoints,
+            xphase,
+            yphase;
+            color="darkorchid",
+            linewidth=3,
+            density=20,
+            start_points,
+            integration_direction="forward",
+            kwargs...,
         )
     end
 
@@ -286,13 +310,15 @@ function phase_plot(
     if !isnothing(markers)
         for (point, style, label) in markers
             point_projected = point[projection]
-            ax.plot(point_projected[1], point_projected[2], style, markersize=20, label=label)
+            ax.plot(
+                point_projected[1], point_projected[2], style; markersize=20, label=label
+            )
         end
     end
 
     xlims, ylims = coord_lims[projection]
 
-    ax.set(xlim = xlims .+ (-.05, .05), ylim = ylims .+ (-.05, .05))
+    ax.set(; xlim=xlims .+ (-.05, 0.05), ylim=ylims .+ (-.05, 0.05))
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     !isnothing(title) && ax.set_title(title)
@@ -308,7 +334,7 @@ function phase_plot(
 
     plt.tight_layout()
 
-    plt.show()
+    return plt.show()
 end
 
 function controller_shape(controller)
@@ -368,11 +394,7 @@ function preconditioner(
         fixed_sol = solve(fixed_prob, BS3(); abstol=1f-1, reltol=1f-1, saveat)
 
         function precondition_loss(params; plot=false)
-
-            plot_arrays = Dict(
-                :reference => [],
-                :control => [],
-            )
+            plot_arrays = Dict(:reference => [], :control => [])
             sum_squares = 0.0f0
 
             # for (time, state) in zip(fixed_sol.t, fixed_sol.u)  # Zygote error
@@ -397,8 +419,8 @@ function preconditioner(
                     controls = reduce(hcat, plot_arrays[:control])
                     @assert length(refereces) == length(controls)
                     for r in 1:size(refereces, 1)
-                        p = lineplot(refereces[r,:]; name="fixed")
-                        lineplot!(p, controls[r,:]; name="neural")
+                        p = lineplot(refereces[r, :]; name="fixed")
+                        lineplot!(p, controls[r, :]; name="neural")
                         display(p)
                     end
                 end
@@ -471,7 +493,9 @@ function constrained_training(
             θ, prob; α, δ, tsteps
         )
 
-        @info "Current values" α, δ, objective, state_penalty, control_penalty, regularization
+        @info "Current values" α,
+        δ, objective, state_penalty, control_penalty,
+        regularization
 
         local_metadata = Dict(
             :objective => objective,
@@ -488,13 +512,7 @@ function constrained_training(
         )
         metadata = merge(metadata, local_metadata)
         store_simulation(
-            "delta_$(round(δ, digits=2))",
-            controller,
-            prob,
-            θ,
-            tsteps;
-            metadata,
-            datadir,
+            "delta_$(round(δ, digits=2))", controller, prob, θ, tsteps; metadata, datadir
         )
         # ProgressMeter.finish!(prog)
         # break

@@ -7,7 +7,6 @@
 # p. 658
 
 function semibatch_reactor(; store_results=true::Bool)
-
     datadir = nothing
     if store_results
         datadir = generate_data_subdir(@__FILE__)
@@ -232,7 +231,7 @@ function semibatch_reactor(; store_results=true::Bool)
     @show final_objective, final_penalty = loss(result.minimizer, prob, tsteps; δ=δs[end])
 
     @info "Storing results"
-    store_simulation(
+    return store_simulation(
         "constrained",
         controller,
         prob,

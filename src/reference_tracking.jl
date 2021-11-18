@@ -3,7 +3,6 @@
 # The Canadian Journal of Chemical Engineering, 49(4), 522-528.
 
 function reference_tracking(; store_results=true::Bool)
-
     datadir = nothing
     if store_results
         datadir = generate_data_subdir(@__FILE__)
@@ -182,7 +181,7 @@ function reference_tracking(; store_results=true::Bool)
         :α2 => α2,
         :α3 => α3,
     )
-    store_simulation(
+    return store_simulation(
         reaction, controller, prob, result.minimizer, tsteps; metadata, datadir
     )
 end  # script wrapper

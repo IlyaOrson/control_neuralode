@@ -2,7 +2,6 @@
 # 2.Problems with Path Constraints
 
 function van_der_pol(; store_results=true::Bool)
-
     datadir = nothing
     if store_results
         datadir = generate_data_subdir(@__FILE__)
@@ -49,22 +48,30 @@ function van_der_pol(; store_results=true::Bool)
     dudt!(du, u, p, t) = system!(du, u, p, t, controller)
     prob = ODEProblem(dudt!, u0, tspan, θ)
 
-    phase_time = 0f0
+    phase_time = 0.0f0
     half_arista = 4.0
     low_bounds = u0 .- repeat([half_arista], length(u0))
     high_bounds = u0 .+ repeat([half_arista], length(u0))
-    bounds = [(l,h) for (l, h) in zip(low_bounds, high_bounds)]
+    bounds = [(l, h) for (l, h) in zip(low_bounds, high_bounds)]
     widths = map(tup -> tup[2] - tup[1], bounds)
     points_per_side = 3
-    points_ranges = [range(u0[1]-widths[i]/5, u0[1]+widths[i]/5, length=points_per_side) for i in eachindex(u0)]
+    points_ranges = [
+        range(u0[1] - widths[i] / 5, u0[1] + widths[i] / 5; length=points_per_side) for
+        i in eachindex(u0)
+    ]
 
     _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
     phase_plot(
-        system!, controller, θ, phase_time, bounds;
-        dimension=3, projection=[1,2],
-        markers = [
+        system!,
+        controller,
+        θ,
+        phase_time,
+        bounds;
+        dimension=3,
+        projection=[1, 2],
+        markers=[
             # (states_raw[:,1], "m*", "Initial state"),
-            (states_raw[:,end], "r*", "Final state"),
+            (states_raw[:, end], "r*", "Final state"),
         ],
         # start_points_x, start_points_y,
         start_points=reshape(u0 .+ repeat([-1e-4], 3), 1, 3),
@@ -116,9 +123,13 @@ function van_der_pol(; store_results=true::Bool)
     ### now add state constraint x2(t) > -0.4 with
     function penalty_loss(params, prob, tsteps; α=10.0f0)
         # integrate ODE system (stiff problem)
-        sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true), checkpointing=true)
-        sol = solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, sensealg) |> Array
-        fault = min.(sol[1, 1:end] .+ 0.4f0, 0f0)
+        sensealg = InterpolatingAdjoint(;
+            autojacvec=ReverseDiffVJP(true), checkpointing=true
+        )
+        sol =
+            solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, sensealg) |>
+            Array
+        fault = min.(sol[1, 1:end] .+ 0.4f0, 0.0f0)
         penalty = α * dt * sum(fault .^ 2)  # quadratic penalty
         return sol[3, end] + penalty
     end
@@ -154,12 +165,11 @@ function van_der_pol(; store_results=true::Bool)
         optfunc = GalacticOptim.instantiate_function(
             optf, result.minimizer, adtype, nothing
         )
-        optprob = OptimizationProblem(
-            optfunc, result.minimizer; allow_f_increases=true
-        )
-        linesearch = BackTracking(iterations=20)
+        optprob = OptimizationProblem(optfunc, result.minimizer; allow_f_increases=true)
+        linesearch = BackTracking(; iterations=20)
         result = GalacticOptim.solve(
-            optprob, LBFGS(; linesearch);
+            optprob,
+            LBFGS(; linesearch);
             iterations=5,  # FIXME
             # cb=plotting_callback,
         )
@@ -167,14 +177,8 @@ function van_der_pol(; store_results=true::Bool)
 
     constrained_prob = ODEProblem(dudt!, u0, tspan, result.minimizer)
 
-    penalty_loss(result.minimizer, constrained_prob, tsteps; α = penalty_coefficients[end])
-    plot_simulation(
-        controller,
-        constrained_prob,
-        result.minimizer,
-        tsteps;
-        only=:controls,
-    )
+    penalty_loss(result.minimizer, constrained_prob, tsteps; α=penalty_coefficients[end])
+    plot_simulation(controller, constrained_prob, result.minimizer, tsteps; only=:controls)
 
     store_simulation(
         "constrained",
@@ -194,16 +198,20 @@ function van_der_pol(; store_results=true::Bool)
     θ_opt = result.minimizer
     _, states_opt, _ = run_simulation(controller, prob, θ_opt, tsteps)
 
-    phase_plot(
-        system!, controller, θ_opt, phase_time, bounds;
-        dimension=3, projection=[1,2],
-        markers = [
+    return phase_plot(
+        system!,
+        controller,
+        θ_opt,
+        phase_time,
+        bounds;
+        dimension=3,
+        projection=[1, 2],
+        markers=[
             # (states_opt[:,1], "m*", "Initial state"),
-            (states_opt[:,end], "r*", "Final state"),
+            (states_opt[:, end], "r*", "Final state"),
         ],
         # start_points_x, start_points_y,
         start_points=reshape(u0 .+ repeat([-1e-4], 3), 1, 3),
-        title="Optimized policy"
+        title="Optimized policy",
     )
-
 end  # wrapper script

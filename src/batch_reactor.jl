@@ -1,5 +1,4 @@
 function batch_reactor(; store_results=true::Bool)
-
     datadir = nothing
     if store_results
         datadir = generate_data_subdir(@__FILE__)
@@ -26,7 +25,9 @@ function batch_reactor(; store_results=true::Bool)
 
     # define objective function to optimize
     function loss(params, prob, tsteps)
-        sensealg=InterpolatingAdjoint(autojacvec=ReverseDiffVJP(true), checkpointing=true)
+        sensealg = InterpolatingAdjoint(;
+            autojacvec=ReverseDiffVJP(true), checkpointing=true
+        )
         sol = solve(prob, Tsit5(); p=params, saveat=tsteps, sensealg)  # integrate ODE system
         return -Array(sol)[2, end]  # second variable, last value, maximize
     end
@@ -52,8 +53,8 @@ function batch_reactor(; store_results=true::Bool)
     prob = ODEProblem(dudt!, u0, tspan, θ)
 
     # variables for streamplots
-    phase_time = 0f0
-    xlims, ylims = (0f0,1.5f0), (0f0,1.5f0)
+    phase_time = 0.0f0
+    xlims, ylims = (0.0f0, 1.5f0), (0.0f0, 1.5f0)
     coord_lims = [xlims, ylims]
     xwidth = xlims[end] - xlims[1]
     ywidth = ylims[end] - ylims[1]
@@ -66,13 +67,17 @@ function batch_reactor(; store_results=true::Bool)
     _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
 
     phase_plot(
-        system!, controller, θ, phase_time, coord_lims;
-        markers = [
+        system!,
+        controller,
+        θ,
+        phase_time,
+        coord_lims;
+        markers=[
             # (states_raw[:,1], "m*", "Initial state"),
-            (states_raw[:,end], "m*", "Final state"),
+            (states_raw[:, end], "m*", "Final state"),
         ],
         # start_points_x, start_points_y,
-        start_points=reshape(u0 .+ (-1e-4,0),1,2),
+        start_points=reshape(u0 .+ (-1e-4, 0), 1, 2),
         title="Initial policy",
     )
 
@@ -87,8 +92,8 @@ function batch_reactor(; store_results=true::Bool)
     optf = OptimizationFunction((x, p) -> loss(x), adtype)
     optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
     optprob = OptimizationProblem(optfunc, θ; allow_f_increases=true)
-    linesearch = BackTracking(iterations=10)
-    result = GalacticOptim.solve(optprob, LBFGS(; linesearch), iterations=100)#; cb=plotting_callback)
+    linesearch = BackTracking(; iterations=10)
+    result = GalacticOptim.solve(optprob, LBFGS(; linesearch); iterations=100)#; cb=plotting_callback)
 
     store_simulation(
         "optimized",
@@ -97,22 +102,26 @@ function batch_reactor(; store_results=true::Bool)
         result.minimizer,
         tsteps;
         metadata=Dict(:loss => loss(result.minimizer)),
-        datadir
+        datadir,
     )
     plot_simulation(controller, prob, result.minimizer, tsteps; only=:controls)
 
     θ_opt = result.minimizer
 
-    _, states_opt, _ = run_simulation(controller, prob, θ_opt , tsteps)
+    _, states_opt, _ = run_simulation(controller, prob, θ_opt, tsteps)
 
-    phase_plot(
-        system!, controller, θ_opt, phase_time, coord_lims;
-        markers = [
+    return phase_plot(
+        system!,
+        controller,
+        θ_opt,
+        phase_time,
+        coord_lims;
+        markers=[
             # (states_opt[:,1], "m*", "Initial state"),
-            (states_opt[:,end], "m*", "Final state"),
+            (states_opt[:, end], "m*", "Final state"),
         ],
         # start_points_x, start_points_y,
-        start_points=reshape(u0 .+ (-1e-4,0),1,2),
+        start_points=reshape(u0 .+ (-1e-4, 0), 1, 2),
         title="Optimized policy",
     )
 
