@@ -1,10 +1,12 @@
 # Feedback Control Policies with Neural ODEs
 
 This code showcases how a state-feedback neural policy, as commonly used in reinforcement
-learning, may be used similarly in an optimal control problem.
+learning, may be used similarly in an optimal control problem while enforcing state and control constraints.
+
+The main ideas where presented in [this talk](https://www.youtube.com/watch?v=omS3ZngEygw) of JuliaCon2021.
 
 ## Running the test cases
-This code requires Julia 1.6.
+This code requires Julia 1.7.
 
 Reproduce the environment with the required dependencies:
 ```julia
@@ -15,7 +17,7 @@ julia> Pkg.add(url="https://github.com/IlyaOrson/ControlNeuralODE.jl")
 Run the test cases:
 
 ```julia
-julia> using ControlNeuralODE: van_der_pol, bioreactor  #...
+julia> using ControlNeuralODE: van_der_pol, bioreactor  # batch_reactor, semibatch_reactor
 julia> van_der_pol()
 ```
 
@@ -66,12 +68,12 @@ Instead, the original system is integrated forward initially to later calculate 
 equation backwards, as in CVI and the adjoint sensitivity analysis.
 
 ### Direct single shooting
-Commonly the control is seed as a function of time and is splitted in predefined intervals, where a
-polinomial parametrizes the control profile. This converts the problem into a discrete NLP problem.
+Commonly the control is seed as a function of time and is split in predefined intervals, where a
+polynomial parametrizes the control profile. This converts the problem into a discrete NLP problem.
 
 # Acknowledgements
 The idea was inspired heavily by the trebuchet demo of Flux and the differentiable control
-example of DiffEqFlux. Chris Rackauckas advise was very useful.
+example of [DiffEqFlux](https://github.com/SciML/DiffEqFlux.jl). A similar idea was contrasted with reinforcement learning in [this work](https://github.com/samuela/ctpg). Chris Rackauckas advise was very useful.
 
 ## Citation
 
