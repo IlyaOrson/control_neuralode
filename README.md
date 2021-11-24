@@ -5,6 +5,8 @@ learning, may be used similarly in an optimal control problem while enforcing st
 
 The main ideas where presented in [this talk](https://www.youtube.com/watch?v=omS3ZngEygw) of JuliaCon2021.
 
+[![Watch the video](https://img.youtube.com/vi/omS3ZngEygw/maxresdefault.jpg)](https://www.youtube.com/watch?v=omS3ZngEygw)
+
 ## Running the test cases
 This code requires Julia 1.7.
 
