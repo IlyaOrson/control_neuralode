@@ -1,6 +1,7 @@
 module ControlNeuralODE
 
 using Dates
+using Base: @kwdef
 using Base.Filesystem
 using LazyGrids: ndgrid
 
@@ -224,6 +225,14 @@ function plot_simulation(
     return false  # if return true, then optimization stops
 end
 
+@kwdef struct PlotConf
+    points
+    fmt="."
+    label=nothing
+    markersize=nothing
+    linewidth=nothing
+end
+
 function phase_plot(
     system!,
     controller,
@@ -306,12 +315,17 @@ function phase_plot(
         )
     end
 
-    # displaying the starting points
+    # displaying points (handles multiple points as horizontally concatenated)
     if !isnothing(markers)
-        for (point, style, label) in markers
-            point_projected = point[projection]
+        for plotconf in markers
+            points_projected = plotconf.points[projection, :]
             ax.plot(
-                point_projected[1], point_projected[2], style; markersize=20, label=label
+                points_projected[1, :],
+                points_projected[2, :],
+                plotconf.fmt;
+                label=plotconf.label,
+                markersize=plotconf.markersize,
+                linewidth=plotconf.linewidth,
             )
         end
     end

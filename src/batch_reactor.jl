@@ -56,26 +56,23 @@ function batch_reactor(; store_results=true::Bool)
     phase_time = 0.0f0
     xlims, ylims = (0.0f0, 1.5f0), (0.0f0, 1.5f0)
     coord_lims = [xlims, ylims]
-    xwidth = xlims[end] - xlims[1]
-    ywidth = ylims[end] - ylims[1]
-
-    # bug in streamplot won't plot points on the right and upper edges
-    # https://github.com/matplotlib/matplotlib/issues/21649
+    # xwidth = xlims[end] - xlims[1]
+    # ywidth = ylims[end] - ylims[1]
     # start_points_x = range(u0[1] - 1e-4, u0[1] - xwidth/5; length=3)
     # start_points_y = range(u0[2] + 1e-4, u0[2] + ywidth/5; length=3)
 
-    _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
+    # bug in streamplot won't plot points on the right and upper edges, so a bump is needed
+    # https://github.com/matplotlib/matplotlib/issues/21649
 
+    _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
+    marker = PlotConf(points=states_raw[:, end], fmt="m*", label="Final state", markersize=20)
     phase_plot(
         system!,
         controller,
         θ,
         phase_time,
         coord_lims;
-        markers=[
-            # (states_raw[:,1], "m*", "Initial state"),
-            (states_raw[:, end], "m*", "Final state"),
-        ],
+        markers=[marker],
         # start_points_x, start_points_y,
         start_points=reshape(u0 .+ (-1e-4, 0), 1, 2),
         title="Initial policy",
@@ -109,17 +106,14 @@ function batch_reactor(; store_results=true::Bool)
     θ_opt = result.minimizer
 
     _, states_opt, _ = run_simulation(controller, prob, θ_opt, tsteps)
-
+    marker = PlotConf(points=states_opt[:, end], fmt="m*", label="Final state", markersize=20)
     return phase_plot(
         system!,
         controller,
         θ_opt,
         phase_time,
         coord_lims;
-        markers=[
-            # (states_opt[:,1], "m*", "Initial state"),
-            (states_opt[:, end], "m*", "Final state"),
-        ],
+        markers=[marker],
         # start_points_x, start_points_y,
         start_points=reshape(u0 .+ (-1e-4, 0), 1, 2),
         title="Optimized policy",

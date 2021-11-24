@@ -61,6 +61,15 @@ function van_der_pol(; store_results=true::Bool)
     ]
 
     _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
+    start_mark = PlotConf(
+        points=states_raw[:, 1], fmt="b*", label="Initial state", markersize=18
+    )
+    marker_path = PlotConf(;
+        points=states_raw, fmt="m--", label="Integration path", linewidth=4
+    )
+    final_mark = PlotConf(;
+        points=states_raw[:, end], fmt="r*", label="Final state", markersize=18
+    )
     phase_plot(
         system!,
         controller,
@@ -69,12 +78,9 @@ function van_der_pol(; store_results=true::Bool)
         bounds;
         dimension=3,
         projection=[1, 2],
-        markers=[
-            # (states_raw[:,1], "m*", "Initial state"),
-            (states_raw[:, end], "r*", "Final state"),
-        ],
+        markers=[marker_path, start_mark, final_mark],
         # start_points_x, start_points_y,
-        start_points=reshape(u0 .+ repeat([-1e-4], 3), 1, 3),
+        # start_points=reshape(u0 .+ repeat([-1e-4], 3), 1, 3),
         title="Initial policy",
     )
 
@@ -126,15 +132,13 @@ function van_der_pol(; store_results=true::Bool)
         sensealg = InterpolatingAdjoint(;
             autojacvec=ReverseDiffVJP(true), checkpointing=true
         )
-        sol =
-            solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, sensealg) |>
-            Array
+        sol = Array(solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, sensealg))
         fault = min.(sol[1, 1:end] .+ 0.4f0, 0.0f0)
         penalty = α * dt * sum(fault .^ 2)  # quadratic penalty
         return sol[3, end] + penalty
     end
 
-    penalty_coefficients = [10.0f0, 10^2.0f0, 10^3.0f0, 10^4.0f0]
+    penalty_coefficients = [10f0, 10f1, 10f2, 10f3]
     for α in penalty_coefficients
         # global result
         # @show result
@@ -166,11 +170,11 @@ function van_der_pol(; store_results=true::Bool)
             optf, result.minimizer, adtype, nothing
         )
         optprob = OptimizationProblem(optfunc, result.minimizer; allow_f_increases=true)
-        linesearch = BackTracking(; iterations=20)
+        linesearch = BackTracking(; iterations=10)
         result = GalacticOptim.solve(
             optprob,
             LBFGS(; linesearch);
-            iterations=5,  # FIXME
+            iterations=100,  # FIXME
             # cb=plotting_callback,
         )
     end
@@ -197,7 +201,15 @@ function van_der_pol(; store_results=true::Bool)
 
     θ_opt = result.minimizer
     _, states_opt, _ = run_simulation(controller, prob, θ_opt, tsteps)
-
+    start_mark = PlotConf(
+        points=states_opt[:, 1], fmt="b*", label="Initial state", markersize=18
+    )
+    marker_path = PlotConf(
+        points=states_opt, fmt="m--", label="Integration path", linewidth=4
+    )
+    final_mark = PlotConf(
+        points=states_opt[:, end], fmt="r*", label="Final state", markersize=18
+    )
     return phase_plot(
         system!,
         controller,
@@ -206,12 +218,9 @@ function van_der_pol(; store_results=true::Bool)
         bounds;
         dimension=3,
         projection=[1, 2],
-        markers=[
-            # (states_opt[:,1], "m*", "Initial state"),
-            (states_opt[:, end], "r*", "Final state"),
-        ],
+        markers=[marker_path, start_mark, final_mark],
         # start_points_x, start_points_y,
-        start_points=reshape(u0 .+ repeat([-1e-4], 3), 1, 3),
+        # start_points=reshape(u0 .+ repeat([-1e-4], 3), 1, 3),
         title="Optimized policy",
     )
 end  # wrapper script
