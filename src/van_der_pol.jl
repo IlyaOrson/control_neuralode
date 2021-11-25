@@ -65,7 +65,7 @@ function van_der_pol(; store_results=true::Bool)
         points=states_raw[:, 1], fmt="b*", label="Initial state", markersize=18
     )
     marker_path = PlotConf(;
-        points=states_raw, fmt="m--", label="Integration path", linewidth=4
+        points=states_raw, fmt="m:", label="Integration path", linewidth=4
     )
     final_mark = PlotConf(;
         points=states_raw[:, end], fmt="r*", label="Final state", markersize=18
@@ -205,10 +205,18 @@ function van_der_pol(; store_results=true::Bool)
         points=states_opt[:, 1], fmt="b*", label="Initial state", markersize=18
     )
     marker_path = PlotConf(
-        points=states_opt, fmt="m--", label="Integration path", linewidth=4
+        points=states_opt, fmt="m:", label="Integration path", linewidth=4
     )
     final_mark = PlotConf(
         points=states_opt[:, end], fmt="r*", label="Final state", markersize=18
+    )
+    shader = ShadeConf(
+        indicator = function (x, y)
+            if x > -.4
+                return true
+            end
+            return false
+        end
     )
     return phase_plot(
         system!,
@@ -216,6 +224,7 @@ function van_der_pol(; store_results=true::Bool)
         θ_opt,
         phase_time,
         bounds;
+        shader,
         dimension=3,
         projection=[1, 2],
         markers=[marker_path, start_mark, final_mark],

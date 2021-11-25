@@ -233,6 +233,12 @@ end
     linewidth=nothing
 end
 
+@kwdef struct ShadeConf
+    indicator::Function
+    cmap="gray"
+    transparency=1
+end
+
 function phase_plot(
     system!,
     controller,
@@ -247,6 +253,7 @@ function phase_plot(
     start_points_x=nothing,
     start_points_y=nothing,
     title=nothing,
+    shader=nothing,
     kwargs...,
 )
     @assert length(projection) == 2
@@ -269,7 +276,8 @@ function phase_plot(
     xpoints, ypoints = collect.(ranges[projection])
 
     # NOTE: the transpose is required to get f.(a',b) instead of the default f.(a, b')
-    phase_array_tuples = stream_interface.(ndgrid(xpoints, ypoints)...)'
+    xgrid, ygrid = ndgrid(xpoints, ypoints)  # NOTE: is this switched?
+    phase_array_tuples = stream_interface.(xgrid, ygrid)'
     # phase_array_tuples = stream_interface.(xpoints', ypoints)
 
     xphase, yphase = [getindex.(phase_array_tuples, dim) for dim in projection]
@@ -331,6 +339,16 @@ function phase_plot(
     end
 
     xlims, ylims = coord_lims[projection]
+
+    if !isnothing(shader)
+        mask = shader.indicator.(xgrid, ygrid)'
+        ax.imshow(
+            mask;
+            extent=(xlims..., ylims...),
+            alpha=shader.transparency,
+            cmap=shader.cmap, aspect="auto"
+        )
+    end
 
     ax.set(; xlim=xlims .+ (-.05, 0.05), ylim=ylims .+ (-.05, 0.05))
     ax.set_xlabel("x")
