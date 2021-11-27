@@ -33,6 +33,50 @@ function van_der_pol(; store_results=true::Bool)
     dt = 0.1f0
     tsteps = t0:dt:tf
 
+    function collocation(t0, tf, initial_conditions; num_supports = 50, nodes_per_element = 4)
+
+        optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
+        model = InfiniteModel(optimizer)
+        method = OrthogonalCollocation(nodes_per_element)
+        @infinite_parameter(
+            model,
+            t in [t0, tf],
+            num_supports = num_supports,
+            derivative_method = method
+        )
+
+        @variables(
+            model,
+            begin  # "start" sets the initial guess values
+                # state variables
+                x[1:3], Infinite(t)
+                # control variables
+                c[1], Infinite(t)
+            end
+        )
+
+        # initial conditions
+        @constraint(model, [i = 1:3], x[i](0) == initial_conditions[i])
+
+        # control range
+        @constraint(model, -.3 <= c[1] <= 1.)
+
+        # dynamic equations
+        @constraints(
+            model,
+            begin
+                ∂(x[1], t) == (1 - x[2]^2) * x[1] - x[2] + c[1]
+                ∂(x[2], t) == x[1]
+                ∂(x[3], t) == x[1]^2 + x[2]^2 + c[1]^2
+            end
+        )
+
+        @objective(model, Min, x[3](tf))
+
+        optimize!(model)
+        return model, hcat(value.(x)...), hcat(value.(c)...)
+    end
+
     # set arquitecture of neural network controller
     controller = FastChain(
         FastDense(3, 16, tanh),
@@ -61,7 +105,7 @@ function van_der_pol(; store_results=true::Bool)
     ]
 
     _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
-    start_mark = PlotConf(
+    start_mark = PlotConf(;
         points=states_raw[:, 1], fmt="b*", label="Initial state", markersize=18
     )
     marker_path = PlotConf(;
@@ -132,13 +176,15 @@ function van_der_pol(; store_results=true::Bool)
         sensealg = InterpolatingAdjoint(;
             autojacvec=ReverseDiffVJP(true), checkpointing=true
         )
-        sol = Array(solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, sensealg))
+        sol = Array(
+            solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, sensealg)
+        )
         fault = min.(sol[1, 1:end] .+ 0.4f0, 0.0f0)
         penalty = α * dt * sum(fault .^ 2)  # quadratic penalty
         return sol[3, end] + penalty
     end
 
-    penalty_coefficients = [10f0, 10f1, 10f2, 10f3]
+    penalty_coefficients = [10.0f0, 10f1, 10f2, 10f3]
     for α in penalty_coefficients
         # global result
         # @show result
@@ -201,23 +247,21 @@ function van_der_pol(; store_results=true::Bool)
 
     θ_opt = result.minimizer
     _, states_opt, _ = run_simulation(controller, prob, θ_opt, tsteps)
-    start_mark = PlotConf(
+    start_mark = PlotConf(;
         points=states_opt[:, 1], fmt="b*", label="Initial state", markersize=18
     )
-    marker_path = PlotConf(
+    marker_path = PlotConf(;
         points=states_opt, fmt="m:", label="Integration path", linewidth=4
     )
-    final_mark = PlotConf(
+    final_mark = PlotConf(;
         points=states_opt[:, end], fmt="r*", label="Final state", markersize=18
     )
-    shader = ShadeConf(
-        indicator = function (x, y)
-            if x > -.4
-                return true
-            end
-            return false
+    shader = ShadeConf(; indicator=function (x, y)
+        if x > -.4
+            return true
         end
-    )
+        return false
+    end)
     return phase_plot(
         system!,
         controller,
