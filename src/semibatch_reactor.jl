@@ -95,7 +95,7 @@ function semibatch_reactor(; store_results=true::Bool)
     fogler_ref = [240.0f0, 298.0f0]  # reference values in Fogler
     fixed_dudt!(du, u, p, t) = system!(du, u, p, t, (u, p) -> fogler_ref)
     fixed_prob = ODEProblem(fixed_dudt!, u0, tspan)
-    fixed_sol = solve(fixed_prob, BS3()) |> Array  # sensealg=ReverseDiffAdjoint()
+    fixed_sol = OrdinaryDiffEq.solve(fixed_prob, BS3()) |> Array  # sensealg=ReverseDiffAdjoint()
 
     # enforce constant control over integrated path
     function precondition_loss(params)
@@ -150,7 +150,7 @@ function semibatch_reactor(; store_results=true::Bool)
     function loss(params, prob, tsteps; T_up=T_up, V_up=V_up, α=1f-3, δ=1f1)
 
         # integrate ODE system and extract loss from result
-        sol = solve(prob, BS3(); p=params, saveat=tsteps) |> Array
+        sol = OrdinaryDiffEq.solve(prob, BS3(); p=params, saveat=tsteps) |> Array
         out_temp = map(x -> relaxed_log_barrier(T_up - x; δ), sol[4, 1:end])
         out_vols = map(x -> relaxed_log_barrier(V_up - x; δ), sol[5, 1:end])
 

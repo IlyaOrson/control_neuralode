@@ -7,10 +7,18 @@ function van_der_pol(; store_results=true::Bool)
         datadir = generate_data_subdir(@__FILE__)
     end
 
-    function system!(du, u, p, t, controller)
+    function system!(du, u, p, t, controller, input=:state)
         # neural network outputs controls taken by the system
         x1, x2, x3 = u
-        c1 = controller(u, p)[1]
+
+        if input == :state
+            c1 = controller(u, p)[1]  # control based on state and parameters
+        elseif input == :time
+            c1 = controller(t, p)[1]  # control based on time and parameters
+        else
+            error("The _input_ argument should be either :state of :time")
+        end
+
 
         # dynamics of the controlled system
         x1_prime = (1 - x2^2) * x1 - x2 + c1
@@ -33,16 +41,14 @@ function van_der_pol(; store_results=true::Bool)
     dt = 0.1f0
     tsteps = t0:dt:tf
 
-    function collocation(t0, tf, initial_conditions; num_supports = 50, nodes_per_element = 4)
-
+    function collocation(;
+        num_supports=length(tsteps), nodes_per_element=4, state_constraint=false
+    )
         optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
         model = InfiniteModel(optimizer)
         method = OrthogonalCollocation(nodes_per_element)
         @infinite_parameter(
-            model,
-            t in [t0, tf],
-            num_supports = num_supports,
-            derivative_method = method
+            model, t in [t0, tf], num_supports = num_supports, derivative_method = method
         )
 
         @variables(
@@ -56,10 +62,14 @@ function van_der_pol(; store_results=true::Bool)
         )
 
         # initial conditions
-        @constraint(model, [i = 1:3], x[i](0) == initial_conditions[i])
+        @constraint(model, [i = 1:3], x[i](0) == u0[i])
 
         # control range
-        @constraint(model, -.3 <= c[1] <= 1.)
+        @constraint(model, -.3 <= c[1] <= 1.0)
+
+        if state_constraint
+            @constraint(model, -.4 <= x[1])
+        end
 
         # dynamic equations
         @constraints(
@@ -74,7 +84,12 @@ function van_der_pol(; store_results=true::Bool)
         @objective(model, Min, x[3](tf))
 
         optimize!(model)
-        return model, hcat(value.(x)...), hcat(value.(c)...)
+
+        @info "Collocation result"
+        model |> optimizer_model |> solution_summary
+        states = hcat(value.(x)...) |> permutedims
+        controls = hcat(value.(c)...) |> permutedims
+        return model, states, controls
     end
 
     # set arquitecture of neural network controller
@@ -128,6 +143,48 @@ function van_der_pol(; store_results=true::Bool)
         title="Initial policy",
     )
 
+    infopt_model, states_collocation, controls_collocation = collocation()
+    interpol = interpolant(tsteps, controls_collocation)
+
+    # preconditioning to control sequences
+    function precondition(t, p)
+        Zygote.ignore() do  # Zygote can't handle this alone.
+            return [interpol(t)]
+        end
+    end
+    display(lineplot(x -> precondition(x, nothing)[1], t0, tf, xlim=(t0,tf)))
+    # display(lineplot(x -> precondition(x, nothing)[2], t0, tf, xlim=(t0,tf)))
+
+    @info "Preconditioning..."
+    θ = preconditioner(
+        controller,
+        precondition,
+        system!,
+        t0,
+        u0,
+        tsteps[(end ÷ 20):(end ÷ 20):end];
+        progressbar=true,
+    )
+
+    # prob = ODEProblem(dudt!, u0, tspan, θ)
+    prob = remake(prob; p=θ)
+
+    plot_simulation(controller, prob, θ, tsteps; only=:controls)
+
+    phase_plot(
+        system!,
+        controller,
+        θ,
+        phase_time,
+        bounds;
+        dimension=3,
+        projection=[1, 2],
+        markers=[marker_path, start_mark, final_mark],
+        # start_points_x, start_points_y,
+        # start_points=reshape(u0 .+ repeat([-1e-4], 3), 1, 3),
+        title="Preconditioned policy",
+    )
+
     # closures to comply with required interface
     function plotting_callback(params, loss)
         return plot_simulation(
@@ -138,7 +195,7 @@ function van_der_pol(; store_results=true::Bool)
     ### define objective function to optimize
     function loss(params, prob, tsteps)
         # integrate ODE system (stiff problem)
-        sol = solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps)
+        sol = OrdinaryDiffEq.solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps)
         return Array(sol)[3, end]  # return last value of third variable ...to be minimized
     end
     loss(params) = loss(params, prob, tsteps)
@@ -151,6 +208,7 @@ function van_der_pol(; store_results=true::Bool)
     #     optprob, LBFGS(; linesearch=BackTracking()); cb=plotting_callback
     # )
 
+    @info "Training..."
     result = DiffEqFlux.sciml_train(
         loss,
         θ,
@@ -177,7 +235,7 @@ function van_der_pol(; store_results=true::Bool)
             autojacvec=ReverseDiffVJP(true), checkpointing=true
         )
         sol = Array(
-            solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, sensealg)
+            OrdinaryDiffEq.solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, sensealg)
         )
         fault = min.(sol[1, 1:end] .+ 0.4f0, 0.0f0)
         penalty = α * dt * sum(fault .^ 2)  # quadratic penalty

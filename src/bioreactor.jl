@@ -167,7 +167,7 @@ function bioreactor(; store_results=true::Bool)
     )
 
         # integrate ODE system
-        sol_raw = solve(prob, BS3(); p=params, saveat=tsteps, abstol=1f-1, reltol=1f-1)
+        sol_raw = OrdinaryDiffEq.solve(prob, BS3(); p=params, saveat=tsteps, abstol=1f-1, reltol=1f-1)
         sol = Array(sol_raw)
 
         # approximate integral penalty

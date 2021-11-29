@@ -28,7 +28,7 @@ function batch_reactor(; store_results=true::Bool)
         sensealg = InterpolatingAdjoint(;
             autojacvec=ReverseDiffVJP(true), checkpointing=true
         )
-        sol = solve(prob, Tsit5(); p=params, saveat=tsteps, sensealg)  # integrate ODE system
+        sol = OrdinaryDiffEq.solve(prob, Tsit5(); p=params, saveat=tsteps, sensealg)  # integrate ODE system
         return -Array(sol)[2, end]  # second variable, last value, maximize
     end
 

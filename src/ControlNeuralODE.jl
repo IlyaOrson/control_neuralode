@@ -10,6 +10,8 @@ using Infiltrator
 using Statistics: mean
 using LineSearches: BackTracking
 using Optim, GalacticOptim
+using InfiniteOpt, Ipopt
+using ApproxFun: Chebyshev, Fun, (..)
 using Zygote, Flux
 using OrdinaryDiffEq, DiffEqSensitivity, DiffEqFlux
 using UnicodePlots: lineplot, lineplot!, histogram, boxplot
@@ -101,7 +103,7 @@ end
 function run_simulation(controller, prob, params, tsteps)
 
     # integrate with given parameters
-    solution = solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps)
+    solution = OrdinaryDiffEq.solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps)
 
     # construct arrays with the same type used by the integrator
     elements_type = eltype(solution.t)
@@ -380,6 +382,19 @@ function controller_shape(controller)
     return push!(dims_input, pop!(dims_output))
 end
 
+function interpolant(timepoints, values; oversample=2*length(timepoints)::Integer)
+    @assert length(timepoints) == length(values)
+    space = Chebyshev(timepoints[1]..timepoints[end])
+    # http://juliaapproximation.github.io/ApproxFun.jl/stable/faq/
+    @assert length(timepoints) <= oversample
+    # Create a Vandermonde matrix by evaluating the basis at the grid
+    V = Array{Float64}(undef, length(timepoints), oversample)
+    for k = 1:oversample
+        V[:,k] = Fun(space, [zeros(k-1);1]).(timepoints)
+    end
+    Fun(space, V \ vec(values))  # interpolant as one-variable function
+end
+
 # Feller, C., & Ebenbauer, C. (2014).
 # Continuous-time linear MPC algorithms based on relaxed logarithmic barrier functions.
 # IFAC Proceedings Volumes, 47(3), 2481–2488.
@@ -423,7 +438,7 @@ function preconditioner(
     for partial_time in time_fractions
         tspan = (t0, partial_time)
         fixed_prob = ODEProblem(fixed_dudt!, u0, tspan)
-        fixed_sol = solve(fixed_prob, BS3(); abstol=1f-1, reltol=1f-1, saveat)
+        fixed_sol = OrdinaryDiffEq.solve(fixed_prob, BS3(); abstol=1f-1, reltol=1f-1, saveat)
 
         function precondition_loss(params; plot=false)
             plot_arrays = Dict(:reference => [], :control => [])
@@ -461,7 +476,7 @@ function preconditioner(
             return sum_squares + regularization
         end
 
-        @time preconditioner = DiffEqFlux.sciml_train(
+        preconditioner = DiffEqFlux.sciml_train(
             precondition_loss,
             θ,
             BFGS(; initial_stepnorm=0.01);
@@ -470,7 +485,7 @@ function preconditioner(
             f_tol,
         )
         θ = preconditioner.minimizer
-        @show ploss = precondition_loss(θ; plot=true)
+        ploss = precondition_loss(θ; plot=true)
         next!(prog; showvalues=[(:loss, ploss)])
     end
     return θ
