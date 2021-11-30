@@ -17,7 +17,7 @@ using OrdinaryDiffEq, DiffEqSensitivity, DiffEqFlux
 using UnicodePlots: lineplot, lineplot!, histogram, boxplot
 using BSON, JSON3, CSV, Tables
 
-using PyPlot: plt, matplotlib
+using PyPlot: plt, matplotlib, ColorMap
 const mpl = matplotlib
 # const GridSpec = mpl.gridspec.GridSpec
 
@@ -103,7 +103,9 @@ end
 function run_simulation(controller, prob, params, tsteps)
 
     # integrate with given parameters
-    solution = OrdinaryDiffEq.solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps)
+    solution = OrdinaryDiffEq.solve(
+        prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps
+    )
 
     # construct arrays with the same type used by the integrator
     elements_type = eltype(solution.t)
@@ -229,16 +231,16 @@ end
 
 @kwdef struct PlotConf
     points
-    fmt="."
-    label=nothing
-    markersize=nothing
-    linewidth=nothing
+    fmt = "."
+    label = nothing
+    markersize = nothing
+    linewidth = nothing
 end
 
 @kwdef struct ShadeConf
     indicator::Function
-    cmap="gray"
-    transparency=1
+    cmap = "gray"
+    transparency = 1
 end
 
 function phase_plot(
@@ -348,7 +350,8 @@ function phase_plot(
             mask;
             extent=(xlims..., ylims...),
             alpha=shader.transparency,
-            cmap=shader.cmap, aspect="auto"
+            cmap=shader.cmap,
+            aspect="auto",
         )
     end
 
@@ -382,17 +385,17 @@ function controller_shape(controller)
     return push!(dims_input, pop!(dims_output))
 end
 
-function interpolant(timepoints, values; oversample=2*length(timepoints)::Integer)
+function interpolant(timepoints, values; oversample=2 * length(timepoints)::Integer)
     @assert length(timepoints) == length(values)
-    space = Chebyshev(timepoints[1]..timepoints[end])
+    space = Chebyshev(timepoints[1] .. timepoints[end])
     # http://juliaapproximation.github.io/ApproxFun.jl/stable/faq/
     @assert length(timepoints) <= oversample
     # Create a Vandermonde matrix by evaluating the basis at the grid
     V = Array{Float64}(undef, length(timepoints), oversample)
-    for k = 1:oversample
-        V[:,k] = Fun(space, [zeros(k-1);1]).(timepoints)
+    for k in 1:oversample
+        V[:, k] = Fun(space, [zeros(k - 1); 1]).(timepoints)
     end
-    Fun(space, V \ vec(values))  # interpolant as one-variable function
+    return Fun(space, V \ vec(values))  # interpolant as one-variable function
 end
 
 # Feller, C., & Ebenbauer, C. (2014).
@@ -425,7 +428,10 @@ function preconditioner(
     saveat=(),
     progressbar=true,
     control_range_scaling=nothing,
+    plot_progress=false,
+    plot_final=true,
 )
+    @assert t0 < time_fractions[1]
     θ = initial_params(controller)
     fixed_dudt!(du, u, p, t) = system!(du, u, p, t, precondition, :time)
     prog = Progress(
@@ -438,9 +444,11 @@ function preconditioner(
     for partial_time in time_fractions
         tspan = (t0, partial_time)
         fixed_prob = ODEProblem(fixed_dudt!, u0, tspan)
-        fixed_sol = OrdinaryDiffEq.solve(fixed_prob, BS3(); abstol=1f-1, reltol=1f-1, saveat)
+        fixed_sol = OrdinaryDiffEq.solve(
+            fixed_prob, BS3(); abstol=1f-1, reltol=1f-1, saveat
+        )
 
-        function precondition_loss(params; plot=false)
+        function precondition_loss(params; plot=nothing)
             plot_arrays = Dict(:reference => [], :control => [])
             sum_squares = 0.0f0
 
@@ -454,21 +462,45 @@ function preconditioner(
                 end
                 sum_squares += sum(diff_square)
                 Zygote.ignore() do
-                    if plot
+                    if !isnothing(plot)
                         push!(plot_arrays[:reference], reference)
                         push!(plot_arrays[:control], control)
                     end
                 end
             end
             Zygote.ignore() do
-                if plot
-                    refereces = reduce(hcat, plot_arrays[:reference])
-                    controls = reduce(hcat, plot_arrays[:control])
-                    @assert length(refereces) == length(controls)
-                    for r in 1:size(refereces, 1)
-                        p = lineplot(refereces[r, :]; name="fixed")
-                        lineplot!(p, controls[r, :]; name="neural")
-                        display(p)
+                if !isnothing(plot)
+                    @assert plot in [:unicode, :pyplot]
+                    reference = reduce(hcat, plot_arrays[:reference])
+                    control = reduce(hcat, plot_arrays[:control])
+                    @assert length(reference) == length(control)
+                    if plot == :unicode
+                        for r in 1:size(reference, 1)
+                            p = lineplot(reference[r, :]; name="fixed")
+                            lineplot!(p, control[r, :]; name="neural")
+                            display(p)
+                        end
+                    elseif plot == :pyplot
+                        cmap = ColorMap("tab20")  # binary comparisons
+                        nrows = size(reference, 1)
+                        rows = 1:nrows
+                        fig, axs = plt.subplots(
+                            nrows,
+                            1;
+                            sharex="col",
+                            squeeze=false,
+                            constrained_layout=true,
+                            #tight_layout=false,
+                        )
+                        for r in rows
+                            ax = axs[r, 1]
+                            ax.plot(reference[r, :]; label="fixed", color=cmap(2r - 2))
+                            ax.plot(control[r, :]; label="neural", color=cmap(2r - 1))
+                            ax.legend()
+                        end
+                        fig.supxlabel("timestep")
+                        fig.suptitle("Preconditioning")
+                        fig.show()
                     end
                 end
             end
@@ -485,8 +517,12 @@ function preconditioner(
             f_tol,
         )
         θ = preconditioner.minimizer
-        ploss = precondition_loss(θ; plot=true)
+        pvar = plot_progress ? :unicode : nothing
+        ploss = precondition_loss(θ; plot=pvar)
         next!(prog; showvalues=[(:loss, ploss)])
+        if partial_time == time_fractions[end] && plot_final
+            precondition_loss(θ; plot=:pyplot)
+        end
     end
     return θ
 end

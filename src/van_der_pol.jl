@@ -85,7 +85,6 @@ function van_der_pol(; store_results=true::Bool)
 
         optimize!(model)
 
-        @info "Collocation result"
         model |> optimizer_model |> solution_summary
         states = hcat(value.(x)...) |> permutedims
         controls = hcat(value.(c)...) |> permutedims
@@ -108,16 +107,18 @@ function van_der_pol(; store_results=true::Bool)
     prob = ODEProblem(dudt!, u0, tspan, θ)
 
     phase_time = 0.0f0
-    half_arista = 4.0
+    half_arista = 3.5
     low_bounds = u0 .- repeat([half_arista], length(u0))
     high_bounds = u0 .+ repeat([half_arista], length(u0))
     bounds = [(l, h) for (l, h) in zip(low_bounds, high_bounds)]
-    widths = map(tup -> tup[2] - tup[1], bounds)
-    points_per_side = 3
-    points_ranges = [
-        range(u0[1] - widths[i] / 5, u0[1] + widths[i] / 5; length=points_per_side) for
-        i in eachindex(u0)
-    ]
+
+    # TODO: multiple starts
+    # widths = map(tup -> tup[2] - tup[1], bounds)
+    # points_per_side = 3
+    # points_ranges = [
+    #     range(u0[1] - widths[i] / 5, u0[1] + widths[i] / 5; length=points_per_side) for
+    #     i in eachindex(u0)
+    # ]
 
     _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
     start_mark = PlotConf(;
@@ -152,6 +153,7 @@ function van_der_pol(; store_results=true::Bool)
             return [interpol(t)]
         end
     end
+    @info "Collocation result"
     display(lineplot(x -> precondition(x, nothing)[1], t0, tf, xlim=(t0,tf)))
     # display(lineplot(x -> precondition(x, nothing)[2], t0, tf, xlim=(t0,tf)))
 
@@ -162,8 +164,8 @@ function van_der_pol(; store_results=true::Bool)
         system!,
         t0,
         u0,
-        tsteps[(end ÷ 20):(end ÷ 20):end];
-        progressbar=true,
+        tsteps[2:2:end];
+        #control_range_scaling=[maximum(controls_collocation) - minimum(controls_collocation)],
     )
 
     # prob = ODEProblem(dudt!, u0, tspan, θ)
@@ -171,6 +173,16 @@ function van_der_pol(; store_results=true::Bool)
 
     plot_simulation(controller, prob, θ, tsteps; only=:controls)
 
+    _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
+    start_mark = PlotConf(;
+        points=states_raw[:, 1], fmt="b*", label="Initial state", markersize=18
+    )
+    marker_path = PlotConf(;
+        points=states_raw, fmt="m:", label="Integration path", linewidth=4
+    )
+    final_mark = PlotConf(;
+        points=states_raw[:, end], fmt="r*", label="Final state", markersize=18
+    )
     phase_plot(
         system!,
         controller,
@@ -258,7 +270,7 @@ function van_der_pol(; store_results=true::Bool)
         # closures to comply with interface
         penalty_loss_(params) = penalty_loss(params, constrained_prob, tsteps; α)
 
-        @info "Control Profile" α
+        @info α
         plot_simulation(
             controller,
             constrained_prob,
