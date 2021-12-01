@@ -9,6 +9,20 @@ function generate_data_subdir(callerfile; current_datetime=nothing)
     return datadir
 end
 
+function local_grid(npoints, percentage; scale=1.0f0, type=:centered)
+    @argcheck type in (:centered, :negative, :positive)
+    @argcheck !iszero(scale)
+    width = percentage * scale * npoints
+    if type == :centered
+        translation = width / 2.0f0
+    elseif type == :negative
+        translation = width * -1.0f0
+    elseif type == :positive
+        translation = 0.0f0
+    end
+    return [n * percentage * scale - translation for n in 1:npoints]
+end
+
 function controller_shape(controller)
     # this method is brittle as any function inside the Chain
     # will not be identified, could be a problem if those change dimensions

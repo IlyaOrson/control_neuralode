@@ -5,6 +5,7 @@ using Base: @kwdef
 using Base.Filesystem
 using LazyGrids: ndgrid
 
+using ArgCheck
 using ProgressMeter
 using Infiltrator
 using Statistics: mean

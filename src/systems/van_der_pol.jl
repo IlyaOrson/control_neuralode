@@ -8,17 +8,16 @@ function van_der_pol(; store_results=true::Bool)
     end
 
     function system!(du, u, p, t, controller, input=:state)
-        # neural network outputs controls taken by the system
+        @argcheck input in (:state, :time)
+
+        # neural network outputs the controls taken by the system
         x1, x2, x3 = u
 
         if input == :state
             c1 = controller(u, p)[1]  # control based on state and parameters
         elseif input == :time
             c1 = controller(t, p)[1]  # control based on time and parameters
-        else
-            error("The _input_ argument should be either :state of :time")
         end
-
 
         # dynamics of the controlled system
         x1_prime = (1 - x2^2) * x1 - x2 + c1
@@ -122,7 +121,7 @@ function van_der_pol(; store_results=true::Bool)
 
     _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
     start_mark = PlotConf(;
-        points=states_raw[:, 1], fmt="b*", label="Initial state", markersize=18
+        points=states_raw[:, 1], fmt="bD", label="Initial state", markersize=18
     )
     marker_path = PlotConf(;
         points=states_raw, fmt="m:", label="Integration path", linewidth=4
@@ -146,6 +145,15 @@ function van_der_pol(; store_results=true::Bool)
 
     infopt_model, states_collocation, controls_collocation = collocation()
     interpol = interpolant(tsteps, controls_collocation)
+
+    plt.figure()
+    finer_tsteps = range(tsteps[1], tsteps[end]; length=1000)
+    plt.plot(finer_tsteps, [interpol(t) for t in finer_tsteps], label="interpolation")
+    plt.plot(tsteps, dropdims(controls_collocation; dims=1), "xg", label="collocation")
+    plt.title("Control collocation")
+    plt.xlabel("time")
+    plt.legend()
+    plt.show()
 
     # preconditioning to control sequences
     function precondition(t, p)
@@ -175,7 +183,7 @@ function van_der_pol(; store_results=true::Bool)
 
     _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
     start_mark = PlotConf(;
-        points=states_raw[:, 1], fmt="b*", label="Initial state", markersize=18
+        points=states_raw[:, 1], fmt="bD", label="Initial state", markersize=18
     )
     marker_path = PlotConf(;
         points=states_raw, fmt="m:", label="Integration path", linewidth=4
@@ -318,7 +326,7 @@ function van_der_pol(; store_results=true::Bool)
     θ_opt = result.minimizer
     _, states_opt, _ = run_simulation(controller, prob, θ_opt, tsteps)
     start_mark = PlotConf(;
-        points=states_opt[:, 1], fmt="b*", label="Initial state", markersize=18
+        points=states_opt[:, 1], fmt="bD", label="Initial state", markersize=18
     )
     marker_path = PlotConf(;
         points=states_opt, fmt="m:", label="Integration path", linewidth=4
@@ -332,7 +340,7 @@ function van_der_pol(; store_results=true::Bool)
         end
         return false
     end)
-    return phase_plot(
+    phase_plot(
         system!,
         controller,
         θ_opt,
@@ -346,4 +354,14 @@ function van_der_pol(; store_results=true::Bool)
         # start_points=reshape(u0 .+ repeat([-1e-4], 3), 1, 3),
         title="Optimized policy",
     )
+
+    # u0 = [0.0f0, 1.0f0, 0.0f0]
+    perturbation_specs = [
+        Dict(:type => :centered, :scale => 1f0, :samples => 10, :percentage => 2f-2)
+        Dict(:type => :centered, :scale => 1f0, :samples => 10, :percentage => 2f-2)
+        Dict(
+            :type => :centered, :scale => 1f0, :samples => 10, :percentage => 2f-2
+        )
+    ]
+    initial_perturbations(controller, prob, θ_opt, tsteps, u0, perturbation_specs)
 end  # wrapper script

@@ -9,7 +9,7 @@ function bioreactor(; store_results=true::Bool)
     end
 
     function system!(du, u, p, t, controller, input=:state)
-
+        @argcheck input in (:state, :time)
         # fixed parameters
         u_m = 0.0572f0
         u_d = 0.0f0
@@ -29,8 +29,6 @@ function bioreactor(; store_results=true::Bool)
             I, F_N = controller(u, p)  # control based on state and parameters
         elseif input == :time
             I, F_N = controller(t, p)  # control based on time and parameters
-        else
-            error("The _input_ argument should be either :state of :time")
         end
 
         # auxiliary variables
@@ -269,27 +267,6 @@ function bioreactor(; store_results=true::Bool)
         controller, prob, θ, tsteps; only=:controls, vars=[2], show=final_values
     )
 
-    function noisy(times, percentage; scale=1.0f0, type=:centered)
-        if iszero(scale)
-            scale = 0.1f0
-        end
-        width = percentage * scale * times
-        if type == :centered
-            translation = width / 2.0f0
-        elseif type == :negative
-            translation = width * -1.0f0
-        elseif type == :positive
-            translation = 0.0f0
-        else
-            throw(
-                ArgumentError(
-                    "type argument must be one of :centered, :positive or :negative"
-                ),
-            )
-        end
-        return [n * percentage * scale - translation for n in 1:times]
-    end
-
     perturbation_specs = [
         Dict(:type => :centered, :scale => 1.0f0, :samples => 20, :percentage => 2f-2)
         Dict(:type => :centered, :scale => 150.0f0, :samples => 20, :percentage => 2f-2)
@@ -297,60 +274,5 @@ function bioreactor(; store_results=true::Bool)
             :type => :positive, :scale => 0.0f0 + 5f-1, :samples => 20, :percentage => 2f-2
         )
     ]
-    function initial_perturbations(prob, θ, specs)
-        prob = remake(prob; p=θ)
-
-        for (i, spec) in enumerate(specs)
-            obs, spens, cpens = Float32[], Float32[], Float32[]
-            perturbations = noisy(
-                spec[:samples], spec[:percentage]; scale=spec[:scale], type=spec[:type]
-            )
-
-            boxplot("Δu[$i]", perturbations; title="perturbations") |> display
-
-            for noise in perturbations
-                noise_vec = zeros(typeof(noise), length(u0))
-                noise_vec[i] = noise
-                # @info u0 + noise_vec
-
-                # local prob = ODEProblem(dudt!, u0 + noise_vec, tspan, θ)
-                prob = remake(prob; u0=prob.u0 + noise_vec)
-
-                objective, state_penalty, control_penalty, _ = loss(
-                    θ, prob; tsteps, state_penalty=indicator_function
-                )
-                # plot_simulation(controller, prob, θ, tsteps; only=:states, vars=[2], yrefs=[800,150])
-                # plot_simulation(controller, prob, θ, tsteps; only=:states, fun=(x,y,z) -> 1.1f-2x - z, yrefs=[3f-2])
-
-                push!(obs, objective)
-                push!(spens, state_penalty)
-                push!(cpens, control_penalty)
-            end
-            try  # this fails when penalties explode due to the steep barriers
-                boxplot(
-                    ["objectives", "state_penalties", "constraint_penalties"],
-                    [obs, spens, cpens];
-                    title="Perturbation results",
-                ) |> display
-                lineplot(
-                    prob.u0[i] .+ perturbations, obs; title="u0 + Δu[$i] ~ objectives"
-                ) |> display
-                lineplot(
-                    prob.u0[i] .+ perturbations,
-                    spens;
-                    title="u0 + Δu[$i] ~ state_penalties",
-                ) |> display
-                lineplot(
-                    prob.u0[i] .+ perturbations,
-                    cpens;
-                    title="u0 + Δu[$i] ~ constraint_penalties",
-                ) |> display
-            catch
-                @show obs
-                @show spens
-                @show cpens
-            end
-        end
-    end
-    return initial_perturbations(prob, θ, perturbation_specs)
+    initial_perturbations(controller, prob, θ, tsteps, u0, perturbation_specs)
 end  # script wrapper

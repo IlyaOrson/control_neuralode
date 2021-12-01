@@ -89,3 +89,77 @@ function initial_conditions_variations(
         )
     end
 end
+
+function initial_perturbations(controller, prob, θ, tsteps, u0, specs)
+    prob = remake(prob; p=θ)
+
+    fig, axs = plt.subplots(length(specs), 2; sharex="col", squeeze=false, constrained_layout=true)
+    for (i, spec) in enumerate(specs)
+        obs, spens, cpens = Float32[], Float32[], Float32[]
+        perturbations = local_grid(
+            spec[:samples], spec[:percentage]; scale=spec[:scale], type=spec[:type]
+        )
+
+        boxplot("Δu[$i]", perturbations; title="perturbations") |> display
+
+        for noise in perturbations
+            noise_vec = zeros(typeof(noise), length(u0))
+            noise_vec[i] = noise
+            # @info u0 + noise_vec
+
+            # local prob = ODEProblem(dudt!, u0 + noise_vec, tspan, θ)
+            prob = remake(prob; u0=prob.u0 + noise_vec)
+
+            times, states, controls = run_simulation(controller, prob, θ, tsteps)
+
+            cmap = ColorMap("tab10")
+            axs[1,1].set_title("States")
+            axs[1,2].set_title("Controls")
+            axs[end,1].set_xlabel("time")
+            axs[end,2].set_xlabel("time")
+            for s in 1:size(states,1)
+                axs[s,1].plot(times, states, label="s$s", c=cmap(s))
+                axs[s,1].set_ylabel("u0 + $noise_vec")
+            end
+            for c in 1:size(controls, 1)
+                axs[c,2].plot(times, states, label="c$c", c=cmap(c + size(states, 1)))
+            end
+            fig.suptitle("Initial condition noise")
+            fig.show()
+
+            objective, state_penalty, control_penalty, _ = loss(
+                θ, prob; tsteps, state_penalty=indicator_function
+            )
+            # plot_simulation(controller, prob, θ, tsteps; only=:states, vars=[2], yrefs=[800,150])
+            # plot_simulation(controller, prob, θ, tsteps; only=:states, fun=(x,y,z) -> 1.1f-2x - z, yrefs=[3f-2])
+
+            push!(obs, objective)
+            push!(spens, state_penalty)
+            push!(cpens, control_penalty)
+        end
+        try  # this fails when penalties explode due to the steep barriers
+            boxplot(
+                ["objectives", "state_penalties", "constraint_penalties"],
+                [obs, spens, cpens];
+                title="Perturbation results",
+            ) |> display
+            lineplot(
+                prob.u0[i] .+ perturbations, obs; title="u0 + Δu[$i] ~ objectives"
+            ) |> display
+            lineplot(
+                prob.u0[i] .+ perturbations,
+                spens;
+                title="u0 + Δu[$i] ~ state_penalties",
+            ) |> display
+            lineplot(
+                prob.u0[i] .+ perturbations,
+                cpens;
+                title="u0 + Δu[$i] ~ constraint_penalties",
+            ) |> display
+        catch
+            @show obs
+            @show spens
+            @show cpens
+        end
+    end
+end
