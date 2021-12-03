@@ -103,11 +103,29 @@ function plot_simulation(
     return false  # if return true, then optimization stops
 end
 
-@kwdef struct PlotConf
+abstract type PlotConf end
+
+@kwdef struct IntegrationPath <: PlotConf
     points
-    fmt = "."
-    label = nothing
+    fmt = "m-."
+    label = "Integration path"
     markersize = nothing
+    linewidth = 4
+end
+
+@kwdef struct InitialState <: PlotConf
+    points
+    fmt = "bD"
+    label = "Initial state"
+    markersize = 12
+    linewidth = nothing
+end
+
+@kwdef struct FinalState <: PlotConf
+    points
+    fmt = "r*"
+    label = "Final state"
+    markersize = 18
     linewidth = nothing
 end
 

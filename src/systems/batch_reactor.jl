@@ -65,7 +65,7 @@ function batch_reactor(; store_results=true::Bool)
     # https://github.com/matplotlib/matplotlib/issues/21649
 
     _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
-    marker = PlotConf(points=states_raw[:, end], fmt="m*", label="Final state", markersize=20)
+    marker = FinalState(points=states_raw[:, end], fmt="m*", markersize=20)
     phase_plot(
         system!,
         controller,
@@ -106,7 +106,7 @@ function batch_reactor(; store_results=true::Bool)
     θ_opt = result.minimizer
 
     _, states_opt, _ = run_simulation(controller, prob, θ_opt, tsteps)
-    marker = PlotConf(points=states_opt[:, end], fmt="m*", label="Final state", markersize=20)
+    marker = FinalState(points=states_opt[:, end], fmt="m*", markersize=20)
     return phase_plot(
         system!,
         controller,

@@ -118,11 +118,11 @@ function initial_perturbations(controller, prob, θ, tsteps, u0, specs)
             axs[end,1].set_xlabel("time")
             axs[end,2].set_xlabel("time")
             for s in 1:size(states,1)
-                axs[s,1].plot(times, states, label="s$s", c=cmap(s))
+                axs[s,1].plot(times, states[s,:], label="s$s", c=cmap(s))
                 axs[s,1].set_ylabel("u0 + $noise_vec")
             end
             for c in 1:size(controls, 1)
-                axs[c,2].plot(times, states, label="c$c", c=cmap(c + size(states, 1)))
+                axs[c,2].plot(times, controls[c,:], label="c$c", c=cmap(c + size(states, 1)))
             end
             fig.suptitle("Initial condition noise")
             fig.show()

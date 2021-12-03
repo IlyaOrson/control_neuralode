@@ -120,15 +120,9 @@ function van_der_pol(; store_results=true::Bool)
     # ]
 
     _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
-    start_mark = PlotConf(;
-        points=states_raw[:, 1], fmt="bD", label="Initial state", markersize=18
-    )
-    marker_path = PlotConf(;
-        points=states_raw, fmt="m:", label="Integration path", linewidth=4
-    )
-    final_mark = PlotConf(;
-        points=states_raw[:, end], fmt="r*", label="Final state", markersize=18
-    )
+    start_mark = InitialState(points=states_raw[:, 1])
+    marker_path = IntegrationPath(points=states_raw)
+    final_mark = FinalState(points=states_raw[:, end])
     phase_plot(
         system!,
         controller,
@@ -182,15 +176,9 @@ function van_der_pol(; store_results=true::Bool)
     plot_simulation(controller, prob, θ, tsteps; only=:controls)
 
     _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
-    start_mark = PlotConf(;
-        points=states_raw[:, 1], fmt="bD", label="Initial state", markersize=18
-    )
-    marker_path = PlotConf(;
-        points=states_raw, fmt="m:", label="Integration path", linewidth=4
-    )
-    final_mark = PlotConf(;
-        points=states_raw[:, end], fmt="r*", label="Final state", markersize=18
-    )
+    start_mark = InitialState(points=states_raw[:, 1])
+    marker_path = IntegrationPath(points=states_raw)
+    final_mark = FinalState(points=states_raw[:, end])
     phase_plot(
         system!,
         controller,
@@ -325,15 +313,9 @@ function van_der_pol(; store_results=true::Bool)
 
     θ_opt = result.minimizer
     _, states_opt, _ = run_simulation(controller, prob, θ_opt, tsteps)
-    start_mark = PlotConf(;
-        points=states_opt[:, 1], fmt="bD", label="Initial state", markersize=18
-    )
-    marker_path = PlotConf(;
-        points=states_opt, fmt="m:", label="Integration path", linewidth=4
-    )
-    final_mark = PlotConf(;
-        points=states_opt[:, end], fmt="r*", label="Final state", markersize=18
-    )
+    start_mark = InitialState(points=states_opt[:, 1])
+    marker_path = IntegrationPath(points=states_opt)
+    final_mark = FinalState(points=states_opt[:, end])
     shader = ShadeConf(; indicator=function (x, y)
         if x > -.4
             return true

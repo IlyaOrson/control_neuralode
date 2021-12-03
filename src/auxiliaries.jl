@@ -34,7 +34,7 @@ function controller_shape(controller)
     return push!(dims_input, pop!(dims_output))
 end
 
-function interpolant(timepoints, values; oversample=2 * length(timepoints)::Integer)
+function interpolant(timepoints, values; oversample=length(timepoints)::Integer)
     @assert length(timepoints) == length(values)
     space = Chebyshev(timepoints[1] .. timepoints[end])
     # http://juliaapproximation.github.io/ApproxFun.jl/stable/faq/
