@@ -34,14 +34,14 @@ function controller_shape(controller)
     return push!(dims_input, pop!(dims_output))
 end
 
-function interpolant(timepoints, values; oversample=length(timepoints)::Integer)
-    @assert length(timepoints) == length(values)
+function interpolant(timepoints, values; undersample=length(timepoints)÷4::Integer)
+    @argcheck length(timepoints) == length(values)
+    @argcheck undersample <= length(timepoints)
     space = Chebyshev(timepoints[1] .. timepoints[end])
     # http://juliaapproximation.github.io/ApproxFun.jl/stable/faq/
-    @assert length(timepoints) <= oversample
     # Create a Vandermonde matrix by evaluating the basis at the grid
-    V = Array{Float64}(undef, length(timepoints), oversample)
-    for k in 1:oversample
+    V = Array{Float64}(undef, length(timepoints), undersample)
+    for k in 1:undersample
         V[:, k] = Fun(space, [zeros(k - 1); 1]).(timepoints)
     end
     return Fun(space, V \ vec(values))  # interpolant as one-variable function

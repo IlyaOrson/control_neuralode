@@ -107,7 +107,7 @@ abstract type PlotConf end
 
 @kwdef struct IntegrationPath <: PlotConf
     points
-    fmt = "m-."
+    fmt = "m:"
     label = "Integration path"
     markersize = nothing
     linewidth = 4
