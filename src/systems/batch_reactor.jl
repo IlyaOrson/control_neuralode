@@ -119,10 +119,4 @@ function batch_reactor(; store_results=true::Bool)
         title="Optimized policy",
     )
 
-    # δu = (-.2f0, .2f0)
-    # N = 10
-    # M = 10
-    # initial_conditions_variations(
-    #     loss, controller, prob, θ_opt, tsteps, datadir, u0, δu, N, M
-    # )
 end  # script wrapper

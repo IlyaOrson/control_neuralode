@@ -20,7 +20,7 @@ function local_grid(npoints, percentage; scale=1.0f0, type=:centered)
     elseif type == :positive
         translation = 0.0f0
     end
-    return [n * percentage * scale - translation for n in 1:npoints]
+    return [n * percentage * scale - translation for n in 0:npoints-1]
 end
 
 function controller_shape(controller)

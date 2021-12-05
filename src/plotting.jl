@@ -1,4 +1,5 @@
 const mpl = matplotlib
+const Line2D = matplotlib.lines.Line2D
 # const GridSpec = mpl.gridspec.GridSpec
 
 plt.style.use("seaborn-colorblind")  # "ggplot"
@@ -264,4 +265,105 @@ function phase_plot(
     plt.tight_layout()
 
     return plt.show()
+end
+
+# FIXME
+function initial_perturbations(controller, prob, θ, tsteps, u0, specs)
+    prob = remake(prob; p=θ)
+    for (i, spec) in enumerate(specs)
+        perturbations = local_grid(
+            spec[:samples], spec[:percentage]; scale=spec[:scale], type=spec[:type]
+        )
+
+        #boxplot("Δu[$i]", perturbations; title="perturbations") |> display
+
+        fig, axs = plt.subplots(
+            length(specs), 2; sharex="col", squeeze=false#, constrained_layout=true
+        )
+
+        # perturbations should be sorted from min to max for this
+        # decreasing transparency to work
+        function transparency_scaler(noise, top=1, low=0.4)
+            highest = maximum(abs, perturbations)
+            amplitude = abs(noise)/highest
+            return top - (top - low)*amplitude
+        end
+        for noise in perturbations
+            noise_vec = zeros(typeof(noise), length(u0))
+            noise_vec[i] = noise
+
+            # local prob = ODEProblem(dudt!, u0 + noise_vec, tspan, θ)
+            perturbed_u0 = prob.u0 + noise_vec
+            prob = remake(prob; u0=perturbed_u0)
+
+            times, states, controls = run_simulation(controller, prob, θ, tsteps)
+
+            cmap = ColorMap("tab10")
+            axs[1, 1].set_title("States")
+            axs[1, 2].set_title("Controls")
+            axs[end, 1].set_xlabel("time")
+            axs[end, 2].set_xlabel("time")
+            for s in 1:size(states, 1)
+                axs[s, 1].plot(
+                    times, states[s, :]; label="s$s", alpha=transparency_scaler(noise), c=cmap(s)
+                )
+                axs[s, 1].set_ylabel("state[$s]")
+            end
+            for c in 1:size(controls, 1)
+                axs[c, 2].plot(
+                    times,
+                    controls[c, :];
+                    label="c$c",
+                    alpha=transparency_scaler(noise),
+                    c=cmap(c + size(states, 1)),
+                )
+                axs[c, 1].set_ylabel("control[$c]")
+            end
+            # @infiltrate
+            legend_elements = [
+                Line2D([0], [0]; color="k", label=string(noise), alpha=transparency_scaler(noise)) for noise in sort(perturbations)
+            ]
+            fig.legend(;
+                handles=legend_elements,
+                bbox_to_anchor=(1.04, 0.5),
+                loc="center left",
+                borderaxespad=0,
+            )
+            fig.suptitle("u0[$i] + $noise")
+            fig.show()
+            #     objective, state_penalty, control_penalty, _ = loss(
+            #         θ, prob; tsteps, state_penalty=indicator_function
+            #     )
+            #     # plot_simulation(controller, prob, θ, tsteps; only=:states, vars=[2], yrefs=[800,150])
+            #     # plot_simulation(controller, prob, θ, tsteps; only=:states, fun=(x,y,z) -> 1.1f-2x - z, yrefs=[3f-2])
+
+            #     push!(obs, objective)
+            #     push!(spens, state_penalty)
+            #     push!(cpens, control_penalty)
+        end
+        # try  # this fails when penalties explode due to the steep barriers
+        #     boxplot(
+        #         ["objectives", "state_penalties", "constraint_penalties"],
+        #         [obs, spens, cpens];
+        #         title="Perturbation results",
+        #     ) |> display
+        #     lineplot(
+        #         prob.u0[i] .+ perturbations, obs; title="u0 + Δu[$i] ~ objectives"
+        #     ) |> display
+        #     lineplot(
+        #         prob.u0[i] .+ perturbations,
+        #         spens;
+        #         title="u0 + Δu[$i] ~ state_penalties",
+        #     ) |> display
+        #     lineplot(
+        #         prob.u0[i] .+ perturbations,
+        #         cpens;
+        #         title="u0 + Δu[$i] ~ constraint_penalties",
+        #     ) |> display
+        # catch
+        #     @show obs
+        #     @show spens
+        #     @show cpens
+        # end
+    end
 end

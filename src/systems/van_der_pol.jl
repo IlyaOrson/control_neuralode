@@ -339,10 +339,10 @@ function van_der_pol(; store_results=true::Bool)
 
     # u0 = [0.0f0, 1.0f0, 0.0f0]
     perturbation_specs = [
-        Dict(:type => :centered, :scale => 1f0, :samples => 10, :percentage => 2f-2)
-        Dict(:type => :centered, :scale => 1f0, :samples => 10, :percentage => 2f-2)
+        Dict(:type => :positive, :scale => 1f0, :samples => 5, :percentage => 2f-2)
+        Dict(:type => :negative, :scale => 1f0, :samples => 5, :percentage => 2f-2)
         Dict(
-            :type => :centered, :scale => 1f0, :samples => 10, :percentage => 2f-2
+            :type => :positive, :scale => 1f0, :samples => 5, :percentage => 2f-2
         )
     ]
     initial_perturbations(controller, prob, θ_opt, tsteps, u0, perturbation_specs)

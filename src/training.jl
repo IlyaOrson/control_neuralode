@@ -76,11 +76,22 @@ function preconditioner(
                         )
                         for r in rows
                             ax = axs[r, 1]
-                            ax.plot(reference[r, :]; label="fixed", color=cmap(2r - 2))
-                            ax.plot(control[r, :]; label="neural", color=cmap(2r - 1))
+                            ax.plot(
+                                fixed_sol.t,
+                                reference[r, :],
+                                "o";
+                                label="fixed",
+                                color=cmap(2r - 2),
+                            )
+                            ax.plot(
+                                fixed_sol.t,
+                                control[r, :];
+                                label="neural",
+                                color=cmap(2r - 1),
+                            )
                             ax.legend()
                         end
-                        fig.supxlabel("timestep")
+                        fig.supxlabel("time")
                         fig.suptitle("Preconditioning")
                         fig.show()
                     end
