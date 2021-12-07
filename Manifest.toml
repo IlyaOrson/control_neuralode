@@ -539,6 +539,12 @@ git-tree-sha1 = "e8b37bb43c01eed0418821d1f9d20eca5ba6ab21"
 uuid = "587475ba-b771-5e3f-ad9e-33799f191a9c"
 version = "0.12.8"
 
+[[deps.Formatting]]
+deps = ["Printf"]
+git-tree-sha1 = "8339d61043228fdd3eb658d86c926cb282ae72a8"
+uuid = "59287772-0a20-5a39-b81b-1366585eb4c0"
+version = "0.4.2"
+
 [[deps.ForwardDiff]]
 deps = ["CommonSubexpressions", "DiffResults", "DiffRules", "LinearAlgebra", "LogExpFunctions", "NaNMath", "Preferences", "Printf", "Random", "SpecialFunctions", "StaticArrays"]
 git-tree-sha1 = "6406b5112809c08b1baa5703ad274e1dded0652f"

@@ -120,9 +120,9 @@ function van_der_pol(; store_results=true::Bool)
     # ]
 
     _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
-    start_mark = InitialState(points=states_raw[:, 1])
-    marker_path = IntegrationPath(points=states_raw)
-    final_mark = FinalState(points=states_raw[:, end])
+    start_mark = InitialState(; points=states_raw[:, 1])
+    marker_path = IntegrationPath(; points=states_raw)
+    final_mark = FinalState(; points=states_raw[:, end])
     phase_plot(
         system!,
         controller,
@@ -142,8 +142,8 @@ function van_der_pol(; store_results=true::Bool)
 
     plt.figure()
     finer_tsteps = range(tsteps[1], tsteps[end]; length=1000)
-    plt.plot(finer_tsteps, [interpol(t) for t in finer_tsteps], label="interpolation")
-    plt.plot(tsteps, dropdims(controls_collocation; dims=1), "xg", label="collocation")
+    plt.plot(finer_tsteps, [interpol(t) for t in finer_tsteps]; label="interpolation")
+    plt.plot(tsteps, dropdims(controls_collocation; dims=1), "xg"; label="collocation")
     plt.title("Control collocation")
     plt.xlabel("time")
     plt.legend()
@@ -156,7 +156,7 @@ function van_der_pol(; store_results=true::Bool)
         end
     end
     @info "Collocation result"
-    display(lineplot(x -> precondition(x, nothing)[1], t0, tf, xlim=(t0,tf)))
+    display(lineplot(x -> precondition(x, nothing)[1], t0, tf; xlim=(t0, tf)))
     # display(lineplot(x -> precondition(x, nothing)[2], t0, tf, xlim=(t0,tf)))
 
     @info "Preconditioning..."
@@ -166,7 +166,7 @@ function van_der_pol(; store_results=true::Bool)
         system!,
         t0,
         u0,
-        tsteps[2:2:end];
+        tsteps[2:2:end];,
         #control_range_scaling=[maximum(controls_collocation) - minimum(controls_collocation)],
     )
 
@@ -176,9 +176,9 @@ function van_der_pol(; store_results=true::Bool)
     plot_simulation(controller, prob, θ, tsteps; only=:controls)
 
     _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
-    start_mark = InitialState(points=states_raw[:, 1])
-    marker_path = IntegrationPath(points=states_raw)
-    final_mark = FinalState(points=states_raw[:, end])
+    start_mark = InitialState(; points=states_raw[:, 1])
+    marker_path = IntegrationPath(; points=states_raw)
+    final_mark = FinalState(; points=states_raw[:, end])
     phase_plot(
         system!,
         controller,
@@ -243,7 +243,9 @@ function van_der_pol(; store_results=true::Bool)
             autojacvec=ReverseDiffVJP(true), checkpointing=true
         )
         sol = Array(
-            OrdinaryDiffEq.solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, sensealg)
+            OrdinaryDiffEq.solve(
+                prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, sensealg
+            ),
         )
         fault = min.(sol[1, 1:end] .+ 0.4f0, 0.0f0)
         penalty = α * dt * sum(fault .^ 2)  # quadratic penalty
@@ -253,7 +255,7 @@ function van_der_pol(; store_results=true::Bool)
     penalty_coefficients = [10.0f0, 10f1, 10f2, 10f3]
     for α in penalty_coefficients
         # global result
-        # @show result
+        # @show result.minimizer
 
         # set differential equation struct again
         constrained_prob = ODEProblem(dudt!, u0, tspan, result.minimizer)
@@ -267,14 +269,14 @@ function van_der_pol(; store_results=true::Bool)
         penalty_loss_(params) = penalty_loss(params, constrained_prob, tsteps; α)
 
         @info α
-        plot_simulation(
-            controller,
-            constrained_prob,
-            result.minimizer,
-            tsteps;
-            only=:controls,
-            show=penalty_loss_(result.minimizer),
-        )
+        # plot_simulation(
+        #     controller,
+        #     constrained_prob,
+        #     result.minimizer,
+        #     tsteps;
+        #     only=:controls,
+        #     show=penalty_loss_(result.minimizer),
+        # )
 
         adtype = GalacticOptim.AutoZygote()
         optf = OptimizationFunction((x, p) -> penalty_loss_(x), adtype)
@@ -282,40 +284,39 @@ function van_der_pol(; store_results=true::Bool)
             optf, result.minimizer, adtype, nothing
         )
         optprob = OptimizationProblem(optfunc, result.minimizer; allow_f_increases=true)
-        linesearch = BackTracking(; iterations=10)
+        linesearch = BackTracking(; iterations=20)
         result = GalacticOptim.solve(
             optprob,
             LBFGS(; linesearch);
-            iterations=100,  # FIXME
+            iterations=50,  # FIXME
             # cb=plotting_callback,
         )
     end
+    θ_opt = result.minimizer
+    # θ_opt = θ # FIXME
+    constrained_prob = ODEProblem(dudt!, u0, tspan, θ_opt)
 
-    constrained_prob = ODEProblem(dudt!, u0, tspan, result.minimizer)
-
-    penalty_loss(result.minimizer, constrained_prob, tsteps; α=penalty_coefficients[end])
-    plot_simulation(controller, constrained_prob, result.minimizer, tsteps; only=:controls)
+    # penalty_loss(result.minimizer, constrained_prob, tsteps; α=penalty_coefficients[end])
+    plot_simulation(controller, constrained_prob, θ_opt, tsteps; only=:controls)
 
     store_simulation(
         "constrained",
         controller,
         constrained_prob,
-        result.minimizer,
+        θ_opt,
         tsteps;
         datadir,
         metadata=Dict(
-            :loss => penalty_loss(
-                result.minimizer, constrained_prob, tsteps; α=penalty_coefficients[end]
-            ),
+            :loss =>
+                penalty_loss(θ_opt, constrained_prob, tsteps; α=penalty_coefficients[end]),
             :constraint => "quadratic x2(t) > -0.4",
         ),
     )
 
-    θ_opt = result.minimizer
     _, states_opt, _ = run_simulation(controller, prob, θ_opt, tsteps)
-    start_mark = InitialState(points=states_opt[:, 1])
-    marker_path = IntegrationPath(points=states_opt)
-    final_mark = FinalState(points=states_opt[:, end])
+    start_mark = InitialState(; points=states_opt[:, 1])
+    marker_path = IntegrationPath(; points=states_opt)
+    final_mark = FinalState(; points=states_opt[:, end])
     shader = ShadeConf(; indicator=function (x, y)
         if x > -.4
             return true
@@ -339,11 +340,9 @@ function van_der_pol(; store_results=true::Bool)
 
     # u0 = [0.0f0, 1.0f0, 0.0f0]
     perturbation_specs = [
-        Dict(:type => :positive, :scale => 1f0, :samples => 5, :percentage => 2f-2)
-        Dict(:type => :negative, :scale => 1f0, :samples => 5, :percentage => 2f-2)
-        Dict(
-            :type => :positive, :scale => 1f0, :samples => 5, :percentage => 2f-2
-        )
+        (variable=1, type=:positive, scale=1.0f0, samples=8, percentage=2f-2)
+        (variable=2, type=:negative, scale=1.0f0, samples=8, percentage=2f-2)
+        (variable=3, type=:positive, scale=1.0f0, samples=8, percentage=2f-2)
     ]
-    initial_perturbations(controller, prob, θ_opt, tsteps, u0, perturbation_specs)
+    return initial_perturbations(controller, prob, θ_opt, tsteps, u0, perturbation_specs)
 end  # wrapper script

@@ -1,5 +1,8 @@
 const mpl = matplotlib
-const Line2D = matplotlib.lines.Line2D
+
+# const Line2D = matplotlib.lines.Line2D
+# const Patch = matplotlib.patches.Patch
+
 # const GridSpec = mpl.gridspec.GridSpec
 
 plt.style.use("seaborn-colorblind")  # "ggplot"
@@ -8,7 +11,7 @@ palette = plt.cm.Dark2.colors
 font = Dict(:family => "STIXGeneral", :size => 16)
 savefig = Dict(:dpi => 600, :bbox => "tight")
 lines = Dict(:linewidth => 4)
-figure = Dict(:figsize => (8, 4))
+figure = Dict(:figsize => (8, 4), :autolayout => true)
 axes = Dict(:prop_cycle => mpl.cycler(; color=palette))
 legend = Dict(:fontsize => "x-large")  # medium for presentations, x-large for papers
 
@@ -267,30 +270,34 @@ function phase_plot(
     return plt.show()
 end
 
-# FIXME
 function initial_perturbations(controller, prob, θ, tsteps, u0, specs)
     prob = remake(prob; p=θ)
-    for (i, spec) in enumerate(specs)
+    state_size = size(u0, 1)
+    control_size = size(controller(u0, θ), 1)
+    for spec in specs
         perturbations = local_grid(
-            spec[:samples], spec[:percentage]; scale=spec[:scale], type=spec[:type]
+            spec.samples, spec.percentage; scale=spec.scale, type=spec.type
         )
-
-        #boxplot("Δu[$i]", perturbations; title="perturbations") |> display
-
-        fig, axs = plt.subplots(
-            length(specs), 2; sharex="col", squeeze=false#, constrained_layout=true
+        fig_states, axs_states = plt.subplots(
+            length(u0); sharex="col", squeeze=false, constrained_layout=true
         )
+        fig_controls, axs_controls = plt.subplots(
+            length(controller(u0, θ)); sharex="col", squeeze=false, constrained_layout=true
+        )
+        cmap = ColorMap("tab10")
+        axs_states[1].set_title("States")
+        axs_controls[1].set_title("Controls")
+        axs_states[end].set_xlabel("time")
+        axs_controls[end].set_xlabel("time")
 
-        # perturbations should be sorted from min to max for this
-        # decreasing transparency to work
-        function transparency_scaler(noise, top=1, low=0.4)
+        function transparency_scaler(noise, perturbations; top=1, low=0.2)
             highest = maximum(abs, perturbations)
-            amplitude = abs(noise)/highest
-            return top - (top - low)*amplitude
+            amplitude = abs(noise) / highest
+            return top - (top - low) * amplitude
         end
         for noise in perturbations
             noise_vec = zeros(typeof(noise), length(u0))
-            noise_vec[i] = noise
+            noise_vec[spec.variable] = noise
 
             # local prob = ODEProblem(dudt!, u0 + noise_vec, tspan, θ)
             perturbed_u0 = prob.u0 + noise_vec
@@ -298,72 +305,81 @@ function initial_perturbations(controller, prob, θ, tsteps, u0, specs)
 
             times, states, controls = run_simulation(controller, prob, θ, tsteps)
 
-            cmap = ColorMap("tab10")
-            axs[1, 1].set_title("States")
-            axs[1, 2].set_title("Controls")
-            axs[end, 1].set_xlabel("time")
-            axs[end, 2].set_xlabel("time")
-            for s in 1:size(states, 1)
-                axs[s, 1].plot(
-                    times, states[s, :]; label="s$s", alpha=transparency_scaler(noise), c=cmap(s)
+            for s in 1:state_size
+                axs_states[s].plot(
+                    times,
+                    states[s, :];
+                    label="u0[$(spec.variable)] + " * format(noise; precision=3),
+                    alpha=transparency_scaler(noise, perturbations),
+                    c=cmap(s),
                 )
-                axs[s, 1].set_ylabel("state[$s]")
+                axs_states[s].set_ylabel("state[$s]")
             end
-            for c in 1:size(controls, 1)
-                axs[c, 2].plot(
+
+            for c in 1:control_size
+                axs_controls[c].plot(
                     times,
                     controls[c, :];
-                    label="c$c",
-                    alpha=transparency_scaler(noise),
+                    label="u0[$(spec.variable)] + " * format(noise; precision=3),
+                    alpha=transparency_scaler(noise, perturbations),
                     c=cmap(c + size(states, 1)),
                 )
-                axs[c, 1].set_ylabel("control[$c]")
+                axs_controls[c].set_ylabel("control[$c]")
             end
-            # @infiltrate
-            legend_elements = [
-                Line2D([0], [0]; color="k", label=string(noise), alpha=transparency_scaler(noise)) for noise in sort(perturbations)
-            ]
-            fig.legend(;
-                handles=legend_elements,
-                bbox_to_anchor=(1.04, 0.5),
-                loc="center left",
-                borderaxespad=0,
-            )
-            fig.suptitle("u0[$i] + $noise")
-            fig.show()
-            #     objective, state_penalty, control_penalty, _ = loss(
-            #         θ, prob; tsteps, state_penalty=indicator_function
-            #     )
-            #     # plot_simulation(controller, prob, θ, tsteps; only=:states, vars=[2], yrefs=[800,150])
-            #     # plot_simulation(controller, prob, θ, tsteps; only=:states, fun=(x,y,z) -> 1.1f-2x - z, yrefs=[3f-2])
-
-            #     push!(obs, objective)
-            #     push!(spens, state_penalty)
-            #     push!(cpens, control_penalty)
         end
-        # try  # this fails when penalties explode due to the steep barriers
-        #     boxplot(
-        #         ["objectives", "state_penalties", "constraint_penalties"],
-        #         [obs, spens, cpens];
-        #         title="Perturbation results",
-        #     ) |> display
-        #     lineplot(
-        #         prob.u0[i] .+ perturbations, obs; title="u0 + Δu[$i] ~ objectives"
-        #     ) |> display
-        #     lineplot(
-        #         prob.u0[i] .+ perturbations,
-        #         spens;
-        #         title="u0 + Δu[$i] ~ state_penalties",
-        #     ) |> display
-        #     lineplot(
-        #         prob.u0[i] .+ perturbations,
-        #         cpens;
-        #         title="u0 + Δu[$i] ~ constraint_penalties",
-        #     ) |> display
-        # catch
-        #     @show obs
-        #     @show spens
-        #     @show cpens
+        legend_elements = [
+            matplotlib.patches.Patch(;
+                facecolor="black",
+                edgecolor="black",
+                # Line2D(
+                #     [0],
+                #     [0];
+                #     color="k",
+                label=format(noise; precision=3),
+                alpha=transparency_scaler(noise, perturbations),
+            ) for noise in sort(perturbations)
+        ]
+        fig_states.legend(;
+            handles=legend_elements,
+            bbox_to_anchor=(1.04, 0.5),
+            loc="center left",
+            # borderaxespad=0,
+        )
+
+        # handles_states = []
+        # labels_states = []
+        # for s in 1:state_size
+        #     axs_states[s].legend()
+        #     handles, labels = axs_states[s].get_legend_handles_labels()
+        #     append!(handles_states, handles)
+        #     append!(labels_states, labels)
         # end
+        # by_label_states = Dict(zip(labels_states, handles_states))
+        # fig_states.legend(
+        #     values(by_label_states), keys(by_label_states),
+        #     bbox_to_anchor=(1.04, 0.5),
+        #     loc="center left",
+        #     borderaxespad=0,
+        # )
+        fig_states.suptitle("$spec")
+        fig_states.show()
+
+        # handles_controls = []
+        # labels_controls = []
+        # for c in 1:control_size
+        #     handles, labels = axs_controls[c].get_legend_handles_labels()
+        #     append!(handles_controls, handles)
+        #     append!(labels_controls, labels)
+        # end
+        # # handles_controls, labels_controls = axs_controls[end].get_legend_handles_labels()
+        # by_label_controls = Dict(zip(labels_controls, handles_controls))
+        # fig_controls.legend(
+        #     values(by_label_controls), keys(by_label_controls),
+        #     bbox_to_anchor=(1.04, 0.5),
+        #     loc="center left",
+        #     borderaxespad=0,
+        # )
+        fig_controls.suptitle("$spec")
+        fig_controls.show()
     end
 end

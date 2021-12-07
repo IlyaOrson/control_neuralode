@@ -5,9 +5,10 @@ using Base: @kwdef
 using Base.Filesystem
 using LazyGrids: ndgrid
 
-using ArgCheck
-using ProgressMeter
-using Infiltrator
+using ArgCheck: @argcheck
+using Formatting: format
+using ProgressMeter: Progress, next!
+using Infiltrator: @infiltrate
 using Statistics: mean
 using LineSearches: BackTracking
 using Optim, GalacticOptim
@@ -18,6 +19,7 @@ using OrdinaryDiffEq, DiffEqSensitivity, DiffEqFlux
 using UnicodePlots: lineplot, lineplot!, histogram, boxplot
 using BSON, JSON3, CSV, Tables
 
+# using PyCall: PyObject
 using PyPlot: plt, matplotlib, ColorMap
 
 export batch_reactor, van_der_pol, reference_tracking, bioreactor, semibatch_reactor
