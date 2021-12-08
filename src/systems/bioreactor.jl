@@ -165,7 +165,9 @@ function bioreactor(; store_results=true::Bool)
     )
 
         # integrate ODE system
-        sol_raw = OrdinaryDiffEq.solve(prob, BS3(); p=params, saveat=tsteps, abstol=1f-1, reltol=1f-1)
+        sol_raw = OrdinaryDiffEq.solve(
+            prob, BS3(); p=params, saveat=tsteps, abstol=1f-1, reltol=1f-1
+        )
         sol = Array(sol_raw)
 
         # approximate integral penalty
@@ -267,12 +269,19 @@ function bioreactor(; store_results=true::Bool)
         controller, prob, θ, tsteps; only=:controls, vars=[2], show=final_values
     )
 
+    # initial conditions and timepoints
+    # t0 = 0.0f0
+    # tf = 240.0f0
+    # Δt = 10.0f0
+    # C_X₀, C_N₀, C_qc₀ = 1.0f0, 150.0f0, 0.0f0
+    # u0 = [C_X₀, C_N₀, C_qc₀]
+    # tspan = (t0, tf)
+    # tsteps = t0:Δt:tf
+    # control_ranges = [(120.0f0, 400.0f0), (0.0f0, 40.0f0)]
     perturbation_specs = [
-        Dict(:type => :centered, :scale => 1.0f0, :samples => 20, :percentage => 2f-2)
-        Dict(:type => :centered, :scale => 150.0f0, :samples => 20, :percentage => 2f-2)
-        Dict(
-            :type => :positive, :scale => 0.0f0 + 5f-1, :samples => 20, :percentage => 2f-2
-        )
+        (variable = 1, type=:centered, scale=10.0f0, samples=10, percentage=2f-2)
+        (variable = 2, type=:centered, scale=800.0f0, samples=10, percentage=2f-2)
+        (variable = 3, type=:positive, scale=0.0f0 + 5f-1, samples=10, percentage=2f-2)
     ]
-    initial_perturbations(controller, prob, θ, tsteps, u0, perturbation_specs)
+    return initial_perturbations(controller, prob, θ, tsteps, u0, perturbation_specs)
 end  # script wrapper

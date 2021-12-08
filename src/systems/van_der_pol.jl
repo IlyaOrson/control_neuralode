@@ -166,7 +166,7 @@ function van_der_pol(; store_results=true::Bool)
         system!,
         t0,
         u0,
-        tsteps[2:2:end];,
+        tsteps[2:2:end];
         #control_range_scaling=[maximum(controls_collocation) - minimum(controls_collocation)],
     )
 
@@ -342,7 +342,7 @@ function van_der_pol(; store_results=true::Bool)
     perturbation_specs = [
         (variable=1, type=:positive, scale=1.0f0, samples=8, percentage=2f-2)
         (variable=2, type=:negative, scale=1.0f0, samples=8, percentage=2f-2)
-        (variable=3, type=:positive, scale=1.0f0, samples=8, percentage=2f-2)
+        (variable=3, type=:positive, scale=20.0f0, samples=8, percentage=2f-2)
     ]
     return initial_perturbations(controller, prob, θ_opt, tsteps, u0, perturbation_specs)
 end  # wrapper script

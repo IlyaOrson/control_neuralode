@@ -11,7 +11,7 @@ palette = plt.cm.Dark2.colors
 font = Dict(:family => "STIXGeneral", :size => 16)
 savefig = Dict(:dpi => 600, :bbox => "tight")
 lines = Dict(:linewidth => 4)
-figure = Dict(:figsize => (8, 4), :autolayout => true)
+figure = Dict(:figsize => (8, 4))
 axes = Dict(:prop_cycle => mpl.cycler(; color=palette))
 legend = Dict(:fontsize => "x-large")  # medium for presentations, x-large for papers
 
@@ -279,10 +279,16 @@ function initial_perturbations(controller, prob, θ, tsteps, u0, specs)
             spec.samples, spec.percentage; scale=spec.scale, type=spec.type
         )
         fig_states, axs_states = plt.subplots(
-            length(u0); sharex="col", squeeze=false, constrained_layout=true
+            length(u0);
+            sharex="col",
+            squeeze=false,
+            constrained_layout=true,
         )
         fig_controls, axs_controls = plt.subplots(
-            length(controller(u0, θ)); sharex="col", squeeze=false, constrained_layout=true
+            length(controller(u0, θ));
+            sharex="col",
+            squeeze=false,
+            constrained_layout=true,
         )
         cmap = ColorMap("tab10")
         axs_states[1].set_title("States")
@@ -309,7 +315,7 @@ function initial_perturbations(controller, prob, θ, tsteps, u0, specs)
                 axs_states[s].plot(
                     times,
                     states[s, :];
-                    label="u0[$(spec.variable)] + " * format(noise; precision=3),
+                    label="u0[$(spec.variable)] + " * format(noise; precision=2),
                     alpha=transparency_scaler(noise, perturbations),
                     c=cmap(s),
                 )
@@ -320,7 +326,7 @@ function initial_perturbations(controller, prob, θ, tsteps, u0, specs)
                 axs_controls[c].plot(
                     times,
                     controls[c, :];
-                    label="u0[$(spec.variable)] + " * format(noise; precision=3),
+                    label="u0[$(spec.variable)] + " * format(noise; precision=2),
                     alpha=transparency_scaler(noise, perturbations),
                     c=cmap(c + size(states, 1)),
                 )
@@ -331,55 +337,37 @@ function initial_perturbations(controller, prob, θ, tsteps, u0, specs)
             matplotlib.patches.Patch(;
                 facecolor="black",
                 edgecolor="black",
-                # Line2D(
-                #     [0],
-                #     [0];
-                #     color="k",
-                label=format(noise; precision=3),
+                label=format(noise; precision=2),
                 alpha=transparency_scaler(noise, perturbations),
             ) for noise in sort(perturbations)
         ]
-        fig_states.legend(;
+        fig_legend_div = 0.8
+        fig_states.subplots_adjust(right=fig_legend_div)
+        legend_states = fig_states.legend(;
             handles=legend_elements,
-            bbox_to_anchor=(1.04, 0.5),
+            bbox_to_anchor=(fig_legend_div, 0.5),
             loc="center left",
             # borderaxespad=0,
+            title="Perturbation",
+        )
+        fig_controls.subplots_adjust(right=fig_legend_div)
+        legend_controls = fig_controls.legend(;
+            handles=legend_elements,
+            bbox_to_anchor=(fig_legend_div, 0.5),
+            loc="center left",
+            # borderaxespad=0,
+            title="Perturbation",
         )
 
-        # handles_states = []
-        # labels_states = []
-        # for s in 1:state_size
-        #     axs_states[s].legend()
-        #     handles, labels = axs_states[s].get_legend_handles_labels()
-        #     append!(handles_states, handles)
-        #     append!(labels_states, labels)
-        # end
-        # by_label_states = Dict(zip(labels_states, handles_states))
-        # fig_states.legend(
-        #     values(by_label_states), keys(by_label_states),
-        #     bbox_to_anchor=(1.04, 0.5),
-        #     loc="center left",
-        #     borderaxespad=0,
-        # )
-        fig_states.suptitle("$spec")
+        fig_states.text(0,0,"$spec")
         fig_states.show()
 
-        # handles_controls = []
-        # labels_controls = []
-        # for c in 1:control_size
-        #     handles, labels = axs_controls[c].get_legend_handles_labels()
-        #     append!(handles_controls, handles)
-        #     append!(labels_controls, labels)
-        # end
-        # # handles_controls, labels_controls = axs_controls[end].get_legend_handles_labels()
-        # by_label_controls = Dict(zip(labels_controls, handles_controls))
-        # fig_controls.legend(
-        #     values(by_label_controls), keys(by_label_controls),
-        #     bbox_to_anchor=(1.04, 0.5),
-        #     loc="center left",
-        #     borderaxespad=0,
-        # )
-        fig_controls.suptitle("$spec")
+        fig_controls.text(0,0,"$spec")
         fig_controls.show()
+
+        # tight_layout alternative that considers the legend (or other artists)
+        # bbox_extra_artists must be an iterable
+        # fig.savefig("states_noise", bbox_extra_artists=(legend_states,), bbox_inches="tight")
+        # fig.savefig("controls_noise", bbox_extra_artists=(legend_controls,), bbox_inches="tight")
     end
 end

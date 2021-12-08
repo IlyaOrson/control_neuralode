@@ -190,9 +190,7 @@ function constrained_training(
         store_simulation(
             "delta_$(round(δ, digits=2))", controller, prob, θ, tsteps; metadata, datadir
         )
-        # ProgressMeter.finish!(prog)
-        # break
-        ProgressMeter.next!(
+        next!(
             prog;
             showvalues=[
                 (:α, α), (:δ, δ), (:objective, objective), (:state_penalty, state_penalty)
