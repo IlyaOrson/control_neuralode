@@ -1337,9 +1337,9 @@ version = "0.6.28"
 
 [[deps.SciMLBase]]
 deps = ["ArrayInterface", "CommonSolve", "ConstructionBase", "Distributed", "DocStringExtensions", "IteratorInterfaceExtensions", "LinearAlgebra", "Logging", "RecipesBase", "RecursiveArrayTools", "StaticArrays", "Statistics", "Tables", "TreeViews"]
-git-tree-sha1 = "b3d23aa4e5f621b574b3b0d41c62c8624d27192a"
+git-tree-sha1 = "5fc45c4a693d96698961e4a48c5a5fcfaf8ff876"
 uuid = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
-version = "1.19.5"
+version = "1.22.0"
 
 [[deps.SemiseparableMatrices]]
 deps = ["ArrayLayouts", "BandedMatrices", "BlockBandedMatrices", "LazyArrays", "LazyBandedMatrices", "LinearAlgebra", "MatrixFactorizations"]

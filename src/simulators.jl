@@ -1,8 +1,31 @@
-function run_simulation(controller, prob, params, tsteps)
+function run_simulation(
+    controller,
+    prob,
+    params,
+    tsteps;
+    noise :: @optional(Real) = nothing,
+    vars :: @optional(AbstractArray{<:Integer}) = nothing,
+    #callback :: @optional(DECallback) = nothing,
+)
+    if !isnothing(noise) && !isnothing(vars)
+        @argcheck noise > zero(noise)
+        @argcheck all(var in eachindex(prob.u0) for var in vars)
+
+        function noiser(u, t, integrator)
+            for var in vars
+                u[var] += noise
+            end
+        end
+        callback = FunctionCallingCallback(
+            noiser;
+            # funcat=tsteps,
+            func_everystep=true,
+        )
+    end
 
     # integrate with given parameters
     solution = OrdinaryDiffEq.solve(
-        prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps
+        prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, callback=callback
     )
 
     # construct arrays with the same type used by the integrator

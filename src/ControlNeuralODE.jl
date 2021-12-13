@@ -15,6 +15,8 @@ using Optim, GalacticOptim
 using InfiniteOpt, Ipopt
 using ApproxFun: Chebyshev, Fun, (..)
 using Zygote, Flux
+using SciMLBase: DECallback
+using DiffEqCallbacks: FunctionCallingCallback
 using OrdinaryDiffEq, DiffEqSensitivity, DiffEqFlux
 using UnicodePlots: lineplot, lineplot!, histogram, boxplot
 using BSON, JSON3, CSV, Tables

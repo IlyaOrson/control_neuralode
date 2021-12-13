@@ -1,3 +1,8 @@
+# https://discourse.julialang.org/t/aliases-for-union-t-nothing-and-union-t-missing/15402/41
+macro optional(ex)
+    :(Union{$ex, Nothing})
+end
+
 string_datetime() = replace(string(now()), (":" => "_"))
 
 function generate_data_subdir(callerfile; current_datetime=nothing)
