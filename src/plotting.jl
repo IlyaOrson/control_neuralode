@@ -11,7 +11,7 @@ palette = plt.cm.Dark2.colors
 font = Dict(:family => "STIXGeneral", :size => 16)
 savefig = Dict(:dpi => 600, :bbox => "tight")
 lines = Dict(:linewidth => 4)
-figure = Dict(:figsize => (8, 4))
+figure = Dict(:figsize => (8, 5))
 axes = Dict(:prop_cycle => mpl.cycler(; color=palette))
 legend = Dict(:fontsize => "x-large")  # medium for presentations, x-large for papers
 
@@ -107,9 +107,9 @@ function plot_simulation(
     return false  # if return true, then optimization stops
 end
 
-abstract type PlotConf end
+abstract type PhasePlotMarker end
 
-@kwdef struct IntegrationPath <: PlotConf
+@kwdef struct IntegrationPath <: PhasePlotMarker
     points
     fmt = "m:"
     label = "Integration path"
@@ -117,7 +117,7 @@ abstract type PlotConf end
     linewidth = 4
 end
 
-@kwdef struct InitialState <: PlotConf
+@kwdef struct InitialState <: PhasePlotMarker
     points
     fmt = "bD"
     label = "Initial state"
@@ -125,7 +125,7 @@ end
     linewidth = nothing
 end
 
-@kwdef struct FinalState <: PlotConf
+@kwdef struct FinalState <: PhasePlotMarker
     points
     fmt = "r*"
     label = "Final state"
@@ -137,6 +137,42 @@ end
     indicator::Function
     cmap = "gray"
     transparency = 1
+end
+
+@kwdef struct ConstRef
+    val::Real
+    direction::Symbol
+    class::Symbol
+    var::Integer
+    linestyle = "--"
+    color = "r"
+    label = "Constraint"
+    linewidth = 3
+    min = 0
+    max = 1
+    function ConstRef(val, direction, class, var, linestyle, color, label, linewidth, min, max)
+        @argcheck direction in (:vertical, :horizontal)
+        @argcheck class in (:state, :control)
+        @argcheck 0 <= min < max <= 1
+        return new(
+            val, direction, class, var, linestyle, color, label, linewidth, min, max
+        )
+    end
+end
+
+@kwdef struct FuncRef
+    fn::Function
+    dom::Symbol
+    class::Symbol
+    var::Integer
+    fmt = "--y"
+    label = "Constraint"
+    linewidth = 3
+    function FuncRef(fn, dom, fmt, label, linewidth)
+        @argcheck dom in (:space, :time)
+        @argcheck class in (:state, :control)
+        return new(fn, dom, class, var, fmt, label, linewidth)
+    end
 end
 
 function phase_plot(
@@ -156,8 +192,9 @@ function phase_plot(
     shader=nothing,
     kwargs...,
 )
-    @assert length(projection) == 2
-    @assert all(x -> isa(x, Tuple) && length(x) == 2, coord_lims)
+    @argcheck length(projection) == 2
+    @argcheck all(x -> isa(x, Tuple) && length(x) == 2, coord_lims)
+    @argcheck all(marker isa PhasePlotMarker for marker in markers)
 
     function stream_interface(coords...)
         u = zeros(Float32, dimension)
@@ -270,37 +307,91 @@ function phase_plot(
     return plt.show()
 end
 
-function initial_perturbations(controller, prob, θ, tsteps, u0, specs)
+function transparecy_scaler_abs(noise, perturbations; top=1, low=0.2)
+    highest = maximum(abs, perturbations)
+    amplitude = abs(noise) / highest
+    return top - (top - low) * amplitude
+end
+
+function set_state_control_subplots(
+    num_states, num_controls; annotation=nothing, refs=nothing
+)
+    @argcheck all(ref isa ConstRef for ref in refs)
+    @argcheck all(
+        ifelse(ref.class == :state, ref.var in 1:num_states, ref.var in 1:num_controls) for
+        ref in refs
+    ) BoundsError
+
+    fig_states, axs_states = plt.subplots(
+        num_states;
+        sharex="col",
+        squeeze=false,
+        # constrained_layout=true,  # incompatible with subplots_adjust
+    )
+    fig_controls, axs_controls = plt.subplots(
+        num_controls;
+        sharex="col",
+        squeeze=false,
+        # constrained_layout=true,  # incompatible with subplots_adjust
+    )
+    axs_states[1].set_title("States")
+    axs_controls[1].set_title("Controls")
+    axs_states[end].set_xlabel("time")
+    axs_controls[end].set_xlabel("time")
+
+    for s in 1:num_states
+        axs_states[s].set_ylabel("state[$s]")
+    end
+    for c in 1:num_controls
+        axs_controls[c].set_ylabel("control[$c]")
+    end
+    for r in refs
+        ax = r.class == :state ? axs_states[r.var] : axs_controls[r.var]
+        if r.direction == :vertical
+            ax.axvline(
+                r.val;
+                ymin=r.min,
+                ymax=r.max,
+                label=r.label,
+                linestyle=r.linestyle,
+                color=r.color,
+            )
+        elseif r.direction == :horizontal
+            ax.axhline(
+                r.val;
+                xmin=r.min,
+                xmax=r.max,
+                label=r.label,
+                linestyle=r.linestyle,
+                color=r.color,
+            )
+        end
+    end
+
+    if !isnothing(annotation)
+        fig_states.text(0, 0, string(annotation))
+        fig_controls.text(0, 0, string(annotation))
+    end
+
+    return fig_states, axs_states, fig_controls, axs_controls
+end
+
+function initial_perturbations(
+    controller, prob, θ, tsteps, u0, specs; refs=nothing, funcs=nothing
+)
     prob = remake(prob; p=θ)
     state_size = size(u0, 1)
     control_size = size(controller(u0, θ), 1)
+
     for spec in specs
         perturbations = local_grid(
             spec.samples, spec.percentage; scale=spec.scale, type=spec.type
         )
-        fig_states, axs_states = plt.subplots(
-            length(u0);
-            sharex="col",
-            squeeze=false,
-            constrained_layout=true,
-        )
-        fig_controls, axs_controls = plt.subplots(
-            length(controller(u0, θ));
-            sharex="col",
-            squeeze=false,
-            constrained_layout=true,
-        )
         cmap = ColorMap("tab10")
-        axs_states[1].set_title("States")
-        axs_controls[1].set_title("Controls")
-        axs_states[end].set_xlabel("time")
-        axs_controls[end].set_xlabel("time")
+        fig_states, axs_states, fig_controls, axs_controls = set_state_control_subplots(
+            length(u0), length(controller(u0, θ)); annotation=spec, refs
+        )
 
-        function transparency_scaler(noise, perturbations; top=1, low=0.2)
-            highest = maximum(abs, perturbations)
-            amplitude = abs(noise) / highest
-            return top - (top - low) * amplitude
-        end
         for noise in perturbations
             noise_vec = zeros(typeof(noise), length(u0))
             noise_vec[spec.variable] = noise
@@ -316,21 +407,18 @@ function initial_perturbations(controller, prob, θ, tsteps, u0, specs)
                     times,
                     states[s, :];
                     label="u0[$(spec.variable)] + " * format(noise; precision=2),
-                    alpha=transparency_scaler(noise, perturbations),
+                    alpha=transparecy_scaler_abs(noise, perturbations),
                     c=cmap(s),
                 )
-                axs_states[s].set_ylabel("state[$s]")
             end
-
             for c in 1:control_size
                 axs_controls[c].plot(
                     times,
                     controls[c, :];
                     label="u0[$(spec.variable)] + " * format(noise; precision=2),
-                    alpha=transparency_scaler(noise, perturbations),
+                    alpha=transparecy_scaler_abs(noise, perturbations),
                     c=cmap(c + size(states, 1)),
                 )
-                axs_controls[c].set_ylabel("control[$c]")
             end
         end
         legend_elements = [
@@ -338,11 +426,11 @@ function initial_perturbations(controller, prob, θ, tsteps, u0, specs)
                 facecolor="black",
                 edgecolor="black",
                 label=format(noise; precision=2),
-                alpha=transparency_scaler(noise, perturbations),
+                alpha=transparecy_scaler_abs(noise, perturbations),
             ) for noise in sort(perturbations)
         ]
         fig_legend_div = 0.8
-        fig_states.subplots_adjust(right=fig_legend_div)
+        fig_states.subplots_adjust(; right=fig_legend_div)
         legend_states = fig_states.legend(;
             handles=legend_elements,
             bbox_to_anchor=(fig_legend_div, 0.5),
@@ -350,7 +438,7 @@ function initial_perturbations(controller, prob, θ, tsteps, u0, specs)
             # borderaxespad=0,
             title="Perturbation",
         )
-        fig_controls.subplots_adjust(right=fig_legend_div)
+        fig_controls.subplots_adjust(; right=fig_legend_div)
         legend_controls = fig_controls.legend(;
             handles=legend_elements,
             bbox_to_anchor=(fig_legend_div, 0.5),
@@ -359,10 +447,7 @@ function initial_perturbations(controller, prob, θ, tsteps, u0, specs)
             title="Perturbation",
         )
 
-        fig_states.text(0,0,"$spec")
         fig_states.show()
-
-        fig_controls.text(0,0,"$spec")
         fig_controls.show()
 
         # tight_layout alternative that considers the legend (or other artists)

@@ -1,7 +1,7 @@
 module ControlNeuralODE
 
 using Dates
-using Base: @kwdef
+using Base: @kwdef, ifelse
 using Base.Filesystem
 using LazyGrids: ndgrid
 

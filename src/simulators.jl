@@ -5,7 +5,7 @@ function run_simulation(
     tsteps;
     noise :: @optional(Real) = nothing,
     vars :: @optional(AbstractArray{<:Integer}) = nothing,
-    #callback :: @optional(DECallback) = nothing,
+    callback :: @optional(DECallback) = nothing,
 )
     if !isnothing(noise) && !isnothing(vars)
         @argcheck noise > zero(noise)

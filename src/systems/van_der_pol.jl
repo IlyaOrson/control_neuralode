@@ -120,6 +120,7 @@ function van_der_pol(; store_results=true::Bool)
     # ]
 
     _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
+
     start_mark = InitialState(; points=states_raw[:, 1])
     marker_path = IntegrationPath(; points=states_raw)
     final_mark = FinalState(; points=states_raw[:, end])
@@ -208,14 +209,6 @@ function van_der_pol(; store_results=true::Bool)
     end
     loss(params) = loss(params, prob, tsteps)
 
-    # adtype = GalacticOptim.AutoZygote()
-    # optf = GalacticOptim.OptimizationFunction((x, p) -> loss(x), adtype)
-    # optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
-    # optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases=true)
-    # result = GalacticOptim.solve(
-    #     optprob, LBFGS(; linesearch=BackTracking()); cb=plotting_callback
-    # )
-
     @info "Training..."
     result = DiffEqFlux.sciml_train(
         loss,
@@ -236,7 +229,7 @@ function van_der_pol(; store_results=true::Bool)
         metadata=Dict(:loss => loss(result.minimizer), :constraint => "none"),
     )
 
-    ### now add state constraint x2(t) > -0.4 with
+    ### now add state constraint x1(t) > -0.4 with
     function penalty_loss(params, prob, tsteps; α=10.0f0)
         # integrate ODE system (stiff problem)
         sensealg = InterpolatingAdjoint(;
@@ -293,7 +286,7 @@ function van_der_pol(; store_results=true::Bool)
         )
     end
     θ_opt = result.minimizer
-    # θ_opt = θ # FIXME
+
     constrained_prob = ODEProblem(dudt!, u0, tspan, θ_opt)
 
     # penalty_loss(result.minimizer, constrained_prob, tsteps; α=penalty_coefficients[end])
@@ -344,5 +337,8 @@ function van_der_pol(; store_results=true::Bool)
         (variable=2, type=:negative, scale=1.0f0, samples=8, percentage=2f-2)
         (variable=3, type=:positive, scale=20.0f0, samples=8, percentage=2f-2)
     ]
-    return initial_perturbations(controller, prob, θ_opt, tsteps, u0, perturbation_specs)
+    constraint_spec = ConstRef(; val=-.4, direction=:horizontal, class=:state, var=1)
+    return initial_perturbations(
+        controller, prob, θ_opt, tsteps, u0, perturbation_specs; refs=[constraint_spec]
+    )
 end  # wrapper script
