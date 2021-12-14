@@ -87,16 +87,16 @@ function bioreactor(; store_results=true::Bool)
     )
 
     # initial parameters
-    @show controller_shape(controller)
+    controller_shape(controller)
     θ = initial_params(controller)  # destructure model weights into a vector of parameters
-    @time display(histogram(θ; title="Number of params: $(length(θ))"))
+    display(histogram(θ; title="Number of params: $(length(θ))"))
 
     # set differential equation problem
     dudt!(du, u, p, t) = system!(du, u, p, t, controller)
     prob = ODEProblem(dudt!, u0, tspan, θ)
 
     @info "Controls after initialization"
-    @time plot_simulation(controller, prob, θ, tsteps; only=:controls)
+    plot_simulation(controller, prob, θ, tsteps; only=:controls)
 
     # preconditioning to control sequences
     function precondition(t, p)
@@ -283,5 +283,5 @@ function bioreactor(; store_results=true::Bool)
         (variable = 2, type=:centered, scale=800.0f0, samples=10, percentage=2f-2)
         (variable = 3, type=:positive, scale=0.0f0 + 5f-1, samples=10, percentage=2f-2)
     ]
-    return initial_perturbations(controller, prob, θ, tsteps, u0, perturbation_specs)
+    return plot_initial_perturbations(controller, prob, θ, tsteps, u0, perturbation_specs)
 end  # script wrapper

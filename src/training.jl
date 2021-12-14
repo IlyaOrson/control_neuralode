@@ -155,7 +155,7 @@ function constrained_training(
         #     return false
         # end
 
-        @time result = DiffEqFlux.sciml_train(
+        result = DiffEqFlux.sciml_train(
             loss_,
             θ,
             LBFGS(; linesearch=BackTracking());

@@ -40,8 +40,8 @@ function van_der_pol(; store_results=true::Bool)
     dt = 0.1f0
     tsteps = t0:dt:tf
 
-    function collocation(;
-        num_supports=length(tsteps), nodes_per_element=4, state_constraint=false
+    function collocation(u0;
+        num_supports::Integer=length(tsteps), nodes_per_element::Integer=4, state_constraints::Bool=false
     )
         optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
         model = InfiniteModel(optimizer)
@@ -66,7 +66,7 @@ function van_der_pol(; store_results=true::Bool)
         # control range
         @constraint(model, -.3 <= c[1] <= 1.0)
 
-        if state_constraint
+        if state_constraints
             @constraint(model, -.4 <= x[1])
         end
 
@@ -124,7 +124,7 @@ function van_der_pol(; store_results=true::Bool)
     start_mark = InitialState(; points=states_raw[:, 1])
     marker_path = IntegrationPath(; points=states_raw)
     final_mark = FinalState(; points=states_raw[:, end])
-    phase_plot(
+    phase_portrait(
         system!,
         controller,
         θ,
@@ -138,7 +138,7 @@ function van_der_pol(; store_results=true::Bool)
         title="Initial policy",
     )
 
-    infopt_model, states_collocation, controls_collocation = collocation()
+    infopt_model, states_collocation, controls_collocation = collocation(u0; )
     interpol = interpolant(tsteps, controls_collocation)
 
     plt.figure()
@@ -180,7 +180,7 @@ function van_der_pol(; store_results=true::Bool)
     start_mark = InitialState(; points=states_raw[:, 1])
     marker_path = IntegrationPath(; points=states_raw)
     final_mark = FinalState(; points=states_raw[:, end])
-    phase_plot(
+    phase_portrait(
         system!,
         controller,
         θ,
@@ -316,7 +316,7 @@ function van_der_pol(; store_results=true::Bool)
         end
         return false
     end)
-    phase_plot(
+    phase_portrait(
         system!,
         controller,
         θ_opt,
@@ -338,7 +338,10 @@ function van_der_pol(; store_results=true::Bool)
         (variable=3, type=:positive, scale=20.0f0, samples=8, percentage=2f-2)
     ]
     constraint_spec = ConstRef(; val=-.4, direction=:horizontal, class=:state, var=1)
-    return initial_perturbations(
-        controller, prob, θ_opt, tsteps, u0, perturbation_specs; refs=[constraint_spec]
+    # plot_initial_perturbations(
+    #     controller, prob, θ_opt, tsteps, u0, perturbation_specs; refs=[constraint_spec]
+    # )
+    plot_initial_perturbations_collocation(
+        controller, prob, θ_opt, tsteps, u0, perturbation_specs, collocation; refs=[constraint_spec]
     )
 end  # wrapper script

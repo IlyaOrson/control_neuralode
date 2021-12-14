@@ -165,17 +165,18 @@ end
     dom::Symbol
     class::Symbol
     var::Integer
-    fmt = "--y"
+    linestyle = "--"
+    color = "r"
     label = "Constraint"
     linewidth = 3
-    function FuncRef(fn, dom, fmt, label, linewidth)
+    function FuncRef(fn, dom, class, var, linestyle, color, label, linewidth)
         @argcheck dom in (:space, :time)
         @argcheck class in (:state, :control)
-        return new(fn, dom, class, var, fmt, label, linewidth)
+        return new(fn, dom, class, var, linestyle, color, label, linewidth)
     end
 end
 
-function phase_plot(
+function phase_portrait(
     system!,
     controller,
     params,
@@ -376,7 +377,7 @@ function set_state_control_subplots(
     return fig_states, axs_states, fig_controls, axs_controls
 end
 
-function initial_perturbations(
+function plot_initial_perturbations(
     controller, prob, θ, tsteps, u0, specs; refs=nothing, funcs=nothing
 )
     prob = remake(prob; p=θ)
@@ -454,5 +455,114 @@ function initial_perturbations(
         # bbox_extra_artists must be an iterable
         # fig.savefig("states_noise", bbox_extra_artists=(legend_states,), bbox_inches="tight")
         # fig.savefig("controls_noise", bbox_extra_artists=(legend_controls,), bbox_inches="tight")
+    end
+end
+
+function plot_initial_perturbations_collocation(
+    controller, prob, θ, tsteps, u0, specs, collocation::Function; refs=nothing, funcs=nothing
+)
+    prob = remake(prob; p=θ)
+    state_size = size(u0, 1)
+    control_size = size(controller(u0, θ), 1)
+
+    for spec in specs
+        perturbations = local_grid(
+            spec.samples, spec.percentage; scale=spec.scale, type=spec.type
+        )
+
+        for noise in perturbations
+            cmap = ColorMap("tab20")
+            fig_states, axs_states, fig_controls, axs_controls = set_state_control_subplots(
+                length(u0), length(controller(u0, θ)); annotation=spec, refs
+            )
+
+            noise_vec = zeros(typeof(noise), length(u0))
+            noise_vec[spec.variable] = noise
+
+            # local prob = ODEProblem(dudt!, u0 + noise_vec, tspan, θ)
+            perturbed_u0 = prob.u0 + noise_vec
+            prob = remake(prob; u0=perturbed_u0)
+
+            @time times, states, controls = run_simulation(controller, prob, θ, tsteps)
+            @time infopt_model, states_collocation, controls_collocation = collocation(perturbed_u0; state_constraints=true)
+            @time interpol = interpolant(tsteps, controls_collocation)
+
+            for s in 1:state_size
+                axs_states[s].plot(
+                    times,
+                    states[s, :];
+                    label="policy",
+                    # alpha=transparecy_scaler_abs(noise, perturbations),
+                    color=cmap(2s-1),
+                )
+                axs_states[s].plot(
+                    times,
+                    states_collocation[s, :];
+                    label="collocation",
+                    marker="x",
+                    # linestyle=":",
+                    # alpha=transparecy_scaler_abs(noise, perturbations),
+                    color=cmap(2s - 2),
+                )
+
+            end
+            for c in 1:control_size
+                axs_controls[c].plot(
+                    times,
+                    controls[c, :];
+                    label="policy",
+                    # alpha=transparecy_scaler_abs(noise, perturbations),
+                    color=cmap(2c - 1 + 2size(states, 1)),
+                )
+                axs_controls[c].plot(
+                    times,
+                    controls_collocation[c, :];
+                    label="collocation",
+                    marker="x",
+                    # linestyle=":",
+                    # alpha=transparecy_scaler_abs(noise, perturbations),
+                    color=cmap(2c - 2 + 2size(states, 1)),
+                )
+            end
+            title = "u0[$(spec.variable)] + " * format(noise; precision=2)
+            fig_states.suptitle(title)
+            fig_controls.suptitle(title)
+
+            legend_elements = [
+                matplotlib.lines.Line2D([0], [0];
+                    color="black",
+                    linewidth=3,
+                    label="policy",
+                ),
+                matplotlib.lines.Line2D([0], [0];
+                    color="black",
+                    marker="x",
+                    linestyle=":",
+                    linewidth=3,
+                    label="collocation",
+                ),
+            ]
+
+            # fig_legend_div = 0.8
+            # fig_states.subplots_adjust(; right=fig_legend_div)
+            legend_states = fig_states.legend(;
+                handles=legend_elements,
+                # bbox_to_anchor=(fig_legend_div, 0.5),
+                # loc="center left",
+            )
+            # fig_controls.subplots_adjust(; right=fig_legend_div)
+            legend_controls = fig_controls.legend(;
+                handles=legend_elements,
+                # bbox_to_anchor=(fig_legend_div, 0.5),
+                # loc="center left",
+            )
+
+            fig_states.show()
+            fig_controls.show()
+            # tight_layout alternative that considers the legend (or other artists)
+            # bbox_extra_artists must be an iterable
+            # fig.savefig("states_noise", bbox_extra_artists=(legend_states,), bbox_inches="tight")
+            # fig.savefig("controls_noise", bbox_extra_artists=(legend_controls,), bbox_inches="tight")
+        end
     end
 end

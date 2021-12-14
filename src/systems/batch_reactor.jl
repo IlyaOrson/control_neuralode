@@ -66,7 +66,7 @@ function batch_reactor(; store_results=true::Bool)
 
     _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
     marker = FinalState(points=states_raw[:, end], fmt="m*", markersize=20)
-    phase_plot(
+    phase_portrait(
         system!,
         controller,
         θ,
@@ -107,7 +107,7 @@ function batch_reactor(; store_results=true::Bool)
 
     _, states_opt, _ = run_simulation(controller, prob, θ_opt, tsteps)
     marker = FinalState(points=states_opt[:, end], fmt="m*", markersize=20)
-    return phase_plot(
+    return phase_portrait(
         system!,
         controller,
         θ_opt,
