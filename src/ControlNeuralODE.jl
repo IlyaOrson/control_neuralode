@@ -1,23 +1,40 @@
 module ControlNeuralODE
 
-using Dates
 using Base: @kwdef, ifelse
 using Base.Filesystem
-using LazyGrids: ndgrid
 
+using Dates: now
+using LazyGrids: ndgrid
 using ArgCheck: @argcheck
-using Formatting: format
+using Formatting: format, sprintf1
 using ProgressMeter: Progress, next!
 using Infiltrator: @infiltrate
 using Statistics: mean
 using LineSearches: BackTracking
+using InfiniteOpt:
+    Infinite,
+    InfiniteModel,
+    OrthogonalCollocation,
+    @infinite_parameter,
+    @variables,
+    @constraint,
+    @constraints,
+    @objective,
+    optimizer_with_attributes,
+    optimizer_model,
+    solution_summary,
+    optimize!,
+    value,
+    ∂
+using Ipopt
 using Optim, GalacticOptim
-using InfiniteOpt, Ipopt
 using ApproxFun: Chebyshev, Fun, (..)
 using Zygote, Flux
 using SciMLBase: DECallback
 using DiffEqCallbacks: FunctionCallingCallback
-using OrdinaryDiffEq, DiffEqSensitivity, DiffEqFlux
+using OrdinaryDiffEq
+using DiffEqFlux
+using DiffEqSensitivity
 using UnicodePlots: lineplot, lineplot!, histogram, boxplot
 using BSON, JSON3, CSV, Tables
 

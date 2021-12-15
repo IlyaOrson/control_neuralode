@@ -150,13 +150,13 @@ end
     linewidth = 3
     min = 0
     max = 1
-    function ConstRef(val, direction, class, var, linestyle, color, label, linewidth, min, max)
+    function ConstRef(
+        val, direction, class, var, linestyle, color, label, linewidth, min, max
+    )
         @argcheck direction in (:vertical, :horizontal)
         @argcheck class in (:state, :control)
         @argcheck 0 <= min < max <= 1
-        return new(
-            val, direction, class, var, linestyle, color, label, linewidth, min, max
-        )
+        return new(val, direction, class, var, linestyle, color, label, linewidth, min, max)
     end
 end
 
@@ -459,7 +459,16 @@ function plot_initial_perturbations(
 end
 
 function plot_initial_perturbations_collocation(
-    controller, prob, θ, tsteps, u0, specs, collocation::Function; refs=nothing, funcs=nothing
+    controller,
+    prob,
+    θ,
+    tsteps,
+    u0,
+    specs,
+    collocation::Function;
+    refs=nothing,
+    funcs=nothing,
+    storedir=nothing,
 )
     prob = remake(prob; p=θ)
     state_size = size(u0, 1)
@@ -469,8 +478,7 @@ function plot_initial_perturbations_collocation(
         perturbations = local_grid(
             spec.samples, spec.percentage; scale=spec.scale, type=spec.type
         )
-
-        for noise in perturbations
+        for (tag, noise) in enumerate(perturbations)
             cmap = ColorMap("tab20")
             fig_states, axs_states, fig_controls, axs_controls = set_state_control_subplots(
                 length(u0), length(controller(u0, θ)); annotation=spec, refs
@@ -483,8 +491,13 @@ function plot_initial_perturbations_collocation(
             perturbed_u0 = u0 + noise_vec
             prob = remake(prob; u0=perturbed_u0)
 
+            @info "simulation"
             @time times, states, controls = run_simulation(controller, prob, θ, tsteps)
-            @time infopt_model, states_collocation, controls_collocation = collocation(perturbed_u0; state_constraints=true)
+            @info "collocation"
+            @time infopt_model, states_collocation, controls_collocation = collocation(
+                perturbed_u0; state_constraints=true
+            )
+            @info "interpolation"
             @time interpol = interpolant(tsteps, controls_collocation)
 
             for s in 1:state_size
@@ -493,18 +506,17 @@ function plot_initial_perturbations_collocation(
                     states[s, :];
                     label="policy",
                     # alpha=transparecy_scaler_abs(noise, perturbations),
-                    color=cmap(2s-1),
+                    color=cmap(2s - 2),
                 )
                 axs_states[s].plot(
                     times,
                     states_collocation[s, :];
                     label="collocation",
                     marker="x",
-                    # linestyle=":",
+                    linestyle="None",
                     # alpha=transparecy_scaler_abs(noise, perturbations),
-                    color=cmap(2s - 2),
+                    color=cmap(2s - 1),
                 )
-
             end
             for c in 1:control_size
                 axs_controls[c].plot(
@@ -512,16 +524,16 @@ function plot_initial_perturbations_collocation(
                     controls[c, :];
                     label="policy",
                     # alpha=transparecy_scaler_abs(noise, perturbations),
-                    color=cmap(2c - 1 + 2size(states, 1)),
+                    color=cmap(2c - 2 + 2size(states, 1)),
                 )
                 axs_controls[c].plot(
                     times,
                     controls_collocation[c, :];
                     label="collocation",
                     marker="x",
-                    # linestyle=":",
+                    linestyle="None",
                     # alpha=transparecy_scaler_abs(noise, perturbations),
-                    color=cmap(2c - 2 + 2size(states, 1)),
+                    color=cmap(2c - 1 + 2size(states, 1)),
                 )
             end
             title = "u0[$(spec.variable)] + " * format(noise; precision=2)
@@ -529,15 +541,15 @@ function plot_initial_perturbations_collocation(
             fig_controls.suptitle(title)
 
             legend_elements = [
-                matplotlib.lines.Line2D([0], [0];
-                    color="black",
-                    linewidth=3,
-                    label="policy",
+                matplotlib.lines.Line2D(
+                    [0], [0]; color="black", linewidth=3, label="policy"
                 ),
-                matplotlib.lines.Line2D([0], [0];
+                matplotlib.lines.Line2D(
+                    [0],
+                    [0];
                     color="black",
                     marker="x",
-                    linestyle=":",
+                    linestyle="None",
                     linewidth=3,
                     label="collocation",
                 ),
@@ -557,12 +569,24 @@ function plot_initial_perturbations_collocation(
                 # loc="center left",
             )
 
-            fig_states.show()
-            fig_controls.show()
-            # tight_layout alternative that considers the legend (or other artists)
-            # bbox_extra_artists must be an iterable
-            # fig.savefig("states_noise", bbox_extra_artists=(legend_states,), bbox_inches="tight")
-            # fig.savefig("controls_noise", bbox_extra_artists=(legend_controls,), bbox_inches="tight")
+            if !isnothing(storedir)
+                # tight_layout alternative that considers the legend (or other artists)
+                # bbox_extra_artists must be an iterable
+                filename = "u0_$(spec.variable)_" * sprintf1("%04d", tag)
+                fig_states.savefig(
+                    joinpath(storedir, filename * "_states.png");
+                    bbox_extra_artists=(legend_states,),
+                    # bbox_inches="tight",  # this adjusts filesize slighly... problematic for gifs
+                )
+                fig_controls.savefig(
+                    joinpath(storedir, filename * "_controls.png");
+                    bbox_extra_artists=(legend_controls,),
+                    # bbox_inches="tight",
+                )
+            else
+                fig_states.show()
+                fig_controls.show()
+            end
         end
     end
 end

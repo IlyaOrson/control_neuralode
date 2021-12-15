@@ -1,14 +1,14 @@
 # https://discourse.julialang.org/t/aliases-for-union-t-nothing-and-union-t-missing/15402/41
 macro optional(ex)
-    :(Union{$ex, Nothing})
+    return :(Union{$ex,Nothing})
 end
 
 string_datetime() = replace(string(now()), (":" => "_"))
 
-function generate_data_subdir(callerfile; current_datetime=nothing)
-    parent = dirname(@__DIR__)
-    isnothing(current_datetime) && (current_datetime = string_datetime())
-    datadir = joinpath(parent, "data", basename(callerfile), current_datetime)
+function generate_data_subdir(
+    callerfile; parent=dirname(@__DIR__), subdir=string_datetime()
+)
+    datadir = joinpath(parent, "data", basename(callerfile), subdir)
     @info "Generating data directory" datadir
     mkpath(datadir)
     return datadir
@@ -26,7 +26,7 @@ function local_grid(npoints::Integer, percentage::Real; scale=1.0f0, type=:cente
     elseif type == :positive
         translation = 0.0f0
     end
-    return [n * percentage * scale - translation for n in 0:npoints-1]
+    return [n * percentage * scale - translation for n in 0:(npoints - 1)]
 end
 
 function controller_shape(controller)
@@ -40,7 +40,7 @@ function controller_shape(controller)
     return push!(dims_input, pop!(dims_output))
 end
 
-function interpolant(timepoints, values; undersample=length(timepoints)÷4::Integer)
+function interpolant(timepoints, values; undersample=length(timepoints) ÷ 4::Integer)
     @argcheck length(timepoints) == length(values)
     @argcheck undersample <= length(timepoints)
     space = Chebyshev(timepoints[1] .. timepoints[end])

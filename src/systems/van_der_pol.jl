@@ -40,8 +40,11 @@ function van_der_pol(; store_results=true::Bool)
     dt = 0.1f0
     tsteps = t0:dt:tf
 
-    function collocation(u0;
-        num_supports::Integer=length(tsteps), nodes_per_element::Integer=4, state_constraints::Bool=false
+    function collocation(
+        u0;
+        num_supports::Integer=length(tsteps),
+        nodes_per_element::Integer=4,
+        state_constraints::Bool=false,
     )
         optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
         model = InfiniteModel(optimizer)
@@ -138,7 +141,7 @@ function van_der_pol(; store_results=true::Bool)
         title="Initial policy",
     )
 
-    infopt_model, states_collocation, controls_collocation = collocation(u0; )
+    infopt_model, states_collocation, controls_collocation = collocation(u0;)
     interpol = interpolant(tsteps, controls_collocation)
 
     plt.figure()
@@ -167,7 +170,7 @@ function van_der_pol(; store_results=true::Bool)
         system!,
         t0,
         u0,
-        tsteps[2:2:end];
+        tsteps[2:2:end],
         #control_range_scaling=[maximum(controls_collocation) - minimum(controls_collocation)],
     )
 
@@ -341,7 +344,15 @@ function van_der_pol(; store_results=true::Bool)
     # plot_initial_perturbations(
     #     controller, prob, θ_opt, tsteps, u0, perturbation_specs; refs=[constraint_spec]
     # )
-    plot_initial_perturbations_collocation(
-        controller, prob, θ_opt, tsteps, u0, perturbation_specs, collocation; refs=[constraint_spec]
+    return plot_initial_perturbations_collocation(
+        controller,
+        prob,
+        θ_opt,
+        tsteps,
+        u0,
+        perturbation_specs,
+        collocation;
+        refs=[constraint_spec],
+        storedir=generate_data_subdir(@__FILE__),
     )
 end  # wrapper script
