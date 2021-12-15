@@ -14,14 +14,15 @@ function generate_data_subdir(callerfile; current_datetime=nothing)
     return datadir
 end
 
-function local_grid(npoints, percentage; scale=1.0f0, type=:centered)
+function local_grid(npoints::Integer, percentage::Real; scale=1.0f0, type=:centered)
+    @argcheck zero(percentage) < percentage <= one(percentage)
     @argcheck type in (:centered, :negative, :positive)
     @argcheck !iszero(scale)
     width = percentage * scale * npoints
     if type == :centered
         translation = width / 2.0f0
     elseif type == :negative
-        translation = width * -1.0f0
+        translation = width
     elseif type == :positive
         translation = 0.0f0
     end

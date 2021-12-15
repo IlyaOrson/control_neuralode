@@ -398,7 +398,7 @@ function plot_initial_perturbations(
             noise_vec[spec.variable] = noise
 
             # local prob = ODEProblem(dudt!, u0 + noise_vec, tspan, θ)
-            perturbed_u0 = prob.u0 + noise_vec
+            perturbed_u0 = u0 + noise_vec
             prob = remake(prob; u0=perturbed_u0)
 
             times, states, controls = run_simulation(controller, prob, θ, tsteps)
@@ -480,7 +480,7 @@ function plot_initial_perturbations_collocation(
             noise_vec[spec.variable] = noise
 
             # local prob = ODEProblem(dudt!, u0 + noise_vec, tspan, θ)
-            perturbed_u0 = prob.u0 + noise_vec
+            perturbed_u0 = u0 + noise_vec
             prob = remake(prob; u0=perturbed_u0)
 
             @time times, states, controls = run_simulation(controller, prob, θ, tsteps)
