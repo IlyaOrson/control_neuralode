@@ -317,11 +317,13 @@ end
 function set_state_control_subplots(
     num_states, num_controls; annotation=nothing, refs=nothing
 )
-    @argcheck all(ref isa ConstRef for ref in refs)
-    @argcheck all(
-        ifelse(ref.class == :state, ref.var in 1:num_states, ref.var in 1:num_controls) for
-        ref in refs
-    ) BoundsError
+    if !isnothing(refs)
+        @argcheck all(ref isa ConstRef for ref in refs)
+        @argcheck all(
+            ifelse(ref.class == :state, ref.var in 1:num_states, ref.var in 1:num_controls)
+            for ref in refs
+        ) BoundsError
+    end
 
     fig_states, axs_states = plt.subplots(
         num_states;
@@ -346,26 +348,28 @@ function set_state_control_subplots(
     for c in 1:num_controls
         axs_controls[c].set_ylabel("control[$c]")
     end
-    for r in refs
-        ax = r.class == :state ? axs_states[r.var] : axs_controls[r.var]
-        if r.direction == :vertical
-            ax.axvline(
-                r.val;
-                ymin=r.min,
-                ymax=r.max,
-                label=r.label,
-                linestyle=r.linestyle,
-                color=r.color,
-            )
-        elseif r.direction == :horizontal
-            ax.axhline(
-                r.val;
-                xmin=r.min,
-                xmax=r.max,
-                label=r.label,
-                linestyle=r.linestyle,
-                color=r.color,
-            )
+    if !isnothing(refs)
+        for r in refs
+            ax = r.class == :state ? axs_states[r.var] : axs_controls[r.var]
+            if r.direction == :vertical
+                ax.axvline(
+                    r.val;
+                    ymin=r.min,
+                    ymax=r.max,
+                    label=r.label,
+                    linestyle=r.linestyle,
+                    color=r.color,
+                )
+            elseif r.direction == :horizontal
+                ax.axhline(
+                    r.val;
+                    xmin=r.min,
+                    xmax=r.max,
+                    label=r.label,
+                    linestyle=r.linestyle,
+                    color=r.color,
+                )
+            end
         end
     end
 

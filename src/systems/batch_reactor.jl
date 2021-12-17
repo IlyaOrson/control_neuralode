@@ -65,7 +65,7 @@ function batch_reactor(; store_results=true::Bool)
     # https://github.com/matplotlib/matplotlib/issues/21649
 
     _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
-    marker = FinalState(points=states_raw[:, end], fmt="m*", markersize=20)
+    marker = FinalState(; points=states_raw[:, end], fmt="m*", markersize=20)
     phase_portrait(
         system!,
         controller,
@@ -106,7 +106,7 @@ function batch_reactor(; store_results=true::Bool)
     θ_opt = result.minimizer
 
     _, states_opt, _ = run_simulation(controller, prob, θ_opt, tsteps)
-    marker = FinalState(points=states_opt[:, end], fmt="m*", markersize=20)
+    marker = FinalState(; points=states_opt[:, end], fmt="m*", markersize=20)
     return phase_portrait(
         system!,
         controller,
@@ -118,5 +118,4 @@ function batch_reactor(; store_results=true::Bool)
         start_points=reshape(u0 .+ (-1e-4, 0), 1, 2),
         title="Optimized policy",
     )
-
 end  # script wrapper
