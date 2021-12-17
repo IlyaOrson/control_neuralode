@@ -13,7 +13,7 @@ function preconditioner(
     plot_progress=false,
     plot_final=true,
 )
-    @assert t0 < time_fractions[1]
+    @argcheck t0 < time_fractions[1]
     θ = initial_params(controller)
     fixed_dudt!(du, u, p, t) = system!(du, u, p, t, precondition, :time)
     prog = Progress(
@@ -134,7 +134,7 @@ function constrained_training(
     datadir=nothing,
     metadata=Dict(),  # metadata is added to this dict always
 )
-    @assert length(αs) == length(δs)
+    @argcheck length(αs) == length(δs)
     prog = Progress(
         length(αs); desc="Training with constraints...", enabled=show_progressbar
     )
@@ -169,10 +169,6 @@ function constrained_training(
             θ, prob; α, δ, tsteps
         )
 
-        @info "Current values" α,
-        δ, objective, state_penalty, control_penalty,
-        regularization
-
         local_metadata = Dict(
             :objective => objective,
             :state_penalty => state_penalty,
@@ -193,7 +189,12 @@ function constrained_training(
         next!(
             prog;
             showvalues=[
-                (:α, α), (:δ, δ), (:objective, objective), (:state_penalty, state_penalty)
+                (:α, α),
+                (:δ, δ),
+                (:objective, objective),
+                (:state_penalty, state_penalty),
+                (:control_penalty, control_penalty),
+                (:regularization, regularization),
             ],
         )
     end

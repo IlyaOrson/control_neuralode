@@ -7,6 +7,14 @@ function van_der_pol(; store_results=true::Bool)
         datadir = generate_data_subdir(@__FILE__)
     end
 
+    # initial conditions and timepoints
+    t0 = 0.0f0
+    tf = 5.0f0
+    u0 = [0.0f0, 1.0f0, 0.0f0]
+    tspan = (t0, tf)
+    dt = 0.1f0
+    tsteps = t0:dt:tf
+
     function system!(du, u, p, t, controller, input=:state)
         @argcheck input in (:state, :time)
 
@@ -31,14 +39,6 @@ function van_der_pol(; store_results=true::Bool)
             du[3] = x3_prime
         end
     end
-
-    # initial conditions and timepoints
-    t0 = 0.0f0
-    tf = 5.0f0
-    u0 = [0.0f0, 1.0f0, 0.0f0]
-    tspan = (t0, tf)
-    dt = 0.1f0
-    tsteps = t0:dt:tf
 
     function collocation(
         u0;
@@ -109,18 +109,11 @@ function van_der_pol(; store_results=true::Bool)
     prob = ODEProblem(dudt!, u0, tspan, θ)
 
     phase_time = 0.0f0
-    half_arista = 3.5
-    low_bounds = u0 .- repeat([half_arista], length(u0))
-    high_bounds = u0 .+ repeat([half_arista], length(u0))
-    bounds = [(l, h) for (l, h) in zip(low_bounds, high_bounds)]
-
-    # TODO: multiple starts
-    # widths = map(tup -> tup[2] - tup[1], bounds)
-    # points_per_side = 3
-    # points_ranges = [
-    #     range(u0[1] - widths[i] / 5, u0[1] + widths[i] / 5; length=points_per_side) for
-    #     i in eachindex(u0)
-    # ]
+    function square_bounds(u0, arista)
+        low_bounds = u0 .- repeat([arista/2], length(u0))
+        high_bounds = u0 .+ repeat([arista/2], length(u0))
+        bounds = [(l, h) for (l, h) in zip(low_bounds, high_bounds)]
+    end
 
     _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
 
@@ -132,7 +125,7 @@ function van_der_pol(; store_results=true::Bool)
         controller,
         θ,
         phase_time,
-        bounds;
+        square_bounds(u0, 7);
         dimension=3,
         projection=[1, 2],
         markers=[marker_path, start_mark, final_mark],
@@ -141,7 +134,7 @@ function van_der_pol(; store_results=true::Bool)
         title="Initial policy",
     )
 
-    infopt_model, states_collocation, controls_collocation = collocation(u0;)
+    infopt_model, states_collocation, controls_collocation = collocation(u0)
     interpol = interpolant(tsteps, controls_collocation)
 
     plt.figure()
@@ -178,6 +171,7 @@ function van_der_pol(; store_results=true::Bool)
     prob = remake(prob; p=θ)
 
     plot_simulation(controller, prob, θ, tsteps; only=:controls)
+    store_simulation("precondition", controller, prob, θ, tsteps; datadir)
 
     _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
     start_mark = InitialState(; points=states_raw[:, 1])
@@ -234,7 +228,7 @@ function van_der_pol(; store_results=true::Bool)
 
     ### now add state constraint x1(t) > -0.4 with
     function penalty_loss(params, prob, tsteps; α=10.0f0)
-        # integrate ODE system (stiff problem)
+        # integrate ODE system
         sensealg = InterpolatingAdjoint(;
             autojacvec=ReverseDiffVJP(true), checkpointing=true
         )
@@ -250,8 +244,6 @@ function van_der_pol(; store_results=true::Bool)
 
     penalty_coefficients = [10.0f0, 10f1, 10f2, 10f3]
     for α in penalty_coefficients
-        # global result
-        # @show result.minimizer
 
         # set differential equation struct again
         constrained_prob = ODEProblem(dudt!, u0, tspan, result.minimizer)
@@ -289,6 +281,7 @@ function van_der_pol(; store_results=true::Bool)
         )
     end
     θ_opt = result.minimizer
+    optimal = result.minimum
 
     constrained_prob = ODEProblem(dudt!, u0, tspan, θ_opt)
 
@@ -334,7 +327,7 @@ function van_der_pol(; store_results=true::Bool)
         title="Optimized policy",
     )
 
-    # u0 = [0.0f0, 1.0f0, 0.0f0]
+    # u0 = [0f0, 1f0, 0f0]
     perturbation_specs = [
         (variable=1, type=:positive, scale=1.0f0, samples=8, percentage=2f-2)
         (variable=2, type=:negative, scale=1.0f0, samples=8, percentage=2f-2)
@@ -344,7 +337,8 @@ function van_der_pol(; store_results=true::Bool)
     # plot_initial_perturbations(
     #     controller, prob, θ_opt, tsteps, u0, perturbation_specs; refs=[constraint_spec]
     # )
-    return plot_initial_perturbations_collocation(
+
+    plot_initial_perturbations_collocation(
         controller,
         prob,
         θ_opt,
@@ -355,4 +349,5 @@ function van_der_pol(; store_results=true::Bool)
         refs=[constraint_spec],
         storedir=generate_data_subdir(@__FILE__),
     )
+    return optimal
 end  # wrapper script

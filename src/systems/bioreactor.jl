@@ -2,33 +2,54 @@
 # Stochastic data-driven model predictive control using Gaussian processes.
 # Computers & Chemical Engineering, 139, 106844.
 
+# objective: maximize C_qc
+
+# state constraints
+# C_N(t) - 150 ≤ 0              t = T
+# C_N(t) − 800 ≤ 0              ∀t
+# 0.011 C_X(t) - C_qc(t) ≤ 3f-2 ∀t
+
 function bioreactor(; store_results=true::Bool)
     datadir = nothing
     if store_results
         datadir = generate_data_subdir(@__FILE__)
     end
 
+    # initial conditions and timepoints
+    t0 = 0.0f0
+    tf = 240.0f0
+    Δt = 10.0f0
+    C_X₀, C_N₀, C_qc₀ = 1.0f0, 150.0f0, 0.0f0
+    u0 = [C_X₀, C_N₀, C_qc₀]
+    tspan = (t0, tf)
+    tsteps = t0:Δt:tf
+    control_ranges = [(120.0f0, 400.0f0), (0.0f0, 40.0f0)]
+
+    system_params = (
+        u_m=0.0572f0,
+        u_d=0.0f0,
+        K_N=393.1f0,
+        Y_NX=504.5f0,
+        k_m=0.00016f0,
+        k_d=0.281f0,
+        k_s=178.9f0,
+        k_i=447.1f0,
+        k_sq=23.51f0,
+        k_iq=800.0f0,
+        K_Np=16.89f0,
+    )
+
     function system!(du, u, p, t, controller, input=:state)
         @argcheck input in (:state, :time)
-        # fixed parameters
-        u_m = 0.0572f0
-        u_d = 0.0f0
-        K_N = 393.1f0
-        Y_NX = 504.5f0
-        k_m = 0.00016f0
-        k_d = 0.281f0
-        k_s = 178.9f0
-        k_i = 447.1f0
-        k_sq = 23.51f0
-        k_iq = 800.0f0
-        K_Np = 16.89f0
+
+        u_m, u_d, K_N, Y_NX, k_m, k_d, k_s, k_i, k_sq, k_iq, K_Np = values(system_params)
 
         # neural network outputs controls based on state
-        C_X, C_N, C_qc = u  # state unpacking
+        C_X, C_N, C_qc = u
         if input == :state
-            I, F_N = controller(u, p)  # control based on state and parameters
+            I, F_N = controller(u, p)
         elseif input == :time
-            I, F_N = controller(t, p)  # control based on time and parameters
+            I, F_N = controller(t, p)
         end
 
         # auxiliary variables
@@ -51,18 +72,88 @@ function bioreactor(; store_results=true::Bool)
         end
     end
 
-    # initial conditions and timepoints
-    t0 = 0.0f0
-    tf = 240.0f0
-    Δt = 10.0f0
-    C_X₀, C_N₀, C_qc₀ = 1.0f0, 150.0f0, 0.0f0
-    u0 = [C_X₀, C_N₀, C_qc₀]
-    tspan = (t0, tf)
-    tsteps = t0:Δt:tf
-    control_ranges = [(120.0f0, 400.0f0), (0.0f0, 40.0f0)]
+    function collocation(
+        u0;
+        num_supports::Integer=length(tsteps),
+        nodes_per_element::Integer=4,
+        state_constraints::Bool=false,
+    )
+        optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
+        model = InfiniteModel(optimizer)
+        method = OrthogonalCollocation(nodes_per_element)
+        @infinite_parameter(
+            model, t in [t0, tf], num_supports = num_supports, derivative_method = method
+        )
+
+        u_m, u_d, K_N, Y_NX, k_m, k_d, k_s, k_i, k_sq, k_iq, K_Np = values(system_params)
+
+        @variables(
+            model,
+            begin
+                # state variables
+                x[1:3], Infinite(t)
+                # control variables
+                c[1:2], Infinite(t)
+            end
+        )
+
+        # initial conditions
+        @constraint(model, [i = 1:3], x[i](0) == u0[i])
+
+        # control range
+        c1_low, c1_high = control_ranges[1]
+        c2_low, c2_high = control_ranges[2]
+        @constraints(
+            model,
+            begin
+                c1_low <= c[1] <= c1_high
+                c2_low <= c[2] <= c2_high
+            end
+        )
+
+        if state_constraints
+            @constraints(
+                model,
+                begin
+                    x[2] <= 150
+                    x[2] <= 800
+                    1.1f-2 * x[1] - x[3] <= 3f-2
+                end
+            )
+        end
+
+        # dynamic equations
+        @constraints(
+            model,
+            begin
+                ∂(x[1], t) ==
+                u_m *
+                (c[1] / (c[1] + k_s + c[1]^2.0f0 / k_i)) *
+                x[1] *
+                (x[2] / (x[2] + K_N)) - u_d * x[1]
+                ∂(x[2], t) ==
+                -Y_NX *
+                u_m *
+                (c[1] / (c[1] + k_s + c[1]^2.0f0 / k_i)) *
+                x[1] *
+                (x[2] / (x[2] + K_N)) + c[2]
+                ∂(x[3], t) ==
+                k_m * (c[1] / (c[1] + k_sq + c[1]^2.0f0 / k_iq)) * x[1] -
+                k_d * (x[3] / (x[2] + K_Np))
+            end
+        )
+
+        @objective(model, Max, x[3](tf))
+
+        optimize!(model)
+
+        model |> optimizer_model |> solution_summary
+        states = hcat(value.(x)...) |> permutedims
+        controls = hcat(value.(c)...) |> permutedims
+        return model, states, controls
+    end
 
     function scaled_sigmoids(control_ranges)
-        # control_type = control_ranges |> eltype |> eltype
         return (x, p) -> [
             (control_ranges[i][2] - control_ranges[i][1]) * sigmoid(x[i]) +
             control_ranges[i][1] for i in eachindex(control_ranges)
@@ -76,13 +167,7 @@ function bioreactor(; store_results=true::Bool)
         FastDense(16, 16, tanh; initW=(x, y) -> Float32(5 / 3) * Flux.glorot_uniform(x, y)),
         FastDense(16, 2; initW=(x, y) -> Float32(5 / 3) * Flux.glorot_uniform(x, y)),
         # I ∈ [120, 400] & F ∈ [0, 40] in Bradford 2020
-        # (x, p) -> [280.0f0 * sigmoid(x[1]) + 120.0f0, 40.0f0 * sigmoid(x[2])],
-        # Zygote does not support enumerate nor zip cosntructs :( It does handle eachindex :)
-        # (x, p) -> [(ub-lb) * sigmoid(x[i]) + lb for (i, (lb, ub)) in enumerate(control_ranges)],
-        # (x, p) -> [
-        #     (control_ranges[i][2] - control_ranges[i][1]) * sigmoid(x[i]) +
-        #     control_ranges[i][1] for i in eachindex(control_ranges)
-        # ],
+        # (x, p) -> [280f0 * sigmoid(x[1]) + 120f0, 40f0 * sigmoid(x[2])],
         scaled_sigmoids(control_ranges),
     )
 
@@ -95,41 +180,40 @@ function bioreactor(; store_results=true::Bool)
     dudt!(du, u, p, t) = system!(du, u, p, t, controller)
     prob = ODEProblem(dudt!, u0, tspan, θ)
 
-    @info "Controls after initialization"
-    plot_simulation(controller, prob, θ, tsteps; only=:controls)
+    # prepare preconditioner with collocation results
+    infopt_model, states_collocation, controls_collocation = collocation(u0)
+    interpol_I = interpolant(tsteps, controls_collocation[1, :])
+    interpol_F = interpolant(tsteps, controls_collocation[2, :])
 
     # preconditioning to control sequences
     function precondition(t, p)
         Zygote.ignore() do  # Zygote can't handle this alone.
-            I_fun =
-                (400.0f0 - 120.0f0) * sin(2.0f0π * (t - t0) / (tf - t0)) / 4 +
-                (400.0f0 + 120.0f0) / 2
-            F_fun = 40.0f0 * sin(π / 2 + 2.0f0π * (t - t0) / (tf - t0)) / 4 + 40.0f0 / 2
-            return [I_fun, F_fun]
+            return [interpol_I(t), interpol_F(t)]
         end
-        # return [300f0, 25f0]
     end
-    # display(lineplot(x -> precondition(x, nothing)[1], t0, tf, xlim=(t0,tf)))
-    # display(lineplot(x -> precondition(x, nothing)[2], t0, tf, xlim=(t0,tf)))
 
-    @info "Controls after preconditioning"
+    @info "Collocation result"
+    display(lineplot(x -> precondition(x, nothing)[1], t0, tf; xlim=(t0, tf)))
+    display(lineplot(x -> precondition(x, nothing)[2], t0, tf; xlim=(t0, tf)))
+
+    @info "Preconditioning..."
     θ = preconditioner(
         controller,
         precondition,
         system!,
         t0,
         u0,
-        tsteps[(end ÷ 10):(end ÷ 10):end];
-        progressbar=false,
-        control_range_scaling=[range[end] - range[1] for range in control_ranges],
+        tsteps[2:2:end];
+        progressbar=true,
+        plot_progress=false,
+        # control_range_scaling=[range[end] - range[1] for range in control_ranges],
     )
 
     # prob = ODEProblem(dudt!, u0, tspan, θ)
     prob = remake(prob; p=θ)
 
+    plot_simulation(controller, prob, θ, tsteps; only=:states)
     plot_simulation(controller, prob, θ, tsteps; only=:controls)
-    display(histogram(θ; title="Number of params: $(length(θ))"))
-
     store_simulation("precondition", controller, prob, θ, tsteps; datadir)
 
     function state_penalty_functional(
@@ -227,8 +311,8 @@ function bioreactor(; store_results=true::Bool)
         αs,
         δs,
         tsteps,
-        # show_progressbar=true,
-        plots_callback,
+        show_progressbar=true,
+        # plots_callback,
         datadir,
     )
 
@@ -270,18 +354,18 @@ function bioreactor(; store_results=true::Bool)
     )
 
     # initial conditions and timepoints
-    # t0 = 0.0f0
-    # tf = 240.0f0
-    # Δt = 10.0f0
-    # C_X₀, C_N₀, C_qc₀ = 1.0f0, 150.0f0, 0.0f0
+    # t0 = 0f0
+    # tf = 240f0
+    # Δt = 10f0
+    # C_X₀, C_N₀, C_qc₀ = 1f0, 150f0, 0f0
     # u0 = [C_X₀, C_N₀, C_qc₀]
     # tspan = (t0, tf)
     # tsteps = t0:Δt:tf
-    # control_ranges = [(120.0f0, 400.0f0), (0.0f0, 40.0f0)]
+    # control_ranges = [(120f0, 400f0), (0f0, 40f0)]
     perturbation_specs = [
-        (variable = 1, type=:centered, scale=10.0f0, samples=10, percentage=2f-2)
-        (variable = 2, type=:centered, scale=800.0f0, samples=10, percentage=2f-2)
-        (variable = 3, type=:positive, scale=0.0f0 + 5f-1, samples=10, percentage=2f-2)
+        (variable=1, type=:centered, scale=10.0f0, samples=10, percentage=2f-2)
+        (variable=2, type=:centered, scale=800.0f0, samples=10, percentage=2f-2)
+        (variable=3, type=:positive, scale=5f-1, samples=10, percentage=2f-2)
     ]
     return plot_initial_perturbations(controller, prob, θ, tsteps, u0, perturbation_specs)
 end  # script wrapper
