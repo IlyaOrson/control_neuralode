@@ -1,7 +1,7 @@
 # Solution of a Class of Multistage Dynamic Optimization Problems.
 # 2.Problems with Path Constraints
 
-function van_der_pol(; store_results=true::Bool)
+function van_der_pol(; store_results=false::Bool)
     datadir = nothing
     if store_results
         datadir = generate_data_subdir(@__FILE__)
@@ -137,14 +137,7 @@ function van_der_pol(; store_results=true::Bool)
     infopt_model, states_collocation, controls_collocation = collocation(u0)
     interpol = interpolant(tsteps, controls_collocation)
 
-    plt.figure()
-    finer_tsteps = range(tsteps[1], tsteps[end]; length=1000)
-    plt.plot(finer_tsteps, [interpol(t) for t in finer_tsteps]; label="interpolation")
-    plt.plot(tsteps, dropdims(controls_collocation; dims=1), "xg"; label="collocation")
-    plt.title("Control collocation")
-    plt.xlabel("time")
-    plt.legend()
-    plt.show()
+    plot_collocation(controls_collocation, interpol, tsteps)
 
     # preconditioning to control sequences
     function precondition(t, p)

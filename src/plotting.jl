@@ -107,6 +107,18 @@ function plot_simulation(
     return false  # if return true, then optimization stops
 end
 
+function plot_collocation(controls_collocation, interpol, tsteps)
+    plt.figure()
+    finer_tsteps = range(tsteps[1], tsteps[end]; length=1000)
+    plt.plot(finer_tsteps, [interpol(t) for t in finer_tsteps]; label="interpolation")
+    plt.plot(tsteps, dropdims(controls_collocation; dims=1), "xg"; label="collocation")
+    plt.title("Control collocation")
+    plt.xlabel("time")
+    plt.legend()
+    plt.show()
+end
+
+
 abstract type PhasePlotMarker end
 
 @kwdef struct IntegrationPath <: PhasePlotMarker

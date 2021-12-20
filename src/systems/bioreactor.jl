@@ -9,7 +9,7 @@
 # C_N(t) − 800 ≤ 0              ∀t
 # 0.011 C_X(t) - C_qc(t) ≤ 3f-2 ∀t
 
-function bioreactor(; store_results=true::Bool)
+function bioreactor(; store_results=false::Bool)
     datadir = nothing
     if store_results
         datadir = generate_data_subdir(@__FILE__)
@@ -195,6 +195,8 @@ function bioreactor(; store_results=true::Bool)
     @info "Collocation result"
     display(lineplot(x -> precondition(x, nothing)[1], t0, tf; xlim=(t0, tf)))
     display(lineplot(x -> precondition(x, nothing)[2], t0, tf; xlim=(t0, tf)))
+    plot_collocation(controls_collocation[1,:], interpol_I, tsteps)
+    plot_collocation(controls_collocation[2,:], interpol_P, tsteps)
 
     @info "Preconditioning..."
     θ = preconditioner(

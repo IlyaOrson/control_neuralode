@@ -105,7 +105,7 @@ function preconditioner(
             precondition_loss,
             θ,
             BFGS(; initial_stepnorm=0.01);
-            # maxiters=10,
+            maxiters=10,
             allow_f_increases=true,
             f_tol,
         )

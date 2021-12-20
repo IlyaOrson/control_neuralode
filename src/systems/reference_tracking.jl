@@ -2,7 +2,7 @@
 # Approximation methods for optimal control synthesis.
 # The Canadian Journal of Chemical Engineering, 49(4), 522-528.
 
-function reference_tracking(; store_results=true::Bool)
+function reference_tracking(; store_results=false::Bool)
     datadir = nothing
     if store_results
         datadir = generate_data_subdir(@__FILE__)

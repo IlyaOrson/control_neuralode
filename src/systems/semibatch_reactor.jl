@@ -6,7 +6,7 @@
 # Example 13–5 Multiple Reactions in a Semibatch Reactor
 # p. 658
 
-function semibatch_reactor(; store_results=true::Bool)
+function semibatch_reactor(; store_results=false::Bool)
     datadir = nothing
     if store_results
         datadir = generate_data_subdir(@__FILE__)
