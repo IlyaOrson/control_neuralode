@@ -40,6 +40,13 @@ function controller_shape(controller)
     return push!(dims_input, pop!(dims_output))
 end
 
+function scaled_sigmoids(control_ranges)
+    return (x, p) -> [
+        (control_ranges[i][2] - control_ranges[i][1]) * sigmoid(x[i]) +
+        control_ranges[i][1] for i in eachindex(control_ranges)
+    ]
+end
+
 function interpolant(timepoints, values; undersample=length(timepoints) ÷ 4::Integer)
     @argcheck length(timepoints) == length(values)
     @argcheck undersample <= length(timepoints)
@@ -51,6 +58,27 @@ function interpolant(timepoints, values; undersample=length(timepoints) ÷ 4::In
         V[:, k] = Fun(space, [zeros(k - 1); 1]).(timepoints)
     end
     return Fun(space, V \ vec(values))  # interpolant as one-variable function
+end
+
+function collocation_preconditioner(u0, tsteps, collocation; plot=true, kwargs...)
+    @info "Preconditioning with collocation..."
+    infopt_model, states_collocation, controls_collocation = collocation(u0; kwargs...)
+    num_controls = size(controls_collocation, 1)
+    interpolations = [interpolant(tsteps, controls_collocation[i, :]) for i in 1:num_controls]
+
+    function precondition(t, p)
+        Zygote.ignore() do
+            return [interpolations[i](t) for i in 1:num_controls]
+        end
+    end
+
+    if plot
+        for c in 1:num_controls
+            display(lineplot(t -> precondition(t, nothing)[c], tsteps[begin], tsteps[end]; xlim=(tsteps[begin], tsteps[end])))
+            plot_collocation(controls_collocation[c,:], interpolations[c], tsteps)
+        end
+    end
+    return infopt_model, states_collocation, controls_collocation, precondition
 end
 
 # Feller, C., & Ebenbauer, C. (2014).

@@ -137,11 +137,11 @@ function van_der_pol(; store_results=false::Bool)
     infopt_model, states_collocation, controls_collocation = collocation(u0)
     interpol = interpolant(tsteps, controls_collocation)
 
-    plot_collocation(controls_collocation, interpol, tsteps)
+    plot_collocation(controls_collocation[1,:], interpol, tsteps)
 
     # preconditioning to control sequences
     function precondition(t, p)
-        Zygote.ignore() do  # Zygote can't handle this alone.
+        Zygote.ignore() do
             return [interpol(t)]
         end
     end

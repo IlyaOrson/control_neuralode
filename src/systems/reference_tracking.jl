@@ -173,7 +173,6 @@ function reference_tracking(; store_results=false::Bool)
         yrefs=[us],
     )
 
-    @info "Storing results"
     metadata = Dict(
         :loss => loss(result.minimizer),
         :reaction => reaction,

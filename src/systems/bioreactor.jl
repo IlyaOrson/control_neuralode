@@ -85,8 +85,6 @@ function bioreactor(; store_results=false::Bool)
             model, t in [t0, tf], num_supports = num_supports, derivative_method = method
         )
 
-        u_m, u_d, K_N, Y_NX, k_m, k_d, k_s, k_i, k_sq, k_iq, K_Np = values(system_params)
-
         @variables(
             model,
             begin
@@ -97,17 +95,18 @@ function bioreactor(; store_results=false::Bool)
             end
         )
 
+        # fixed parameters
+        u_m, u_d, K_N, Y_NX, k_m, k_d, k_s, k_i, k_sq, k_iq, K_Np = values(system_params)
+
         # initial conditions
         @constraint(model, [i = 1:3], x[i](0) == u0[i])
 
         # control range
-        c1_low, c1_high = control_ranges[1]
-        c2_low, c2_high = control_ranges[2]
         @constraints(
             model,
             begin
-                c1_low <= c[1] <= c1_high
-                c2_low <= c[2] <= c2_high
+                control_ranges[1][1] <= c[1] <= control_ranges[1][2]
+                control_ranges[2][1] <= c[2] <= control_ranges[2][2]
             end
         )
 
@@ -153,13 +152,6 @@ function bioreactor(; store_results=false::Bool)
         return model, states, controls
     end
 
-    function scaled_sigmoids(control_ranges)
-        return (x, p) -> [
-            (control_ranges[i][2] - control_ranges[i][1]) * sigmoid(x[i]) +
-            control_ranges[i][1] for i in eachindex(control_ranges)
-        ]
-    end
-
     # set arquitecture of neural network controller
     controller = FastChain(
         (x, p) -> [x[1], x[2] / 10.0f0, x[3] * 10.0f0],  # input scaling
@@ -180,25 +172,8 @@ function bioreactor(; store_results=false::Bool)
     dudt!(du, u, p, t) = system!(du, u, p, t, controller)
     prob = ODEProblem(dudt!, u0, tspan, θ)
 
-    # prepare preconditioner with collocation results
-    infopt_model, states_collocation, controls_collocation = collocation(u0)
-    interpol_I = interpolant(tsteps, controls_collocation[1, :])
-    interpol_F = interpolant(tsteps, controls_collocation[2, :])
+    infopt_model, states_collocation, controls_collocation, precondition = collocation_preconditioner(u0, tsteps, collocation; plot=true)
 
-    # preconditioning to control sequences
-    function precondition(t, p)
-        Zygote.ignore() do  # Zygote can't handle this alone.
-            return [interpol_I(t), interpol_F(t)]
-        end
-    end
-
-    @info "Collocation result"
-    display(lineplot(x -> precondition(x, nothing)[1], t0, tf; xlim=(t0, tf)))
-    display(lineplot(x -> precondition(x, nothing)[2], t0, tf; xlim=(t0, tf)))
-    plot_collocation(controls_collocation[1,:], interpol_I, tsteps)
-    plot_collocation(controls_collocation[2,:], interpol_P, tsteps)
-
-    @info "Preconditioning..."
     θ = preconditioner(
         controller,
         precondition,
