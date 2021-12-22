@@ -26,7 +26,7 @@ function preconditioner(
     for partial_time in time_fractions
         tspan = (t0, partial_time)
         fixed_prob = ODEProblem(fixed_dudt!, u0, tspan)
-        fixed_sol = OrdinaryDiffEq.solve(
+        fixed_sol = solve(
             fixed_prob, BS3(); abstol=1f-1, reltol=1f-1, saveat
         )
 
@@ -101,7 +101,7 @@ function preconditioner(
             return sum_squares + regularization
         end
 
-        preconditioner = DiffEqFlux.sciml_train(
+        preconditioner = sciml_train(
             precondition_loss,
             θ,
             BFGS(; initial_stepnorm=0.01);
@@ -155,7 +155,7 @@ function constrained_training(
         #     return false
         # end
 
-        result = DiffEqFlux.sciml_train(
+        result = sciml_train(
             loss_,
             θ,
             LBFGS(; linesearch=BackTracking());

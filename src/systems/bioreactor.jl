@@ -155,9 +155,9 @@ function bioreactor(; store_results=false::Bool)
     # set arquitecture of neural network controller
     controller = FastChain(
         (x, p) -> [x[1], x[2] / 10.0f0, x[3] * 10.0f0],  # input scaling
-        FastDense(3, 16, tanh; initW=(x, y) -> Float32(5 / 3) * Flux.glorot_uniform(x, y)),
-        FastDense(16, 16, tanh; initW=(x, y) -> Float32(5 / 3) * Flux.glorot_uniform(x, y)),
-        FastDense(16, 2; initW=(x, y) -> Float32(5 / 3) * Flux.glorot_uniform(x, y)),
+        FastDense(3, 16, tanh; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
+        FastDense(16, 16, tanh; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
+        FastDense(16, 2; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
         # I ∈ [120, 400] & F ∈ [0, 40] in Bradford 2020
         # (x, p) -> [280f0 * sigmoid(x[1]) + 120f0, 40f0 * sigmoid(x[2])],
         scaled_sigmoids(control_ranges),
@@ -166,7 +166,6 @@ function bioreactor(; store_results=false::Bool)
     # initial parameters
     controller_shape(controller)
     θ = initial_params(controller)  # destructure model weights into a vector of parameters
-    display(histogram(θ; title="Number of params: $(length(θ))"))
 
     # set differential equation problem
     dudt!(du, u, p, t) = system!(du, u, p, t, controller)
@@ -226,7 +225,7 @@ function bioreactor(; store_results=false::Bool)
     )
 
         # integrate ODE system
-        sol_raw = OrdinaryDiffEq.solve(
+        sol_raw = solve(
             prob, BS3(); p=params, saveat=tsteps, abstol=1f-1, reltol=1f-1
         )
         sol = Array(sol_raw)

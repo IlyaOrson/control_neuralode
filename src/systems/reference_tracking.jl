@@ -97,14 +97,14 @@ function reference_tracking(; store_results=false::Bool)
         FastDense(2, 16, tanh),
         FastDense(16, 16, tanh),
         FastDense(16, 2),
-        (x, p) -> [u_lower + (u_upper - u_lower) * σ(x[1])],  # controllers ∈ [u_lower, u_upper]
+        (x, p) -> [u_lower + (u_upper - u_lower) * sigmoid_fast(x[1])],  # controllers ∈ [u_lower, u_upper]
     )
 
     # define objective function to optimize
     function loss(params, prob, tsteps)
 
         # curious error with ROS3P()
-        sol = OrdinaryDiffEq.solve(prob, BS3(); p=params, saveat=tsteps) |> Array # integrate ODE system
+        sol = solve(prob, BS3(); p=params, saveat=tsteps) |> Array # integrate ODE system
 
         sum_squares = 0.0f0
         for state in eachcol(sol)
@@ -135,12 +135,12 @@ function reference_tracking(; store_results=false::Bool)
 
     plot_simulation(controller, prob, θ, tsteps; only=:controls, show=loss(θ))
 
-    adtype = GalacticOptim.AutoZygote()
-    optf = GalacticOptim.OptimizationFunction((x, p) -> loss(x), adtype)
-    optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
-    optprob = GalacticOptim.OptimizationProblem(optfunc, θ; allow_f_increases=true)
-    result = GalacticOptim.solve(
-        optprob, LBFGS(; linesearch=BackTracking()); cb=plotting_callback
+    result = sciml_train(
+        loss,
+        θ,
+        LBFGS(; linesearch=BackTracking());
+        allow_f_increases=true,
+        cb=plotting_callback,
     )
 
     plot_simulation(

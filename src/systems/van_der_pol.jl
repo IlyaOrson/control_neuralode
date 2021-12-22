@@ -98,7 +98,7 @@ function van_der_pol(; store_results=false::Bool)
         FastDense(3, 16, tanh),
         FastDense(16, 16, tanh),
         FastDense(16, 1),
-        (x, p) -> (1.3f0 .* σ.(x)) .- 0.3f0,
+        (x, p) -> (1.3f0 .* sigmoid_fast.(x)) .- 0.3f0,
     )
 
     # model weights are destructured into a vector of parameters
@@ -113,6 +113,7 @@ function van_der_pol(; store_results=false::Bool)
         low_bounds = u0 .- repeat([arista/2], length(u0))
         high_bounds = u0 .+ repeat([arista/2], length(u0))
         bounds = [(l, h) for (l, h) in zip(low_bounds, high_bounds)]
+        return bounds
     end
 
     _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
@@ -175,7 +176,7 @@ function van_der_pol(; store_results=false::Bool)
         controller,
         θ,
         phase_time,
-        bounds;
+        square_bounds(u0, 7);
         dimension=3,
         projection=[1, 2],
         markers=[marker_path, start_mark, final_mark],
@@ -194,13 +195,13 @@ function van_der_pol(; store_results=false::Bool)
     ### define objective function to optimize
     function loss(params, prob, tsteps)
         # integrate ODE system (stiff problem)
-        sol = OrdinaryDiffEq.solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps)
+        sol = solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps)
         return Array(sol)[3, end]  # return last value of third variable ...to be minimized
     end
     loss(params) = loss(params, prob, tsteps)
 
     @info "Training..."
-    result = DiffEqFlux.sciml_train(
+    result = sciml_train(
         loss,
         θ,
         LBFGS(; linesearch=BackTracking());
@@ -226,7 +227,7 @@ function van_der_pol(; store_results=false::Bool)
             autojacvec=ReverseDiffVJP(true), checkpointing=true
         )
         sol = Array(
-            OrdinaryDiffEq.solve(
+            solve(
                 prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, sensealg
             ),
         )
@@ -259,17 +260,13 @@ function van_der_pol(; store_results=false::Bool)
         #     show=penalty_loss_(result.minimizer),
         # )
 
-        adtype = GalacticOptim.AutoZygote()
-        optf = OptimizationFunction((x, p) -> penalty_loss_(x), adtype)
-        optfunc = GalacticOptim.instantiate_function(
-            optf, result.minimizer, adtype, nothing
-        )
-        optprob = OptimizationProblem(optfunc, result.minimizer; allow_f_increases=true)
-        linesearch = BackTracking(; iterations=20)
-        result = GalacticOptim.solve(
-            optprob,
-            LBFGS(; linesearch);
+        result = sciml_train(
+            penalty_loss_,
+            result.minimizer,
+            LBFGS(; linesearch=BackTracking(; iterations=20));
             iterations=50,  # FIXME
+            allow_f_increases=true,
+            # f_tol=1f-1,
             # cb=plotting_callback,
         )
     end
@@ -310,7 +307,7 @@ function van_der_pol(; store_results=false::Bool)
         controller,
         θ_opt,
         phase_time,
-        bounds;
+        square_bounds(u0, 7);
         shader,
         dimension=3,
         projection=[1, 2],

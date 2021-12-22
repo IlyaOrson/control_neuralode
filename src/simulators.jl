@@ -24,7 +24,7 @@ function run_simulation(
     end
 
     # integrate with given parameters
-    solution = OrdinaryDiffEq.solve(
+    solution = solve(
         prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, callback=callback
     )
 
@@ -45,7 +45,7 @@ end
 
 function store_simulation(
     filename::Union{Nothing,String},
-    controller::DiffEqFlux.FastChain,
+    controller::FastChain,
     prob::ODEProblem,
     params::AbstractVector{<:Real},
     tsteps::AbstractVector{<:Real};
@@ -71,7 +71,7 @@ function store_simulation(
     state_headers = ["x$i" for i in 1:size(states, 1)]
     control_headers = ["c$i" for i in 1:size(controls, 1)]
 
-    full_data = Tables.table(
+    full_data = table(
         hcat(times, states', controls'); header=vcat(["t"], state_headers, control_headers)
     )
 

@@ -203,7 +203,7 @@ function semibatch_reactor(; store_results=false::Bool)
     fogler_ref = [240.0f0, 298.0f0]  # reference values in Fogler
     fixed_dudt!(du, u, p, t) = system!(du, u, p, t, (u, p) -> fogler_ref)
     fixed_prob = ODEProblem(fixed_dudt!, u0, tspan)
-    fixed_sol = OrdinaryDiffEq.solve(fixed_prob, Tsit5()) |> Array
+    fixed_sol = solve(fixed_prob, Tsit5()) |> Array
     @show fixed_sol[:, end]
     plot_simulation(controller, fixed_prob, θ, tsteps; only=:states, vars=[1, 2, 3])
     plot_simulation(controller, fixed_prob, θ, tsteps; only=:states, vars=[4])
@@ -254,7 +254,7 @@ function semibatch_reactor(; store_results=false::Bool)
     function loss(params, prob, tsteps; T_up=T_up, V_up=V_up, α=1f-3, δ=1f1)
 
         # integrate ODE system and extract loss from result
-        sol = OrdinaryDiffEq.solve(prob, BS3(); p=params, saveat=tsteps) |> Array
+        sol = solve(prob, BS3(); p=params, saveat=tsteps) |> Array
         out_temp = map(x -> relaxed_log_barrier(T_up - x; δ), sol[4, 1:end])
         out_vols = map(x -> relaxed_log_barrier(V_up - x; δ), sol[5, 1:end])
 
@@ -285,17 +285,13 @@ function semibatch_reactor(; store_results=false::Bool)
         @info "Current Controls"
         plot_simulation(controller, prob, θ, tsteps; only=:controls, show=loss_(θ))
 
-        adtype = GalacticOptim.AutoZygote()
-        optf = GalacticOptim.OptimizationFunction((x, p) -> loss_(x), adtype)
-        optfunc = GalacticOptim.instantiate_function(
-            optf, θ, adtype, nothing
-        )
-        optprob = GalacticOptim.OptimizationProblem(
-            optfunc, θ; allow_f_increases=true
-        )
-        result = GalacticOptim.solve(
-            optprob,
+        result = sciml_train(
+            loss_,
+            θ,
             ADAM();
+            maxiters=5,
+            allow_f_increases=true,
+            # f_tol=1f-1,
             cb=(params, loss) -> plot_simulation(
                 controller,
                 prob,
@@ -305,7 +301,6 @@ function semibatch_reactor(; store_results=false::Bool)
                 vars=[1, 2, 3],
                 show=loss,
             ),
-            maxiters=5,
         )
         θ = result.minimizer
     end

@@ -42,7 +42,7 @@ end
 
 function scaled_sigmoids(control_ranges)
     return (x, p) -> [
-        (control_ranges[i][2] - control_ranges[i][1]) * sigmoid(x[i]) +
+        (control_ranges[i][2] - control_ranges[i][1]) * sigmoid_fast(x[i]) +
         control_ranges[i][1] for i in eachindex(control_ranges)
     ]
 end

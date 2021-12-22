@@ -1,7 +1,7 @@
 module ControlNeuralODE
 
 using Base: @kwdef, ifelse
-using Base.Filesystem
+using Base.Filesystem: mkpath
 
 using Dates: now
 using LazyGrids: ndgrid
@@ -26,17 +26,21 @@ using InfiniteOpt:
     optimize!,
     value,
     ∂
-using Ipopt
-using Optim, GalacticOptim
+using Ipopt: Ipopt
+using Optim: LBFGS, BFGS
 using ApproxFun: Chebyshev, Fun, (..)
-using Zygote, Flux
-using SciMLBase: DECallback
+using Zygote
+using Flux: glorot_uniform, ADAM, sigmoid_fast
+using SciMLBase: ODEProblem, DECallback, remake
 using DiffEqCallbacks: FunctionCallingCallback
-using OrdinaryDiffEq
-using DiffEqFlux
-using DiffEqSensitivity
-using UnicodePlots: lineplot, lineplot!, histogram, boxplot
-using BSON, JSON3, CSV, Tables
+using OrdinaryDiffEq: AutoTsit5, Rosenbrock23, BS3, Tsit5, solve
+using DiffEqFlux: FastChain, FastDense, initial_params, sciml_train
+using DiffEqSensitivity: ReverseDiffVJP, InterpolatingAdjoint
+using UnicodePlots: lineplot, lineplot!
+using BSON: BSON
+using JSON3: JSON3
+using CSV: CSV
+using Tables: table
 
 # using PyCall: PyObject
 using PyPlot: plt, matplotlib, ColorMap

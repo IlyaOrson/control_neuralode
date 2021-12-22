@@ -28,7 +28,7 @@ function batch_reactor(; store_results=false::Bool)
         sensealg = InterpolatingAdjoint(;
             autojacvec=ReverseDiffVJP(true), checkpointing=true
         )
-        sol = OrdinaryDiffEq.solve(prob, Tsit5(); p=params, saveat=tsteps, sensealg)  # integrate ODE system
+        sol = solve(prob, Tsit5(); p=params, saveat=tsteps, sensealg)  # integrate ODE system
         return -Array(sol)[2, end]  # second variable, last value, maximize
     end
 
@@ -42,7 +42,7 @@ function batch_reactor(; store_results=false::Bool)
         FastDense(2, 12, tanh),
         FastDense(12, 12, tanh),
         FastDense(12, 2),
-        (x, p) -> 5 * σ.(x),  # controllers ∈ (0, 5)
+        (x, p) -> 5 * sigmoid_fast.(x),  # controllers ∈ (0, 5)
     )
 
     # current model weights are destructured into a vector of parameters
@@ -84,13 +84,16 @@ function batch_reactor(; store_results=false::Bool)
         return plot_simulation(controller, prob, params, tsteps; only=:controls, show=loss)
     end
 
-    @info "Optimizing"
-    adtype = GalacticOptim.AutoZygote()
-    optf = OptimizationFunction((x, p) -> loss(x), adtype)
-    optfunc = GalacticOptim.instantiate_function(optf, θ, adtype, nothing)
-    optprob = OptimizationProblem(optfunc, θ; allow_f_increases=true)
-    linesearch = BackTracking(; iterations=10)
-    result = GalacticOptim.solve(optprob, LBFGS(; linesearch); iterations=100)#; cb=plotting_callback)
+    @info "Training..."
+    result = sciml_train(
+        loss,
+        θ,
+        LBFGS(; linesearch=BackTracking(; iterations=10));
+        iterations=100,
+        allow_f_increases=true,
+        # f_tol=1f-1,
+        # cb=plotting_callback,
+    )
 
     store_simulation(
         "optimized",
