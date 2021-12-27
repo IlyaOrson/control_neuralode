@@ -225,8 +225,9 @@ function bioreactor(; store_results=false::Bool)
     )
 
         # integrate ODE system
+        sensealg = InterpolatingAdjoint(autojacvec=ZygoteVJP(), checkpointing=true)
         sol_raw = solve(
-            prob, BS3(); p=params, saveat=tsteps, abstol=1f-1, reltol=1f-1
+            prob, BS3(); p=params, saveat=tsteps, abstol=1f-1, reltol=1f-1, sensealg
         )
         sol = Array(sol_raw)
 

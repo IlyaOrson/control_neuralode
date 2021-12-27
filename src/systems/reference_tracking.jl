@@ -104,7 +104,8 @@ function reference_tracking(; store_results=false::Bool)
     function loss(params, prob, tsteps)
 
         # curious error with ROS3P()
-        sol = solve(prob, BS3(); p=params, saveat=tsteps) |> Array # integrate ODE system
+        sensealg = InterpolatingAdjoint(autojacvec=ZygoteVJP(), checkpointing=true)
+        sol = solve(prob, BS3(); p=params, saveat=tsteps, sensealg) |> Array # integrate ODE system
 
         sum_squares = 0.0f0
         for state in eachcol(sol)

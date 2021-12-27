@@ -226,7 +226,7 @@ function semibatch_reactor(; store_results=false::Bool)
 
     # FIXME: precondition is a matrix and should return the lambdas
     control_profile, infopt_model, times_collocation, states_collocation, controls_collocation = collocation_preconditioner(
-        u0, collocation; plot=true, num_supports=2
+        u0, collocation; plot=true, num_supports=2, state_constraints=true
     )
     θ = preconditioner(
         controller,
@@ -246,7 +246,7 @@ function semibatch_reactor(; store_results=false::Bool)
     plot_simulation(controller, prob, θ, tsteps; only=:states)
     plot_simulation(controller, prob, θ, tsteps; only=:controls)
     store_simulation("precondition", controller, prob, θ, tsteps; datadir)
-    @infiltrate
+
     # constraints with barrier methods
     # T ∈ (0, 420]
     # Vol ∈ (0, 200]
@@ -258,7 +258,8 @@ function semibatch_reactor(; store_results=false::Bool)
     function loss(params, prob, tsteps; T_up=T_up, V_up=V_up, α=1f-3, δ=1f1)
 
         # integrate ODE system and extract loss from result
-        sol = solve(prob, BS3(); p=params, saveat=tsteps) |> Array
+        sensealg = InterpolatingAdjoint(autojacvec=ZygoteVJP(), checkpointing=true)
+        sol = solve(prob, BS3(); p=params, saveat=tsteps, sensealg) |> Array
         out_temp = map(x -> relaxed_log_barrier(T_up - x; δ), sol[4, 1:end])
         out_vols = map(x -> relaxed_log_barrier(V_up - x; δ), sol[5, 1:end])
 

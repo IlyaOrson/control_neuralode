@@ -37,7 +37,7 @@ using SciMLBase: ODEProblem, DECallback, remake
 using DiffEqCallbacks: FunctionCallingCallback
 using OrdinaryDiffEq: AutoTsit5, Rosenbrock23, BS3, Tsit5, solve
 using DiffEqFlux: FastChain, FastDense, initial_params, sciml_train
-using DiffEqSensitivity: ReverseDiffVJP, InterpolatingAdjoint
+using DiffEqSensitivity: InterpolatingAdjoint, ZygoteVJP
 using UnicodePlots: lineplot, lineplot!
 using BSON: BSON
 using JSON3: JSON3

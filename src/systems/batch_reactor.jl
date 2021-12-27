@@ -25,10 +25,8 @@ function batch_reactor(; store_results=false::Bool)
 
     # define objective function to optimize
     function loss(params, prob, tsteps)
-        sensealg = InterpolatingAdjoint(;
-            autojacvec=ReverseDiffVJP(true), checkpointing=true
-        )
-        sol = solve(prob, Tsit5(); p=params, saveat=tsteps, sensealg)  # integrate ODE system
+        sensealg = InterpolatingAdjoint(autojacvec=ZygoteVJP(), checkpointing=true)
+        sol = solve(prob, Tsit5(); p=params, saveat=tsteps, sensealg)
         return -Array(sol)[2, end]  # second variable, last value, maximize
     end
 

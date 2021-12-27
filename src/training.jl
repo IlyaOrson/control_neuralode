@@ -26,8 +26,9 @@ function preconditioner(
     for partial_time in time_fractions
         tspan = (t0, partial_time)
         fixed_prob = ODEProblem(fixed_dudt!, u0, tspan)
+        sensealg = InterpolatingAdjoint(autojacvec=ZygoteVJP(), checkpointing=true)
         fixed_sol = solve(
-            fixed_prob, BS3(); abstol=1f-1, reltol=1f-1, saveat
+            fixed_prob, BS3(); abstol=1f-1, reltol=1f-1, saveat, sensealg
         )
 
         function precondition_loss(params; plot=nothing)
