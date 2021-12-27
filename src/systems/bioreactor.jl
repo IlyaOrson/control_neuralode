@@ -149,14 +149,14 @@ function bioreactor(; store_results=false::Bool)
         model |> optimizer_model |> solution_summary
         states = hcat(value.(x)...) |> permutedims
         controls = hcat(value.(c)...) |> permutedims
-        return model, states, controls
+        return model, supports(t), states, controls
     end
 
     # set arquitecture of neural network controller
     controller = FastChain(
         (x, p) -> [x[1], x[2] / 10.0f0, x[3] * 10.0f0],  # input scaling
-        FastDense(3, 16, tanh; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
-        FastDense(16, 16, tanh; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
+        FastDense(3, 16, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
+        FastDense(16, 16, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
         FastDense(16, 2; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
         # I ∈ [120, 400] & F ∈ [0, 40] in Bradford 2020
         # (x, p) -> [280f0 * sigmoid(x[1]) + 120f0, 40f0 * sigmoid(x[2])],
@@ -171,11 +171,11 @@ function bioreactor(; store_results=false::Bool)
     dudt!(du, u, p, t) = system!(du, u, p, t, controller)
     prob = ODEProblem(dudt!, u0, tspan, θ)
 
-    infopt_model, states_collocation, controls_collocation, precondition = collocation_preconditioner(u0, tsteps, collocation; plot=true)
+    control_profile, infopt_model, times_collocation, states_collocation, controls_collocation = collocation_preconditioner(u0, collocation; plot=true)
 
     θ = preconditioner(
         controller,
-        precondition,
+        control_profile,
         system!,
         t0,
         u0,

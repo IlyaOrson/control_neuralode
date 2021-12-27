@@ -47,7 +47,7 @@ function scaled_sigmoids(control_ranges)
     ]
 end
 
-function interpolant(timepoints, values; undersample=length(timepoints) ÷ 4::Integer)
+function ChevyshevInterpolation(timepoints, values; undersample=length(timepoints) ÷ 4::Integer)
     @argcheck length(timepoints) == length(values)
     @argcheck undersample <= length(timepoints)
     space = Chebyshev(timepoints[1] .. timepoints[end])
@@ -57,28 +57,42 @@ function interpolant(timepoints, values; undersample=length(timepoints) ÷ 4::In
     for k in 1:undersample
         V[:, k] = Fun(space, [zeros(k - 1); 1]).(timepoints)
     end
-    return Fun(space, V \ vec(values))  # interpolant as one-variable function
+    return Fun(space, V \ vec(values))  # ChevyshevInterpolation as one-variable function
 end
 
-function collocation_preconditioner(u0, tsteps, collocation; plot=true, kwargs...)
+function collocation_preconditioner(u0, collocation; plot=true, kwargs...)
     @info "Preconditioning with collocation..."
-    infopt_model, states_collocation, controls_collocation = collocation(u0; kwargs...)
+    infopt_model, time_collocation, states_collocation, controls_collocation = collocation(
+        u0; kwargs...
+    )
     num_controls = size(controls_collocation, 1)
-    interpolations = [interpolant(tsteps, controls_collocation[i, :]) for i in 1:num_controls]
-
-    function precondition(t, p)
+    # interpolations = [
+    #     DataInterpolations.LinearInterpolation(controls_collocation[i, :], time_collocation) for i in 1:num_controls
+    # ]
+    interpolations = [
+        ChevyshevInterpolation(time_collocation, controls_collocation[i, :]) for i in 1:num_controls
+    ]
+    function control_profile(t, p)
         Zygote.ignore() do
             return [interpolations[i](t) for i in 1:num_controls]
         end
     end
-
     if plot
         for c in 1:num_controls
-            display(lineplot(t -> precondition(t, nothing)[c], tsteps[begin], tsteps[end]; xlim=(tsteps[begin], tsteps[end])))
-            plot_collocation(controls_collocation[c,:], interpolations[c], tsteps)
+            display(
+                lineplot(
+                    t -> control_profile(t, nothing)[c],
+                    time_collocation[begin],
+                    time_collocation[end];
+                    xlim=(time_collocation[begin], time_collocation[end]),
+                ),
+            )
+            plot_collocation(
+                controls_collocation[c, :], interpolations[c], time_collocation
+            )
         end
     end
-    return infopt_model, states_collocation, controls_collocation, precondition
+    return control_profile, infopt_model, time_collocation, states_collocation, controls_collocation
 end
 
 # Feller, C., & Ebenbauer, C. (2014).

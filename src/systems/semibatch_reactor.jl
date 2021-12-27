@@ -19,7 +19,7 @@ function semibatch_reactor(; store_results=false::Bool)
     u0 = [1.0f0, 0.0f0, 0.0f0, 290.0f0, 100.0f0]
     tspan = (t0, tf)
     tsteps = t0:Δt:tf
-    control_ranges = [(0.0f0, 250.0f0), (200.0f0, 500.0f0)]
+    control_ranges = [(0.0f0 + 1f-5, 250.0f0), (200.0f0, 500.0f0)]
 
     # control constraints
     # F = volumetric flow rate
@@ -142,8 +142,11 @@ function semibatch_reactor(; store_results=false::Bool)
             @constraints(
                 model,
                 begin
-                    0 <= x[4] <= 420
-                    0 <= x[5] <= 200
+                    1f-5 <= x[1]
+                    1f-5 <= x[2]
+                    1f-5 <= x[3]
+                    1f-5 <= x[4] <= 420
+                    1f-5 <= x[5] <= 200
                 end
             )
         end
@@ -178,16 +181,18 @@ function semibatch_reactor(; store_results=false::Bool)
 
         optimize!(model)
 
-        model |> optimizer_model |> solution_summary
+        jump_model = optimizer_model(model)
+        jump_model |> termination_status
+        jump_model |> solution_summary
         states = hcat(value.(x)...) |> permutedims
         controls = hcat(value.(c)...) |> permutedims
-        return model, states, controls
+        return model, supports(t), states, controls
     end
 
     # set arquitecture of neural network controller
     controller = FastChain(
-        FastDense(5, 16, tanh),
-        FastDense(16, 16, tanh),
+        FastDense(5, 16, tanh_fast),
+        FastDense(16, 16, tanh_fast),
         FastDense(16, 2),
         # (x, p) -> [240f0, 298f0],
         scaled_sigmoids(control_ranges),
@@ -204,7 +209,7 @@ function semibatch_reactor(; store_results=false::Bool)
     fixed_dudt!(du, u, p, t) = system!(du, u, p, t, (u, p) -> fogler_ref)
     fixed_prob = ODEProblem(fixed_dudt!, u0, tspan)
     fixed_sol = solve(fixed_prob, Tsit5()) |> Array
-    @show fixed_sol[:, end]
+    @info "Fogler's case: final time state" fixed_sol[:, end]
     plot_simulation(controller, fixed_prob, θ, tsteps; only=:states, vars=[1, 2, 3])
     plot_simulation(controller, fixed_prob, θ, tsteps; only=:states, vars=[4])
 
@@ -219,14 +224,13 @@ function semibatch_reactor(; store_results=false::Bool)
     #     lineplot(tsteps, controls_collocation[c,:], title="control", name=string(c))
     # end
 
-    # FIXME
-    infopt_model, states_collocation, controls_collocation, precondition = collocation_preconditioner(
-        u0, tsteps, collocation; plot=true
+    # FIXME: precondition is a matrix and should return the lambdas
+    control_profile, infopt_model, times_collocation, states_collocation, controls_collocation = collocation_preconditioner(
+        u0, collocation; plot=true, num_supports=2
     )
-
     θ = preconditioner(
         controller,
-        precondition,
+        control_profile,
         system!,
         t0,
         u0,
@@ -242,7 +246,7 @@ function semibatch_reactor(; store_results=false::Bool)
     plot_simulation(controller, prob, θ, tsteps; only=:states)
     plot_simulation(controller, prob, θ, tsteps; only=:controls)
     store_simulation("precondition", controller, prob, θ, tsteps; datadir)
-
+    @infiltrate
     # constraints with barrier methods
     # T ∈ (0, 420]
     # Vol ∈ (0, 200]

@@ -39,8 +39,8 @@ function batch_reactor(; store_results=false::Bool)
 
     # set arquitecture of neural network controller
     controller = FastChain(
-        FastDense(2, 12, tanh),
-        FastDense(12, 12, tanh),
+        FastDense(2, 12, tanh_fast),
+        FastDense(12, 12, tanh_fast),
         FastDense(12, 2),
         (x, p) -> 5 * sigmoid_fast.(x),  # controllers ∈ (0, 5)
     )

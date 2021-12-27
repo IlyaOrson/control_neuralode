@@ -22,15 +22,17 @@ using InfiniteOpt:
     @objective,
     optimizer_with_attributes,
     optimizer_model,
-    solution_summary,
     optimize!,
+    solution_summary,
+    supports,
+    termination_status,
     value,
     ∂
 using Ipopt: Ipopt
 using Optim: LBFGS, BFGS
 using ApproxFun: Chebyshev, Fun, (..)
 using Zygote
-using Flux: glorot_uniform, ADAM, sigmoid_fast
+using Flux: glorot_uniform, ADAM, sigmoid_fast, tanh_fast
 using SciMLBase: ODEProblem, DECallback, remake
 using DiffEqCallbacks: FunctionCallingCallback
 using OrdinaryDiffEq: AutoTsit5, Rosenbrock23, BS3, Tsit5, solve

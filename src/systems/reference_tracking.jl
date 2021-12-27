@@ -94,8 +94,8 @@ function reference_tracking(; store_results=false::Bool)
 
     # set arquitecture of neural network controller
     controller = FastChain(
-        FastDense(2, 16, tanh),
-        FastDense(16, 16, tanh),
+        FastDense(2, 16, tanh_fast),
+        FastDense(16, 16, tanh_fast),
         FastDense(16, 2),
         (x, p) -> [u_lower + (u_upper - u_lower) * sigmoid_fast(x[1])],  # controllers ∈ [u_lower, u_upper]
     )

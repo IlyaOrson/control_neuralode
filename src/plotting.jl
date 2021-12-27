@@ -514,7 +514,7 @@ function plot_initial_perturbations_collocation(
                 perturbed_u0; state_constraints=true
             )
             @info "interpolation"
-            @time interpol = interpolant(tsteps, controls_collocation)
+            @time interpol = ChevyshevInterpolation(tsteps, controls_collocation)
 
             for s in 1:state_size
                 axs_states[s].plot(

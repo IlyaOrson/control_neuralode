@@ -90,13 +90,13 @@ function van_der_pol(; store_results=false::Bool)
         model |> optimizer_model |> solution_summary
         states = hcat(value.(x)...) |> permutedims
         controls = hcat(value.(c)...) |> permutedims
-        return model, states, controls
+        return model, supports(t), states, controls
     end
 
     # set arquitecture of neural network controller
     controller = FastChain(
-        FastDense(3, 16, tanh),
-        FastDense(16, 16, tanh),
+        FastDense(3, 16, tanh_fast),
+        FastDense(16, 16, tanh_fast),
         FastDense(16, 1),
         (x, p) -> (1.3f0 .* sigmoid_fast.(x)) .- 0.3f0,
     )
@@ -135,25 +135,27 @@ function van_der_pol(; store_results=false::Bool)
         title="Initial policy",
     )
 
-    infopt_model, states_collocation, controls_collocation = collocation(u0)
-    interpol = interpolant(tsteps, controls_collocation)
+    # infopt_model, states_collocation, controls_collocation = collocation(u0)
+    # interpol = ChevyshevInterpolation(tsteps, controls_collocation)
 
-    plot_collocation(controls_collocation[1,:], interpol, tsteps)
+    # plot_collocation(controls_collocation[1,:], interpol, tsteps)
 
-    # preconditioning to control sequences
-    function precondition(t, p)
-        Zygote.ignore() do
-            return [interpol(t)]
-        end
-    end
-    @info "Collocation result"
-    display(lineplot(x -> precondition(x, nothing)[1], t0, tf; xlim=(t0, tf)))
-    # display(lineplot(x -> precondition(x, nothing)[2], t0, tf, xlim=(t0,tf)))
+    # # preconditioning to control sequences
+    # function control_profile(t, p)
+    #     Zygote.ignore() do
+    #         return [interpol(t)]
+    #     end
+    # end
+    # @info "Collocation result"
+    # display(lineplot(x -> control_profile(x, nothing)[1], t0, tf; xlim=(t0, tf)))
+    # # display(lineplot(x -> control_profile(x, nothing)[2], t0, tf, xlim=(t0,tf)))
+
+    control_profile, infopt_model, times_collocation, states_collocation, controls_collocation = collocation_preconditioner(u0, collocation; plot=true)
 
     @info "Preconditioning..."
     θ = preconditioner(
         controller,
-        precondition,
+        control_profile,
         system!,
         t0,
         u0,
@@ -264,7 +266,7 @@ function van_der_pol(; store_results=false::Bool)
             penalty_loss_,
             result.minimizer,
             LBFGS(; linesearch=BackTracking(; iterations=20));
-            iterations=50,  # FIXME
+            iterations=50,
             allow_f_increases=true,
             # f_tol=1f-1,
             # cb=plotting_callback,
