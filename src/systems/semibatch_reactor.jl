@@ -30,8 +30,8 @@ function semibatch_reactor(; store_results=false::Bool)
     # state constraints
     # T ∈ (0, 420]
     # Vol ∈ (0, 200]
-    T_up = 420.0f0
-    V_up = 200.0f0
+    T_up = 400.0f0
+    V_up = 150.0f0
 
     system_params = (
         CpA=30.0f0,
@@ -242,23 +242,38 @@ function semibatch_reactor(; store_results=false::Bool)
         nodes_per_element=2,
         constrain_states=false,
     )
+    _, _, _, states_collocation_constrained, controls_collocation_constrained = collocation_preconditioner(
+        u0,
+        collocation;
+        plot=false,
+        num_supports=length(tsteps),
+        nodes_per_element=2,
+        constrain_states=true,
+    )
 
     plt.figure()
     plt.plot(times_collocation, states_collocation[1, :]; label="s1")
     plt.plot(times_collocation, states_collocation[2, :]; label="s2")
     plt.plot(times_collocation, states_collocation[3, :]; label="s3")
+    plt.plot(times_collocation, states_collocation_constrained[1, :]; label="s1_constrained")
+    plt.plot(times_collocation, states_collocation_constrained[2, :]; label="s2_constrained")
+    plt.plot(times_collocation, states_collocation_constrained[3, :]; label="s3_constrained")
     plt.legend()
     plt.show()
 
     plt.figure()
     plt.plot(times_collocation, states_collocation[4, :]; label="s4")
     plt.plot(times_collocation, states_collocation[5, :]; label="s5")
+    plt.plot(times_collocation, states_collocation_constrained[4, :]; label="s4_constrained")
+    plt.plot(times_collocation, states_collocation_constrained[5, :]; label="s5_constrained")
     plt.legend()
     plt.show()
 
     plt.figure()
     plt.plot(times_collocation, controls_collocation[1, :]; label="c1")
     plt.plot(times_collocation, controls_collocation[2, :]; label="c2")
+    plt.plot(times_collocation, controls_collocation_constrained[1, :]; label="c1_constrained")
+    plt.plot(times_collocation, controls_collocation_constrained[2, :]; label="c2_constrained")
     plt.legend()
     plt.show()
 
@@ -271,18 +286,17 @@ function semibatch_reactor(; store_results=false::Bool)
         tsteps[2:2:end];
         progressbar=true,
         plot_progress=false,
-        # control_range_scaling=[range[end] - range[1] for range in control_ranges],
+        control_range_scaling=[range[end] - range[1] for range in control_ranges],
     )
 
     prob = ODEProblem(dudt!, u0, tspan, θ)
-    prob = remake(prob; p=θ)
 
     plot_simulation(controller, prob, θ, tsteps; only=:states)
     plot_simulation(controller, prob, θ, tsteps; only=:controls)
     store_simulation("precondition", controller, prob, θ, tsteps; datadir)
 
     # define objective function to optimize
-    function loss(params, prob, tsteps; α=1.0f-3, δ=1.0f1)
+    function loss(params, prob; α=1.0f-3, δ=1.0f1, ρ=1f-1, tsteps=())
 
         # integrate ODE system and extract loss from result
         sensealg = InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
@@ -296,46 +310,31 @@ function semibatch_reactor(; store_results=false::Bool)
         objective = last_state[1]
 
         # integral penalty
-        penalty = Δt * (sum(out_temp) + sum(out_vols))
-
-        return objective, α * penalty
+        state_penalty = α * Δt * (sum(out_temp) + sum(out_vols))
+        control_penalty = 0f0
+        regularization = ρ * mean(abs2, θ)
+        return objective, state_penalty, control_penalty, regularization
     end
 
-    δ0 = 1.0f1
-    δs = [δ0 * 0.7^i for i in 0:10]
-    for δ in δs
-        # global prob , result
-        # local adtype , optf , optfunc , optprob
+    # α: penalty coefficient
+    # δ: barrier relaxation coefficient
+    α0, δ0 = 1f-5, 1f1
+    barrier_iterations = 0:10
+    αs = [α0 for _ in barrier_iterations]
+    δs = [δ0 * 0.8f0^i for i in barrier_iterations]
+    θ = constrained_training(
+        controller,
+        prob,
+        θ,
+        loss;
+        αs,
+        δs,
+        tsteps,
+        show_progressbar=true,
+        # plots_callback,
+        datadir,
+    )
 
-        # set differential equation struct
-        # prob = ODEProblem(dudt!, u0, tspan, result.minimizer)
-        prob = remake(prob; p=θ)
-
-        # closures to comply with required interface
-        loss_(params) = reduce(+, loss(params, prob, tsteps; δ))
-
-        @info "Current Controls"
-        plot_simulation(controller, prob, θ, tsteps; only=:controls, show=loss_(θ))
-
-        result = sciml_train(
-            loss_,
-            θ,
-            ADAM();
-            maxiters=50,
-            allow_f_increases=true,
-            # f_tol=1f-1,
-            # cb=(params, loss) -> plot_simulation(
-            #     controller,
-            #     prob,
-            #     params,
-            #     tsteps;
-            #     only=:states,
-            #     vars=[1, 2, 3],
-            #     show=loss,
-            # ),
-        )
-        θ = result.minimizer
-    end
     @info "Final states"
     plot_simulation(controller, prob, θ, tsteps; only=:states, vars=[1, 2, 3])
     plot_simulation(
@@ -345,7 +344,7 @@ function semibatch_reactor(; store_results=false::Bool)
     @info "Final controls"
     plot_simulation(controller, prob, θ, tsteps; only=:controls, show=loss)#  only=:states, vars=[1,2,3])
 
-    @show final_objective, final_penalty = loss(θ, prob, tsteps; δ=δs[end])
+    @show final_objective, final_penalty = loss(θ, prob; δ=δs[end])
 
     return store_simulation(
         "constrained",

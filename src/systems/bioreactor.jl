@@ -163,14 +163,6 @@ function bioreactor(; store_results=false::Bool)
         scaled_sigmoids(control_ranges),
     )
 
-    # initial parameters
-    controller_shape(controller)
-    θ = initial_params(controller)  # destructure model weights into a vector of parameters
-
-    # set differential equation problem
-    dudt!(du, u, p, t) = system!(du, u, p, t, controller)
-    prob = ODEProblem(dudt!, u0, tspan, θ)
-
     control_profile, infopt_model, times_collocation, states_collocation, controls_collocation = collocation_preconditioner(u0, collocation; plot=true)
 
     θ = preconditioner(
@@ -185,8 +177,9 @@ function bioreactor(; store_results=false::Bool)
         # control_range_scaling=[range[end] - range[1] for range in control_ranges],
     )
 
-    # prob = ODEProblem(dudt!, u0, tspan, θ)
-    prob = remake(prob; p=θ)
+    # set differential equation problem
+    dudt!(du, u, p, t) = system!(du, u, p, t, controller)
+    prob = ODEProblem(dudt!, u0, tspan, θ)
 
     plot_simulation(controller, prob, θ, tsteps; only=:states)
     plot_simulation(controller, prob, θ, tsteps; only=:controls)
@@ -195,7 +188,7 @@ function bioreactor(; store_results=false::Bool)
     function state_penalty_functional(
         solution_array, time_intervals; state_penalty=relaxed_log_barrier, δ=1f1
     )
-        @assert size(solution_array, 2) == length(time_intervals) + 1
+        @argcheck size(solution_array, 2) == length(time_intervals) + 1
 
         ratio_X_N = 3f-2 / 800.0f0
         C_N_over = map(y -> state_penalty(800.0f0 - y; δ), solution_array[2, 1:end])

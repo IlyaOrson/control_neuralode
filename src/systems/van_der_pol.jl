@@ -135,21 +135,6 @@ function van_der_pol(; store_results=false::Bool)
         title="Initial policy",
     )
 
-    # infopt_model, states_collocation, controls_collocation = collocation(u0)
-    # interpol = ChevyshevInterpolation(tsteps, controls_collocation)
-
-    # plot_collocation(controls_collocation[1,:], interpol, tsteps)
-
-    # # preconditioning to control sequences
-    # function control_profile(t, p)
-    #     Zygote.ignore() do
-    #         return [interpol(t)]
-    #     end
-    # end
-    # @info "Collocation result"
-    # display(lineplot(x -> control_profile(x, nothing)[1], t0, tf; xlim=(t0, tf)))
-    # # display(lineplot(x -> control_profile(x, nothing)[2], t0, tf, xlim=(t0,tf)))
-
     control_profile, infopt_model, times_collocation, states_collocation, controls_collocation = collocation_preconditioner(u0, collocation; plot=true)
 
     @info "Preconditioning..."
@@ -210,7 +195,6 @@ function van_der_pol(; store_results=false::Bool)
         LBFGS(; linesearch=BackTracking());
         # cb=plotting_callback,
         allow_f_increases=true,
-        f_tol=1f-1,
     )
 
     store_simulation(
@@ -267,7 +251,6 @@ function van_der_pol(; store_results=false::Bool)
             LBFGS(; linesearch=BackTracking(; iterations=20));
             iterations=50,
             allow_f_increases=true,
-            # f_tol=1f-1,
             # cb=plotting_callback,
         )
     end

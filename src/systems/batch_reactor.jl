@@ -87,9 +87,8 @@ function batch_reactor(; store_results=false::Bool)
         loss,
         θ,
         LBFGS(; linesearch=BackTracking(; iterations=10));
-        iterations=100,
+        # iterations=100,
         allow_f_increases=true,
-        # f_tol=1f-1,
         # cb=plotting_callback,
     )
 

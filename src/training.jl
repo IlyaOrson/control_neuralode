@@ -5,8 +5,7 @@ function preconditioner(
     t0,
     u0,
     time_fractions;
-    reg_coeff=1f-1,
-    f_tol=1f-3,
+    reg_coeff=1f0,
     saveat=(),
     progressbar=true,
     control_range_scaling=nothing,
@@ -30,7 +29,6 @@ function preconditioner(
         fixed_sol = solve(
             fixed_prob, BS3(); abstol=1f-1, reltol=1f-1, saveat, sensealg
         )
-
         function precondition_loss(params; plot=nothing)
             plot_arrays = Dict(:reference => [], :control => [])
             sum_squares = 0.0f0
@@ -105,10 +103,9 @@ function preconditioner(
         preconditioner = sciml_train(
             precondition_loss,
             θ,
-            BFGS(; initial_stepnorm=0.01);
-            maxiters=10,
+            LBFGS(; linesearch=BackTracking());
+            # maxiters=100,
             allow_f_increases=true,
-            f_tol,
         )
         θ = preconditioner.minimizer
         pvar = plot_progress ? :unicode : nothing
@@ -131,7 +128,6 @@ function constrained_training(
     tsteps=(),
     show_progressbar=false,
     plots_callback=nothing,
-    f_tol=1f-1,
     datadir=nothing,
     metadata=Dict(),  # metadata is added to this dict always
 )
@@ -162,7 +158,6 @@ function constrained_training(
             LBFGS(; linesearch=BackTracking());
             # cb=print_callback,
             allow_f_increases=true,
-            f_tol,
         )
         θ = result.minimizer
 
