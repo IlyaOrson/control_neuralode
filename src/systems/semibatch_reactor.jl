@@ -15,21 +15,23 @@ function semibatch_reactor(; store_results=false::Bool)
     # initial conditions and timepoints
     t0 = 0.0f0
     tf = 1.5f0  # Bradfoard uses 0.4
-    Δt = 0.02f0
-    u0 = [1.0f0, 0.0f0, 0.0f0, 290.0f0, 100.0f0]
+    Δt = 0.03f0
+    u0 = [1.0f0, 0.0f0 + 1.0f-3, 0.0f0 + 1.0f-3, 290.0f0, 100.0f0]
     tspan = (t0, tf)
     tsteps = t0:Δt:tf
-    control_ranges = [(0.0f0 + 1f-5, 250.0f0), (200.0f0, 500.0f0)]
 
     # control constraints
     # F = volumetric flow rate
     # V = exchanger temperature
     # F = 240 & V = 298 in Fogler's book
     # F ∈ (0, 250) & V ∈ (200, 500) in Bradford 2017
+    control_ranges = [(0.0f0, 250.0f0), (200.0f0, 500.0f0)]
 
     # state constraints
     # T ∈ (0, 420]
     # Vol ∈ (0, 200]
+    T_up = 420.0f0
+    V_up = 200.0f0
 
     system_params = (
         CpA=30.0f0,
@@ -101,14 +103,19 @@ function semibatch_reactor(; store_results=false::Bool)
     function collocation(
         u0;
         num_supports::Integer=length(tsteps),
-        nodes_per_element::Integer=4,
-        state_constraints::Bool=false,
+        nodes_per_element::Integer=3,
+        constrain_states::Bool=false,
     )
-        optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
+        optimizer = optimizer_with_attributes(
+            Ipopt.Optimizer, "print_level" => 0, "check_derivatives_for_naninf" => "yes"
+        )
         model = InfiniteModel(optimizer)
         method = OrthogonalCollocation(nodes_per_element)
         @infinite_parameter(
-            model, t in [t0, tf], num_supports = num_supports, derivative_method = method
+            model,
+            t in [Float64(t0), Float64(tf)],
+            num_supports = num_supports,
+            derivative_method = method
         )
 
         @variables(
@@ -121,16 +128,33 @@ function semibatch_reactor(; store_results=false::Bool)
             end
         )
 
+        # tricks to make IPOPT work...
+        set_start_value_function(x[1], x -> 5.0f-1)
+        set_start_value_function(x[2], x -> 5.0f-1)
+        set_start_value_function(x[3], x -> 5.0f-1)
+        set_start_value_function(x[4], x -> 2.0f2)
+        set_start_value_function(x[5], x -> 3.0f2)
+        set_start_value_function(c[1], x -> 2.0f2)
+        set_start_value_function(c[2], x -> 3.0f2)
+        @constraints(
+            model,
+            begin
+                1.0f-3 <= x[1]
+                1.0f-3 <= x[2]
+                1.0f-3 <= x[3]
+                1.0f-3 <= x[4]
+                1.0f-3 <= x[5]
+            end
+        )
+
         # fixed_parameters
         CpA, CpB, CpC, CpH2SO4, N0H2S04, T0, CA0, HRA, HRB, E1A, E2B, A1, A2, UA, Tr1, Tr2 = values(
             system_params
         )
 
-        # initial conditions
-        @constraint(model, [i = 1:3], x[i](0) == u0[i])
+        initial_conditions = @constraint(model, [i = 1:3], x[i](0) == u0[i])
 
-        # control ranges
-        @constraints(
+        control_constraints = @constraints(
             model,
             begin
                 control_ranges[1][1] <= c[1] <= control_ranges[1][2]
@@ -138,21 +162,17 @@ function semibatch_reactor(; store_results=false::Bool)
             end
         )
 
-        if state_constraints
-            @constraints(
+        if constrain_states
+            state_constraints = @constraints(
                 model,
                 begin
-                    1f-5 <= x[1]
-                    1f-5 <= x[2]
-                    1f-5 <= x[3]
-                    1f-5 <= x[4] <= 420
-                    1f-5 <= x[5] <= 200
+                    x[4] <= T_up
+                    x[5] <= V_up
                 end
             )
         end
 
-        # dynamic equations
-        @constraints(
+        dynamic_constraints = @constraints(
             model,
             begin
                 ∂(x[1], t) ==
@@ -177,15 +197,16 @@ function semibatch_reactor(; store_results=false::Bool)
             end
         )
 
-        @objective(model, Max, x[3](tf))
+        @objective(model, Min, x[1](tf))
 
         optimize!(model)
-
         jump_model = optimizer_model(model)
-        jump_model |> termination_status
-        jump_model |> solution_summary
+        # @info raw_status(jump_model)
+        # @info termination_status(jump_model)
+        @info solution_summary(jump_model; verbose=false)
         states = hcat(value.(x)...) |> permutedims
         controls = hcat(value.(c)...) |> permutedims
+
         return model, supports(t), states, controls
     end
 
@@ -211,23 +232,36 @@ function semibatch_reactor(; store_results=false::Bool)
     fixed_sol = solve(fixed_prob, Tsit5()) |> Array
     @info "Fogler's case: final time state" fixed_sol[:, end]
     plot_simulation(controller, fixed_prob, θ, tsteps; only=:states, vars=[1, 2, 3])
-    plot_simulation(controller, fixed_prob, θ, tsteps; only=:states, vars=[4])
+    plot_simulation(controller, fixed_prob, θ, tsteps; only=:states, vars=[4, 5])
 
-    # DEBUGGING
-    # infopt_model, states_collocation, controls_collocation = collocation(
-    #     u0; state_constraints=true
-    # )
-    # @show all(iszero, states_collocation)
-    # @show all(iszero, controls_collocation)
-
-    # for c in 1:size(controls_collocation, 1)
-    #     lineplot(tsteps, controls_collocation[c,:], title="control", name=string(c))
-    # end
-
-    # FIXME: precondition is a matrix and should return the lambdas
     control_profile, infopt_model, times_collocation, states_collocation, controls_collocation = collocation_preconditioner(
-        u0, collocation; plot=true, num_supports=2, state_constraints=true
+        u0,
+        collocation;
+        plot=false,
+        num_supports=length(tsteps),
+        nodes_per_element=2,
+        constrain_states=false,
     )
+
+    plt.figure()
+    plt.plot(times_collocation, states_collocation[1, :]; label="s1")
+    plt.plot(times_collocation, states_collocation[2, :]; label="s2")
+    plt.plot(times_collocation, states_collocation[3, :]; label="s3")
+    plt.legend()
+    plt.show()
+
+    plt.figure()
+    plt.plot(times_collocation, states_collocation[4, :]; label="s4")
+    plt.plot(times_collocation, states_collocation[5, :]; label="s5")
+    plt.legend()
+    plt.show()
+
+    plt.figure()
+    plt.plot(times_collocation, controls_collocation[1, :]; label="c1")
+    plt.plot(times_collocation, controls_collocation[2, :]; label="c2")
+    plt.legend()
+    plt.show()
+
     θ = preconditioner(
         controller,
         control_profile,
@@ -247,18 +281,11 @@ function semibatch_reactor(; store_results=false::Bool)
     plot_simulation(controller, prob, θ, tsteps; only=:controls)
     store_simulation("precondition", controller, prob, θ, tsteps; datadir)
 
-    # constraints with barrier methods
-    # T ∈ (0, 420]
-    # Vol ∈ (0, 200]
-    T_up = 420
-    V_up = 200
-
     # define objective function to optimize
-
-    function loss(params, prob, tsteps; T_up=T_up, V_up=V_up, α=1f-3, δ=1f1)
+    function loss(params, prob, tsteps; α=1.0f-3, δ=1.0f1)
 
         # integrate ODE system and extract loss from result
-        sensealg = InterpolatingAdjoint(autojacvec=ZygoteVJP(), checkpointing=true)
+        sensealg = InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
         sol = solve(prob, BS3(); p=params, saveat=tsteps, sensealg) |> Array
         out_temp = map(x -> relaxed_log_barrier(T_up - x; δ), sol[4, 1:end])
         out_vols = map(x -> relaxed_log_barrier(V_up - x; δ), sol[5, 1:end])
@@ -266,7 +293,7 @@ function semibatch_reactor(; store_results=false::Bool)
         last_state = sol[:, end]
         # L = - (100 x₁ - x₂) + penalty  # minus to maximize
         # return - 100f0*last_state[1] + last_state[2] + penalty
-        objective = -last_state[3]
+        objective = last_state[1]
 
         # integral penalty
         penalty = Δt * (sum(out_temp) + sum(out_vols))
@@ -274,7 +301,7 @@ function semibatch_reactor(; store_results=false::Bool)
         return objective, α * penalty
     end
 
-    δ0 = 1f1
+    δ0 = 1.0f1
     δs = [δ0 * 0.7^i for i in 0:10]
     for δ in δs
         # global prob , result
@@ -294,33 +321,25 @@ function semibatch_reactor(; store_results=false::Bool)
             loss_,
             θ,
             ADAM();
-            maxiters=5,
+            maxiters=50,
             allow_f_increases=true,
             # f_tol=1f-1,
-            cb=(params, loss) -> plot_simulation(
-                controller,
-                prob,
-                params,
-                tsteps;
-                only=:states,
-                vars=[1, 2, 3],
-                show=loss,
-            ),
+            # cb=(params, loss) -> plot_simulation(
+            #     controller,
+            #     prob,
+            #     params,
+            #     tsteps;
+            #     only=:states,
+            #     vars=[1, 2, 3],
+            #     show=loss,
+            # ),
         )
         θ = result.minimizer
     end
     @info "Final states"
+    plot_simulation(controller, prob, θ, tsteps; only=:states, vars=[1, 2, 3])
     plot_simulation(
-        controller, prob, θ, tsteps; only=:states, vars=[1, 2, 3]
-    )
-    plot_simulation(
-        controller,
-        prob,
-        θ,
-        tsteps;
-        only=:states,
-        vars=[4, 5],
-        yrefs=[T_up, V_up],
+        controller, prob, θ, tsteps; only=:states, vars=[4, 5], yrefs=[T_up, V_up]
     )
 
     @info "Final controls"

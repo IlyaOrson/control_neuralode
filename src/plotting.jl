@@ -511,7 +511,7 @@ function plot_initial_perturbations_collocation(
             @time times, states, controls = run_simulation(controller, prob, θ, tsteps)
             @info "collocation"
             @time infopt_model, states_collocation, controls_collocation = collocation(
-                perturbed_u0; state_constraints=true
+                perturbed_u0; constrain_states=true
             )
             @info "interpolation"
             @time interpol = ChevyshevInterpolation(tsteps, controls_collocation)

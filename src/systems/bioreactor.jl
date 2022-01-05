@@ -76,7 +76,7 @@ function bioreactor(; store_results=false::Bool)
         u0;
         num_supports::Integer=length(tsteps),
         nodes_per_element::Integer=4,
-        state_constraints::Bool=false,
+        constrain_states::Bool=false,
     )
         optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
         model = InfiniteModel(optimizer)
@@ -110,7 +110,7 @@ function bioreactor(; store_results=false::Bool)
             end
         )
 
-        if state_constraints
+        if constrain_states
             @constraints(
                 model,
                 begin

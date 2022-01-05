@@ -44,7 +44,7 @@ function van_der_pol(; store_results=false::Bool)
         u0;
         num_supports::Integer=length(tsteps),
         nodes_per_element::Integer=4,
-        state_constraints::Bool=false,
+        constrain_states::Bool=false,
     )
         optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
         model = InfiniteModel(optimizer)
@@ -69,7 +69,7 @@ function van_der_pol(; store_results=false::Bool)
         # control range
         @constraint(model, -.3 <= c[1] <= 1.0)
 
-        if state_constraints
+        if constrain_states
             @constraint(model, -.4 <= x[1])
         end
 

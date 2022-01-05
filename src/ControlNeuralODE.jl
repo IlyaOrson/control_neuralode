@@ -20,12 +20,12 @@ using InfiniteOpt:
     @constraint,
     @constraints,
     @objective,
+    set_start_value_function,
     optimizer_with_attributes,
     optimizer_model,
     optimize!,
     solution_summary,
     supports,
-    termination_status,
     value,
     ∂
 using Ipopt: Ipopt
