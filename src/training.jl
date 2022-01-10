@@ -5,7 +5,7 @@ function preconditioner(
     t0,
     u0,
     time_fractions;
-    reg_coeff=1f0,
+    reg_coeff=1.0f0,
     saveat=(),
     progressbar=true,
     control_range_scaling=nothing,
@@ -25,10 +25,8 @@ function preconditioner(
     for partial_time in time_fractions
         tspan = (t0, partial_time)
         fixed_prob = ODEProblem(fixed_dudt!, u0, tspan)
-        sensealg = InterpolatingAdjoint(autojacvec=ZygoteVJP(), checkpointing=true)
-        fixed_sol = solve(
-            fixed_prob, BS3(); abstol=1f-1, reltol=1f-1, saveat, sensealg
-        )
+        sensealg = InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
+        fixed_sol = solve(fixed_prob, Tsit5(); saveat, sensealg)
         function precondition_loss(params; plot=nothing)
             plot_arrays = Dict(:reference => [], :control => [])
             sum_squares = 0.0f0
@@ -51,10 +49,10 @@ function preconditioner(
             end
             Zygote.ignore() do
                 if !isnothing(plot)
-                    @assert plot in [:unicode, :pyplot]
+                    @argcheck plot in [:unicode, :pyplot]
                     reference = reduce(hcat, plot_arrays[:reference])
                     control = reduce(hcat, plot_arrays[:control])
-                    @assert length(reference) == length(control)
+                    @argcheck length(reference) == length(control)
                     if plot == :unicode
                         for r in 1:size(reference, 1)
                             p = lineplot(reference[r, :]; name="fixed")
@@ -100,14 +98,15 @@ function preconditioner(
             return sum_squares + regularization
         end
 
-        preconditioner = sciml_train(
+        optimization = sciml_train(
             precondition_loss,
             θ,
-            LBFGS(; linesearch=BackTracking());
-            # maxiters=100,
+            NADAM();
+            # LBFGS(; linesearch=BackTracking());
+            maxiters=100,
             allow_f_increases=true,
         )
-        θ = preconditioner.minimizer
+        θ = optimization.minimizer
         pvar = plot_progress ? :unicode : nothing
         ploss = precondition_loss(θ; plot=pvar)
         next!(prog; showvalues=[(:loss, ploss)])
@@ -151,7 +150,7 @@ function constrained_training(
         #     println(loss)
         #     return false
         # end
-
+        @infiltrate
         result = sciml_train(
             loss_,
             θ,

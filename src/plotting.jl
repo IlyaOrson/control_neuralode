@@ -29,7 +29,7 @@ end
 
 # handy terminal plots
 function unicode_plotter(states, controls; only=nothing, vars=nothing, fun=nothing)
-    @assert size(states, 2) == size(controls, 2)
+    @argcheck size(states, 2) == size(controls, 2)
     xlim = (0, size(states, 2))
     if only == :states
         if !isnothing(fun)
@@ -115,9 +115,8 @@ function plot_collocation(controls_collocation, interpol, tsteps)
     plt.title("Control collocation")
     plt.xlabel("time")
     plt.legend()
-    plt.show()
+    return plt.show()
 end
-
 
 abstract type PhasePlotMarker end
 
@@ -238,7 +237,7 @@ function phase_portrait(
     # gs = GridSpec(nrows=3, ncols=2, height_ratios=[1, 1, 2])
 
     if isnothing(start_points) && !isnothing(start_points_x) && !isnothing(start_points_y)
-        @assert size(start_points_x) == size(start_points_y)
+        @argcheck size(start_points_x) == size(start_points_y)
         start_grid_x, start_grid_y = ndgrid(start_points_x, start_points_y)
         start_points = hcat(reshape(start_grid_x, :, 1), reshape(start_grid_y, :, 1))
     end
@@ -301,7 +300,7 @@ function phase_portrait(
         )
     end
 
-    ax.set(; xlim=xlims .+ (-.05, 0.05), ylim=ylims .+ (-.05, 0.05))
+    ax.set(; xlim=xlims .+ (-0.05, 0.05), ylim=ylims .+ (-0.05, 0.05))
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     !isnothing(title) && ax.set_title(title)
@@ -510,7 +509,7 @@ function plot_initial_perturbations_collocation(
             @info "simulation"
             @time times, states, controls = run_simulation(controller, prob, θ, tsteps)
             @info "collocation"
-            @time infopt_model, states_collocation, controls_collocation = collocation(
+            @time infopt_model, times_collocation, states_collocation, controls_collocation = collocation(
                 perturbed_u0; constrain_states=true
             )
             @info "interpolation"

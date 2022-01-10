@@ -12,8 +12,8 @@ function van_der_pol(; store_results=false::Bool)
     tf = 5.0f0
     u0 = [0.0f0, 1.0f0, 0.0f0]
     tspan = (t0, tf)
-    dt = 0.1f0
-    tsteps = t0:dt:tf
+    Δt = 0.1f0
+    tsteps = t0:Δt:tf
 
     function system!(du, u, p, t, controller, input=:state)
         @argcheck input in (:state, :time)
@@ -67,10 +67,10 @@ function van_der_pol(; store_results=false::Bool)
         @constraint(model, [i = 1:3], x[i](0) == u0[i])
 
         # control range
-        @constraint(model, -.3 <= c[1] <= 1.0)
+        @constraint(model, -0.3 <= c[1] <= 1.0)
 
         if constrain_states
-            @constraint(model, -.4 <= x[1])
+            @constraint(model, -0.4 <= x[1])
         end
 
         # dynamic equations
@@ -110,8 +110,8 @@ function van_der_pol(; store_results=false::Bool)
 
     phase_time = 0.0f0
     function square_bounds(u0, arista)
-        low_bounds = u0 .- repeat([arista/2], length(u0))
-        high_bounds = u0 .+ repeat([arista/2], length(u0))
+        low_bounds = u0 .- repeat([arista / 2], length(u0))
+        high_bounds = u0 .+ repeat([arista / 2], length(u0))
         bounds = [(l, h) for (l, h) in zip(low_bounds, high_bounds)]
         return bounds
     end
@@ -135,7 +135,9 @@ function van_der_pol(; store_results=false::Bool)
         title="Initial policy",
     )
 
-    control_profile, infopt_model, times_collocation, states_collocation, controls_collocation = collocation_preconditioner(u0, collocation; plot=true)
+    control_profile, infopt_model, times_collocation, states_collocation, controls_collocation = collocation_preconditioner(
+        u0, collocation; plot=true
+    )
 
     @info "Preconditioning..."
     θ = preconditioner(
@@ -182,7 +184,7 @@ function van_der_pol(; store_results=false::Bool)
     ### define objective function to optimize
     function loss(params, prob, tsteps)
         # integrate ODE system (stiff problem)
-        sensealg = InterpolatingAdjoint(autojacvec=ZygoteVJP(), checkpointing=true)
+        sensealg = InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
         sol = solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, sensealg)
         return Array(sol)[3, end]  # return last value of third variable ...to be minimized
     end
@@ -210,18 +212,15 @@ function van_der_pol(; store_results=false::Bool)
     ### now add state constraint x1(t) > -0.4 with
     function penalty_loss(params, prob, tsteps; α=10.0f0)
         # integrate ODE system
-        sensealg = InterpolatingAdjoint(autojacvec=ZygoteVJP(), checkpointing=true)
-        sol = Array(
-            solve(
-                prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, sensealg
-            ),
-        )
+        # sensealg = InterpolatingAdjoint(autojacvec=ZygoteVJP(), checkpointing=true)
+        sensealg = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
+        sol = Array(solve(prob, Tsit5(); p=params, saveat=tsteps, sensealg))
         fault = min.(sol[1, 1:end] .+ 0.4f0, 0.0f0)
-        penalty = α * dt * sum(fault .^ 2)  # quadratic penalty
+        penalty = α * Δt * sum(fault .^ 2)  # quadratic penalty
         return sol[3, end] + penalty
     end
 
-    penalty_coefficients = [10.0f0, 10f1, 10f2, 10f3]
+    penalty_coefficients = [10.0f0, 10.0f1, 10.0f2, 10.0f3]
     for α in penalty_coefficients
 
         # set differential equation struct again
@@ -281,7 +280,7 @@ function van_der_pol(; store_results=false::Bool)
     marker_path = IntegrationPath(; points=states_opt)
     final_mark = FinalState(; points=states_opt[:, end])
     shader = ShadeConf(; indicator=function (x, y)
-        if x > -.4
+        if x > -0.4
             return true
         end
         return false
@@ -303,11 +302,11 @@ function van_der_pol(; store_results=false::Bool)
 
     # u0 = [0f0, 1f0, 0f0]
     perturbation_specs = [
-        (variable=1, type=:positive, scale=1.0f0, samples=8, percentage=2f-2)
-        (variable=2, type=:negative, scale=1.0f0, samples=8, percentage=2f-2)
-        (variable=3, type=:positive, scale=20.0f0, samples=8, percentage=2f-2)
+        (variable=1, type=:positive, scale=1.0f0, samples=8, percentage=2.0f-2)
+        (variable=2, type=:negative, scale=1.0f0, samples=8, percentage=2.0f-2)
+        (variable=3, type=:positive, scale=20.0f0, samples=8, percentage=2.0f-2)
     ]
-    constraint_spec = ConstRef(; val=-.4, direction=:horizontal, class=:state, var=1)
+    constraint_spec = ConstRef(; val=-0.4, direction=:horizontal, class=:state, var=1)
     # plot_initial_perturbations(
     #     controller, prob, θ_opt, tsteps, u0, perturbation_specs; refs=[constraint_spec]
     # )

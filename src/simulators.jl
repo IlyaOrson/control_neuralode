@@ -3,9 +3,9 @@ function run_simulation(
     prob,
     params,
     tsteps;
-    noise :: @optional(Real) = nothing,
-    vars :: @optional(AbstractArray{<:Integer}) = nothing,
-    callback :: @optional(DECallback) = nothing,
+    noise::@optional(Real)=nothing,
+    vars::@optional(AbstractArray{<:Integer})=nothing,
+    callback::@optional(DECallback)=nothing,
 )
     if !isnothing(noise) && !isnothing(vars)
         @argcheck noise > zero(noise)
@@ -24,9 +24,7 @@ function run_simulation(
     end
 
     # integrate with given parameters
-    solution = solve(
-        prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, callback=callback
-    )
+    solution = solve(prob, Tsit5(); p=params, saveat=tsteps, callback=callback)
 
     # construct arrays with the same type used by the integrator
     elements_type = eltype(solution.t)

@@ -68,8 +68,8 @@ function reference_tracking(; store_results=false::Bool)
 
     # custom case
     α1 = 1.0f0
-    α2 = 1f1
-    α3 = 1f-1
+    α2 = 1.0f1
+    α3 = 1.0f-1
 
     function system!(du, u, p, t, controller)
 
@@ -104,8 +104,8 @@ function reference_tracking(; store_results=false::Bool)
     function loss(params, prob, tsteps)
 
         # curious error with ROS3P()
-        sensealg = InterpolatingAdjoint(autojacvec=ZygoteVJP(), checkpointing=true)
-        sol = solve(prob, BS3(); p=params, saveat=tsteps, sensealg) |> Array # integrate ODE system
+        sensealg = InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
+        sol = solve(prob, Tsit5(); p=params, saveat=tsteps, sensealg) |> Array # integrate ODE system
 
         sum_squares = 0.0f0
         for state in eachcol(sol)

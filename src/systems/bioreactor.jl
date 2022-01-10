@@ -116,7 +116,7 @@ function bioreactor(; store_results=false::Bool)
                 begin
                     x[2] <= 150
                     x[2] <= 800
-                    1.1f-2 * x[1] - x[3] <= 3f-2
+                    1.1f-2 * x[1] - x[3] <= 3.0f-2
                 end
             )
         end
@@ -163,7 +163,9 @@ function bioreactor(; store_results=false::Bool)
         scaled_sigmoids(control_ranges),
     )
 
-    control_profile, infopt_model, times_collocation, states_collocation, controls_collocation = collocation_preconditioner(u0, collocation; plot=true)
+    control_profile, infopt_model, times_collocation, states_collocation, controls_collocation = collocation_preconditioner(
+        u0, collocation; plot=true
+    )
 
     θ = preconditioner(
         controller,
@@ -185,21 +187,19 @@ function bioreactor(; store_results=false::Bool)
     plot_simulation(controller, prob, θ, tsteps; only=:controls)
     store_simulation("precondition", controller, prob, θ, tsteps; datadir)
 
-    function state_penalty_functional(
-        solution_array, time_intervals; state_penalty=relaxed_log_barrier, δ=1f1
-    )
+    function state_penalty_functional(solution_array, time_intervals; δ=1.0f1)
         @argcheck size(solution_array, 2) == length(time_intervals) + 1
 
-        ratio_X_N = 3f-2 / 800.0f0
-        C_N_over = map(y -> state_penalty(800.0f0 - y; δ), solution_array[2, 1:end])
+        ratio_X_N = 3.0f-2 / 800.0f0
+        C_N_over = map(y -> relaxed_log_barrier(800.0f0 - y; δ), solution_array[2, 1:end])
         C_X_over = map(
-            (x, z) -> state_penalty(3f-2 - (1.1f-2 * x - z); δ=δ * ratio_X_N),
+            (x, z) -> relaxed_log_barrier(3.0f-2 - (1.1f-2 * x - z); δ=δ * ratio_X_N),
             solution_array[1, 1:end],
             solution_array[3, 1:end],
         )
-        C_N_over_last = state_penalty(150.0f0 - solution_array[2, end]; δ)
+        C_N_over_last = relaxed_log_barrier(150.0f0 - solution_array[2, end]; δ)
 
-        return sum((C_N_over .+ C_X_over)[1:(end - 1)] .* time_intervals) + C_N_over_last
+        return sum((C_N_over .+ C_X_over)[2:end] .* time_intervals) + C_N_over_last
     end
 
     # state constraints on control change
@@ -207,21 +207,12 @@ function bioreactor(; store_results=false::Bool)
     # C_N(t) − 800 ≤ 0              ∀t
     # 0.011 C_X(t) - C_qc(t) ≤ 3f-2 ∀t
     function loss(
-        params,
-        prob;
-        state_penalty=relaxed_log_barrier,
-        δ=1f1,
-        α=1f-3,
-        μ=(3.125f-8, 3.125f-6),
-        ρ=1f-1,
-        tsteps=(),
+        params, prob; δ=1.0f1, α=1.0f-5, μ=(3.125f-8, 3.125f-6), ρ=1.0f-1, tsteps=()
     )
 
         # integrate ODE system
-        sensealg = InterpolatingAdjoint(autojacvec=ZygoteVJP(), checkpointing=true)
-        sol_raw = solve(
-            prob, BS3(); p=params, saveat=tsteps, abstol=1f-1, reltol=1f-1, sensealg
-        )
+        sensealg = InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
+        sol_raw = solve(prob, Tsit5(); p=params, saveat=tsteps, sensealg)
         sol = Array(sol_raw)
 
         # approximate integral penalty
@@ -232,7 +223,7 @@ function bioreactor(; store_results=false::Bool)
             ]
         end
 
-        state_penalty = α * state_penalty_functional(sol, time_intervals; δ, state_penalty)
+        state_penalty = α * state_penalty_functional(sol, time_intervals; δ)
 
         # penalty on change of controls
         control_penalty = 0.0f0
@@ -262,14 +253,14 @@ function bioreactor(; store_results=false::Bool)
             tsteps;
             only=:states,
             fun=(x, y, z) -> 1.1f-2x - z,
-            yrefs=[3f-2],
+            yrefs=[3.0f-2],
         )
         return plot_simulation(controller, prob, θ, tsteps; only=:controls)
     end
 
     # α: penalty coefficient
     # δ: barrier relaxation coefficient
-    α0, δ0 = 1f-5, 100.0f0
+    α0, δ0 = 1.0f-5, 100.0f0
     barrier_iterations = 0:20
     αs = [α0 for _ in barrier_iterations]
     δs = [δ0 * 0.8f0^i for i in barrier_iterations]
@@ -312,7 +303,7 @@ function bioreactor(; store_results=false::Bool)
         tsteps;
         only=:states,
         fun=(x, y, z) -> 1.1f-2x - z,
-        yrefs=[3f-2],
+        yrefs=[3.0f-2],
     )
 
     @info "Final controls"
@@ -333,9 +324,9 @@ function bioreactor(; store_results=false::Bool)
     # tsteps = t0:Δt:tf
     # control_ranges = [(120f0, 400f0), (0f0, 40f0)]
     perturbation_specs = [
-        (variable=1, type=:centered, scale=10.0f0, samples=10, percentage=2f-2)
-        (variable=2, type=:centered, scale=800.0f0, samples=10, percentage=2f-2)
-        (variable=3, type=:positive, scale=5f-1, samples=10, percentage=2f-2)
+        (variable=1, type=:centered, scale=10.0f0, samples=10, percentage=2.0f-2)
+        (variable=2, type=:centered, scale=800.0f0, samples=10, percentage=2.0f-2)
+        (variable=3, type=:positive, scale=5.0f-1, samples=10, percentage=2.0f-2)
     ]
     return plot_initial_perturbations(controller, prob, θ, tsteps, u0, perturbation_specs)
 end  # script wrapper

@@ -31,13 +31,13 @@ using InfiniteOpt:
 using Ipopt: Ipopt
 using Optim: LBFGS, BFGS
 using ApproxFun: Chebyshev, Fun, (..)
-using Zygote
-using Flux: glorot_uniform, ADAM, sigmoid_fast, tanh_fast
+using Zygote: Zygote
+using Flux: glorot_uniform, ADAM, NADAM, sigmoid_fast, tanh_fast
 using SciMLBase: ODEProblem, DECallback, remake
 using DiffEqCallbacks: FunctionCallingCallback
-using OrdinaryDiffEq: AutoTsit5, Rosenbrock23, BS3, Tsit5, solve
+using OrdinaryDiffEq: Tsit5, solve #, AutoTsit5, Rosenbrock23
 using DiffEqFlux: FastChain, FastDense, initial_params, sciml_train
-using DiffEqSensitivity: InterpolatingAdjoint, ZygoteVJP
+using DiffEqSensitivity: InterpolatingAdjoint, QuadratureAdjoint, ZygoteVJP, ReverseDiffVJP
 using UnicodePlots: lineplot, lineplot!
 using BSON: BSON
 using JSON3: JSON3
