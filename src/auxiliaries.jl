@@ -47,10 +47,28 @@ function scaled_sigmoids(control_ranges)
     ]
 end
 
+# TODO finish this abstraction
+@kwdef struct ControlODE{uType, tType} <: AbstractODEProblem{uType, tType, true}
+    controller::Function
+    system!::Function
+    u0::AbstractVector{uType}
+    tspan::Tuple{tType, tType}
+    tsteps::AbstractVector{tType}=range(tspan...; step=(tspan[end] - tspan[begin]) / 100)
+    integrator::AbstractODEAlgorithm=AutoTsit5(Rosenbrock23())  # Tsit5()
+    sensealg::AbstractSensitivityAlgorithm=QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
+    # sensealg::AbstractSensitivityAlgorithm=InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
+end
+# TODO follow recommended interface https://github.com/SciML/CommonSolve.jl
+function solve(code::ControlODE, params; tsteps=code.tsteps, sensealg=code.sensealg, integrator=code.integrator, kwargs...)
+    dudt!(du, u, p, t) = code.system!(du, u, p, t, code.controller)
+    ode_prob = ODEProblem(dudt!, code.u0, code.tspan)
+    solve(ode_prob, integrator; p=params, tsteps, sensealg, kwargs...)
+end
+
 function ChevyshevInterpolation(timepoints, values; undersample=length(timepoints) ÷ 4::Integer)
     @argcheck length(timepoints) == length(values)
     @argcheck undersample <= length(timepoints)
-    space = Chebyshev(timepoints[1] .. timepoints[end])
+    space = Chebyshev(Interval(timepoints[1], timepoints[end]))
     # http://juliaapproximation.github.io/ApproxFun.jl/stable/faq/
     # Create a Vandermonde matrix by evaluating the basis at the grid
     V = Array{Float64}(undef, length(timepoints), undersample)

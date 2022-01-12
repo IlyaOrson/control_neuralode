@@ -181,7 +181,7 @@ function bioreactor(; store_results=false::Bool)
 
     # set differential equation problem
     dudt!(du, u, p, t) = system!(du, u, p, t, controller)
-    prob = ODEProblem(dudt!, u0, tspan, θ)
+    prob = ODEProblem(dudt!, u0, tspan)
 
     plot_simulation(controller, prob, θ, tsteps; only=:states)
     plot_simulation(controller, prob, θ, tsteps; only=:controls)
@@ -206,13 +206,13 @@ function bioreactor(; store_results=false::Bool)
     # C_N(t) - 150 ≤ 0              t = T
     # C_N(t) − 800 ≤ 0              ∀t
     # 0.011 C_X(t) - C_qc(t) ≤ 3f-2 ∀t
-    function loss(
-        params, prob; δ=1.0f1, α=1.0f-5, μ=(3.125f-8, 3.125f-6), ρ=1.0f-1, tsteps=()
+    function losses(
+        params; δ=1.0f1, α=1.0f-5, μ=(3.125f-8, 3.125f-6), ρ=1.0f-1, tsteps=()
     )
 
         # integrate ODE system
         sensealg = InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
-        sol_raw = solve(prob, Tsit5(); p=params, saveat=tsteps, sensealg)
+        sol_raw = solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, sensealg)
         sol = Array(sol_raw)
 
         # approximate integral penalty
@@ -268,7 +268,7 @@ function bioreactor(; store_results=false::Bool)
         controller,
         prob,
         θ,
-        loss;
+        losses;
         αs,
         δs,
         tsteps,
@@ -280,7 +280,7 @@ function bioreactor(; store_results=false::Bool)
     final_values = NamedTuple{(
         :objective, :state_penalty, :control_penalty, :regularization
     )}(
-        loss(θ, prob; δ=δs[end], α=αs[end], tsteps)
+        loss(θ; δ=δs[end], α=αs[end], tsteps)
     )
 
     @info "Final states"

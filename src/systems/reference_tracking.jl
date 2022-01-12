@@ -105,7 +105,7 @@ function reference_tracking(; store_results=false::Bool)
 
         # curious error with ROS3P()
         sensealg = InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
-        sol = solve(prob, Tsit5(); p=params, saveat=tsteps, sensealg) |> Array # integrate ODE system
+        sol = solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, sensealg) |> Array # integrate ODE system
 
         sum_squares = 0.0f0
         for state in eachcol(sol)

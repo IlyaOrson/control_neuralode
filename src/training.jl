@@ -11,6 +11,10 @@ function preconditioner(
     control_range_scaling=nothing,
     plot_progress=false,
     plot_final=true,
+    optimizer=NADAM(),  # LBFGS(; linesearch=BackTracking())
+    maxiters=20,
+    allow_f_increases=true,
+    kwargs...,
 )
     @argcheck t0 < time_fractions[1]
     θ = initial_params(controller)
@@ -26,7 +30,7 @@ function preconditioner(
         tspan = (t0, partial_time)
         fixed_prob = ODEProblem(fixed_dudt!, u0, tspan)
         sensealg = InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
-        fixed_sol = solve(fixed_prob, Tsit5(); saveat, sensealg)
+        fixed_sol = solve(fixed_prob, AutoTsit5(Rosenbrock23()); saveat, sensealg)
         function precondition_loss(params; plot=nothing)
             plot_arrays = Dict(:reference => [], :control => [])
             sum_squares = 0.0f0
@@ -101,10 +105,10 @@ function preconditioner(
         optimization = sciml_train(
             precondition_loss,
             θ,
-            NADAM();
-            # LBFGS(; linesearch=BackTracking());
-            maxiters=100,
-            allow_f_increases=true,
+            optimizer;
+            maxiters,
+            allow_f_increases,
+            kwargs...,
         )
         θ = optimization.minimizer
         pvar = plot_progress ? :unicode : nothing
@@ -118,33 +122,36 @@ function preconditioner(
 end
 
 function constrained_training(
-    controller,
-    prob,
-    θ,
-    loss;
+    controlODE,
+    losses;
     αs,
     δs,
-    tsteps=(),
+    starting_point=initial_params(controlODE.controller),
     show_progressbar=false,
     plots_callback=nothing,
     datadir=nothing,
     metadata=Dict(),  # metadata is added to this dict always
+    optimizer=LBFGS(; linesearch=BackTracking()),
+    maxiters=200,
+    allow_f_increases=true,
+    kwargs...,
 )
     @argcheck length(αs) == length(δs)
+
     prog = Progress(
         length(αs); desc="Training with constraints...", enabled=show_progressbar
     )
+
+    θ = starting_point
     for (α, δ) in zip(αs, δs)
 
-        # prob = ODEProblem(dudt!, u0, tspan, θ)
-        prob = remake(prob; p=θ)
-
         # closure to comply with optimization interface
-        loss_(params) = reduce(+, loss(params, prob; α, δ, tsteps))
+        loss(params) = reduce(+, losses(controlODE, params; α, δ, kwargs...))
 
-        if !isnothing(plots_callback)
-            plots_callback(controller, prob, θ, tsteps)
-        end
+        # TODO update to use ControlODE
+        # if !isnothing(plots_callback)
+        #     plots_callback(controller, prob, θ, tsteps)
+        # end
 
         # function print_callback(params, loss)
         #     println(loss)
@@ -152,16 +159,17 @@ function constrained_training(
         # end
         @infiltrate
         result = sciml_train(
-            loss_,
+            loss,
             θ,
-            LBFGS(; linesearch=BackTracking());
-            # cb=print_callback,
-            allow_f_increases=true,
+            optimizer;
+            maxiters,
+            allow_f_increases,
+            kwargs...,
         )
         θ = result.minimizer
 
-        objective, state_penalty, control_penalty, regularization = loss(
-            θ, prob; α, δ, tsteps
+        objective, state_penalty, control_penalty, regularization = losses(
+            θ; α, δ, tsteps
         )
 
         local_metadata = Dict(

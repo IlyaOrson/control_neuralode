@@ -14,7 +14,7 @@ function semibatch_reactor(; store_results=false::Bool)
 
     # initial conditions and timepoints
     t0 = 0.0f0
-    tf = 1.0f0  # Bradfoard uses 0.4
+    tf = 0.4f0  # Bradfoard uses 0.4
     Δt = 0.01f0
     tspan = (t0, tf)
     tsteps = t0:Δt:tf
@@ -27,13 +27,13 @@ function semibatch_reactor(; store_results=false::Bool)
     # V = exchanger temperature
     # F = 240 & V = 298 in Fogler's book
     # F ∈ (0, 250) & V ∈ (200, 500) in Bradford 2017
-    control_ranges = [(100.0f0, 500.0f0), (0.0f0, 500.0f0)]
+    control_ranges = [(100.0f0, 700.0f0), (0.0f0, 400.0f0)]
 
     # state constraints
     # T ∈ (0, 420]
     # Vol ∈ (0, 200]
     T_up = 380.0f0
-    V_up = 300.0f0
+    V_up = 100.0f0
 
     system_params = (
         CpA=30.0f0,
@@ -105,15 +105,16 @@ function semibatch_reactor(; store_results=false::Bool)
     # simulate the system with constant controls as in Fogler's
     # to reproduce his results and verify correctness
     fogler_ref = [240.0f0, 298.0f0]  # reference values in Fogler
+    fogler_timespan = (0.0f0, 1.5f0)
     fixed_dudt!(du, u, p, t) = system!(du, u, p, t, (u, p) -> fogler_ref)
-    fixed_prob = ODEProblem(fixed_dudt!, u0, (0.0f0, 1.5f0))
-    fixed_sol = solve(fixed_prob, Tsit5()) |> Array
+    fixed_prob = ODEProblem(fixed_dudt!, u0, fogler_timespan)
+    fixed_sol = solve(fixed_prob, AutoTsit5(Rosenbrock23())) |> Array
     @info "Fogler's case: final time state" fixed_sol[:, end]
     plot_simulation(
         (u, p) -> fogler_ref,
         fixed_prob,
         nothing,
-        0.0f0:1.0f-1:1.5f0;
+        range(fogler_timespan..., step=Δt);
         only=:states,
         vars=[1, 2, 3],
     )
@@ -121,7 +122,7 @@ function semibatch_reactor(; store_results=false::Bool)
         (u, p) -> fogler_ref,
         fixed_prob,
         nothing,
-        0.0f0:1.0f-1:1.5f0;
+        range(fogler_timespan..., step=Δt);
         only=:states,
         vars=[4, 5],
     )
@@ -133,13 +134,15 @@ function semibatch_reactor(; store_results=false::Bool)
         constrain_states::Bool=false,
     )
         optimizer = optimizer_with_attributes(
-            Ipopt.Optimizer, "print_level" => 0, "check_derivatives_for_naninf" => "yes"
+            Ipopt.Optimizer,
+            "print_level" => 0,
+            "check_derivatives_for_naninf" => "yes"
         )
         model = InfiniteModel(optimizer)
         method = OrthogonalCollocation(nodes_per_element)
         @infinite_parameter(
             model,
-            t in [Float64(t0), Float64(tf)],
+            t in [t0, tf],
             num_supports = num_supports,
             derivative_method = method
         )
@@ -165,7 +168,7 @@ function semibatch_reactor(; store_results=false::Bool)
         set_start_value_function(x[5], t -> 1.0f2)
 
         set_start_value_function(c[1], t -> 2.0f2)
-        set_start_value_function(c[2], t -> 2.0f2)
+        set_start_value_function(c[2], t -> 1.0f2)
 
         @constraints(
             model,
@@ -239,9 +242,13 @@ function semibatch_reactor(; store_results=false::Bool)
 
         optimize!(model)
         jump_model = optimizer_model(model)
-        # @info raw_status(jump_model)
-        # @info termination_status(jump_model)
+
+        # list possible termination status: model |> termination_status |> typeof
         @info solution_summary(jump_model; verbose=false)
+        if Int(termination_status(jump_model)) ∉ (1,4)  # OPTIMAL = 1, LOCALLY_SOLVED = 4
+            @warn raw_status(jump_model) termination_status(jump_model)
+        end
+
         states = hcat(value.(x)...) |> permutedims
         controls = hcat(value.(c)...) |> permutedims
 
@@ -256,11 +263,6 @@ function semibatch_reactor(; store_results=false::Bool)
         # (x, p) -> [240f0, 298f0],
         scaled_sigmoids(control_ranges),
     )
-
-    # destructure model weights into a vector of parameters
-    θ = initial_params(controller)
-
-    dudt!(du, u, p, t) = system!(du, u, p, t, controller)
 
     control_profile, infopt_model, times_collocation, states_collocation, controls_collocation = collocation_preconditioner(
         u0,
@@ -278,19 +280,22 @@ function semibatch_reactor(; store_results=false::Bool)
         nodes_per_element=2,
         constrain_states=true,
     )
-
+    #=
     plt.figure()
     plt.plot(times_collocation, states_collocation[1, :]; label="s1")
     plt.plot(times_collocation, states_collocation[2, :]; label="s2")
     plt.plot(times_collocation, states_collocation[3, :]; label="s3")
     plt.plot(
-        times_collocation, states_collocation_constrained[1, :]; label="s1_constrained"
+        times_collocation, states_collocation_constrained[1, :];
+        label="s1_constrained", color=plt.gca().lines[1].get_color(), ls="dashdot"
     )
     plt.plot(
-        times_collocation, states_collocation_constrained[2, :]; label="s2_constrained"
+        times_collocation, states_collocation_constrained[2, :];
+        label="s2_constrained", color=plt.gca().lines[2].get_color(), ls="dashdot"
     )
     plt.plot(
-        times_collocation, states_collocation_constrained[3, :]; label="s3_constrained"
+        times_collocation, states_collocation_constrained[3, :];
+        label="s3_constrained", color=plt.gca().lines[3].get_color(), ls="dashdot"
     )
     plt.legend()
     plt.show()
@@ -299,10 +304,12 @@ function semibatch_reactor(; store_results=false::Bool)
     plt.plot(times_collocation, states_collocation[4, :]; label="s4")
     plt.plot(times_collocation, states_collocation[5, :]; label="s5")
     plt.plot(
-        times_collocation, states_collocation_constrained[4, :]; label="s4_constrained"
+        times_collocation, states_collocation_constrained[4, :];
+        label="s4_constrained", color=plt.gca().lines[1].get_color(), ls="dashdot"
     )
     plt.plot(
-        times_collocation, states_collocation_constrained[5, :]; label="s5_constrained"
+        times_collocation, states_collocation_constrained[5, :];
+        label="s5_constrained", color=plt.gca().lines[2].get_color(), ls="dashdot"
     )
     plt.legend()
     plt.show()
@@ -311,101 +318,106 @@ function semibatch_reactor(; store_results=false::Bool)
     plt.plot(times_collocation, controls_collocation[1, :]; label="c1")
     plt.plot(times_collocation, controls_collocation[2, :]; label="c2")
     plt.plot(
-        times_collocation, controls_collocation_constrained[1, :]; label="c1_constrained"
+        times_collocation, controls_collocation_constrained[1, :];
+        label="c1_constrained", color=plt.gca().lines[1].get_color(), ls="dashdot"
     )
     plt.plot(
-        times_collocation, controls_collocation_constrained[2, :]; label="c2_constrained"
+        times_collocation, controls_collocation_constrained[2, :];
+        label="c2_constrained", color=plt.gca().lines[2].get_color(), ls="dashdot"
     )
     plt.legend()
-    return plt.show()
+    plt.show()
+    =#
+    θ = preconditioner(
+        controller,
+        control_profile,
+        system!,
+        t0,
+        u0,
+        tsteps[2:end];
+        progressbar=true,
+        plot_progress=false,
+        # control_range_scaling=[range[end] - range[1] for range in control_ranges],
+    )
 
-    # θ = preconditioner(
-    #     controller,
-    #     control_profile,
-    #     system!,
-    #     t0,
-    #     u0,
-    #     tsteps[2:2:end];
-    #     progressbar=true,
-    #     plot_progress=false,
-    #     # control_range_scaling=[range[end] - range[1] for range in control_ranges],
-    # )
+    # destructure model weights into a vector of parameters
+    # initial_parameters = initial_params(controller)
 
-    # prob = ODEProblem(dudt!, u0, tspan, θ)
+    controlODE = ControlODE(; controller, system!, u0, tspan, tsteps)
 
-    # plot_simulation(controller, prob, θ, tsteps; only=:states)
-    # plot_simulation(controller, prob, θ, tsteps; only=:controls)
-    # store_simulation("precondition", controller, prob, θ, tsteps; datadir)
+    dudt!(du, u, p, t) = system!(du, u, p, t, controller)
+    prob = ODEProblem(dudt!, u0, tspan)
 
-    # # define objective function to optimize
-    # function loss(params, prob; α=1.0f-3, δ=1.0f1, ρ=1f-2, tsteps=())
+    plot_simulation(controller, prob, θ, tsteps; only=:states)
+    plot_simulation(controller, prob, θ, tsteps; only=:controls)
+    store_simulation("precondition", controller, prob, θ, tsteps; datadir)
 
-    #     # integrate ODE system
-    #     # sensealg = InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
-    #     sol_array = Array(solve(prob, Tsit5(); p=params, saveat=tsteps))
+    # objective function splitted componenets to optimize
+    function losses(controlODE, params; α=1.0f-3, δ=1.0f1, ρ=1f-2, kwargs...)
 
-    #     # running cost
-    #     out_temp = map(x -> relaxed_log_barrier(T_up - x; δ), sol_array[4, 1:end])
-    #     out_vols = map(x -> relaxed_log_barrier(V_up - x; δ), sol_array[5, 1:end])
+        # integrate ODE system
+        sol_array = Array(solve(controlODE, params; kwargs...))
 
-    #     # terminal cost
-    #     # L = - (100 x₁ - x₂) + penalty  # Bradford
-    #     objective = sol_array[2, end]
+        # running cost
+        out_temp = map(x -> relaxed_log_barrier(T_up - x; δ), sol_array[4, 1:end])
+        out_vols = map(x -> relaxed_log_barrier(V_up - x; δ), sol_array[5, 1:end])
 
-    #     # integral penalty
-    #     state_penalty = α * Δt * (sum(out_temp) + sum(out_vols))
-    #     control_penalty = 0f0
-    #     regularization = ρ * mean(abs2, θ)
-    #     return objective, state_penalty, control_penalty, regularization
-    # end
+        # terminal cost
+        # L = - (100 x₁ - x₂) + penalty  # Bradford
+        objective = -sol_array[2, end]
 
-    # # α: penalty coefficient
-    # # δ: barrier relaxation coefficient
-    # α0, δ0 = 1f-5, 1f1
-    # barrier_iterations = 0:10
-    # αs = [α0 for _ in barrier_iterations]
-    # δs = [δ0 * 0.8f0^i for i in barrier_iterations]
-    # θ = constrained_training(
-    #     controller,
-    #     prob,
-    #     θ,
-    #     loss;
-    #     αs,
-    #     δs,
-    #     tsteps,
-    #     show_progressbar=true,
-    #     # plots_callback,
-    #     datadir,
-    # )
+        # integral penalty
+        state_penalty = α * Δt * (sum(out_temp) + sum(out_vols))
+        control_penalty = 0f0
+        regularization = ρ * mean(abs2, θ)
+        return objective, state_penalty, control_penalty, regularization
+    end
 
-    # @info "Final states"
-    # plot_simulation(controller, prob, θ, tsteps; only=:states, vars=[1, 2, 3])
-    # plot_simulation(
-    #     controller, prob, θ, tsteps; only=:states, vars=[4, 5], yrefs=[T_up, V_up]
-    # )
+    # α: penalty coefficient
+    # δ: barrier relaxation coefficient
+    α0, δ0 = 1f-5, 1f1
+    barrier_iterations = 0:10
+    αs = [α0 for _ in barrier_iterations]
+    δs = [δ0 * 0.8f0^i for i in barrier_iterations]
+    θ = constrained_training(
+        controlODE,
+        losses;
+        starting_point=θ,
+        αs,
+        δs,
+        show_progressbar=true,
+        # plots_callback,
+        datadir
+    )
 
-    # @info "Final controls"
-    # plot_simulation(controller, prob, θ, tsteps; only=:controls, show=loss)#  only=:states, vars=[1,2,3])
+    @info "Final states"
+    plot_simulation(controller, prob, θ, tsteps; only=:states, vars=[1, 2, 3])
+    plot_simulation(
+        controller, prob, θ, tsteps; only=:states, vars=[4, 5], yrefs=[T_up, V_up]
+    )
 
-    # @show final_objective, final_penalty = loss(θ, prob; δ=δs[end])
+    @info "Final controls"
+    plot_simulation(controller, prob, θ, tsteps; only=:controls, show=loss)#  only=:states, vars=[1,2,3])
 
-    # return store_simulation(
-    #     "constrained",
-    #     controller,
-    #     prob,
-    #     θ,
-    #     tsteps;
-    #     datadir,
-    #     metadata=Dict(
-    #         :loss => final_objective + final_penalty,
-    #         :objective => final_objective,
-    #         :penalty => final_penalty,
-    #         :num_params => length(initial_params(controller)),
-    #         :layers => controller_shape(controller),
-    #         :deltas => δs,
-    #         :t0 => t0,
-    #         :tf => tf,
-    #         :Δt => Δt,
-    #     ),
-    # )
+    @info "Final loss" losses(controlODE, θ; δ=δs[end])
+
+    return store_simulation(
+        "constrained",
+        controller,
+        prob,
+        θ,
+        tsteps;
+        datadir,
+        metadata=Dict(
+            :loss => final_objective + final_penalty,
+            :objective => final_objective,
+            :penalty => final_penalty,
+            :num_params => length(initial_params(controller)),
+            :layers => controller_shape(controller),
+            :deltas => δs,
+            :t0 => t0,
+            :tf => tf,
+            :Δt => Δt,
+        ),
+    )
 end  # function wrapper
