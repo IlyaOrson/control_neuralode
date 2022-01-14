@@ -47,25 +47,61 @@ function scaled_sigmoids(control_ranges)
     ]
 end
 
+find_array_param(arr::AbstractArray{T}) where {T} = T
 # TODO finish this abstraction
-@kwdef struct ControlODE{uType, tType} <: AbstractODEProblem{uType, tType, true}
+struct ControlODE{uType<:Real,tType<:Real}
     controller::Function
     system!::Function
     u0::AbstractVector{uType}
-    tspan::Tuple{tType, tType}
-    tsteps::AbstractVector{tType}=range(tspan...; step=(tspan[end] - tspan[begin]) / 100)
-    integrator::AbstractODEAlgorithm=AutoTsit5(Rosenbrock23())  # Tsit5()
-    sensealg::AbstractSensitivityAlgorithm=QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
-    # sensealg::AbstractSensitivityAlgorithm=InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
+    tspan::Tuple{tType,tType}
+    tsteps::AbstractVector{tType}
+    integrator::AbstractODEAlgorithm
+    sensealg::AbstractSensitivityAlgorithm
+    prob::AbstractODEProblem
+    function ControlODE(
+        controller,
+        system!,
+        u0,
+        tspan;
+        tsteps=range(tspan...; length=101),
+        Δt::@optional(Real)=nothing,
+        integrator=AutoTsit5(Rosenbrock23()),  # Tsit5()
+        sensealg=QuadratureAdjoint(; autojacvec=ReverseDiffVJP()),
+        # sensealg=InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true),
+    )
+        # check tsteps construction
+        @argcheck isnothing(tsteps) || isnothing(Δt)
+        if !isnothing(Δt)
+            tsteps = range(tspan...; step=Δt)
+        else
+            @argcheck tspan[begin] == tsteps[begin]
+            @argcheck tspan[end] == tsteps[end]
+        end
+        # check domain types
+        time_type = find_array_param(tsteps)
+        space_type = find_array_param(u0)
+        control_type = find_array_param(controller(u0, initial_params(controller)))
+        @argcheck space_type == control_type
+
+        # cosntruct ODE problem
+        dudt!(du, u, p, t) = system!(du, u, p, t, controller)
+        prob = ODEProblem(dudt!, u0, tspan)
+
+        return new{space_type,time_type}(
+            controller, system!, u0, tspan, tsteps, integrator, sensealg, prob
+        )
+    end
 end
 # TODO follow recommended interface https://github.com/SciML/CommonSolve.jl
-function solve(code::ControlODE, params; tsteps=code.tsteps, sensealg=code.sensealg, integrator=code.integrator, kwargs...)
-    dudt!(du, u, p, t) = code.system!(du, u, p, t, code.controller)
-    ode_prob = ODEProblem(dudt!, code.u0, code.tspan)
-    solve(ode_prob, integrator; p=params, tsteps, sensealg, kwargs...)
+function solve(code::ControlODE, params; kwargs...)
+    return solve(
+        code.prob, code.integrator; p=params, code.tsteps, code.sensealg, kwargs...
+    )
 end
 
-function ChevyshevInterpolation(timepoints, values; undersample=length(timepoints) ÷ 4::Integer)
+function ChevyshevInterpolation(
+    timepoints, values; undersample=length(timepoints) ÷ 4::Integer
+)
     @argcheck length(timepoints) == length(values)
     @argcheck undersample <= length(timepoints)
     space = Chebyshev(Interval(timepoints[1], timepoints[end]))
@@ -88,7 +124,8 @@ function collocation_preconditioner(u0, collocation; plot=true, kwargs...)
     #     DataInterpolations.LinearInterpolation(controls_collocation[i, :], time_collocation) for i in 1:num_controls
     # ]
     interpolations = [
-        ChevyshevInterpolation(time_collocation, controls_collocation[i, :]) for i in 1:num_controls
+        ChevyshevInterpolation(time_collocation, controls_collocation[i, :]) for
+        i in 1:num_controls
     ]
     function control_profile(t, p)
         Zygote.ignore() do
@@ -110,7 +147,9 @@ function collocation_preconditioner(u0, collocation; plot=true, kwargs...)
             )
         end
     end
-    return control_profile, infopt_model, time_collocation, states_collocation, controls_collocation
+    return control_profile,
+    infopt_model, time_collocation, states_collocation,
+    controls_collocation
 end
 
 # Feller, C., & Ebenbauer, C. (2014).

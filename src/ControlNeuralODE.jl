@@ -9,7 +9,7 @@ using ArgCheck: @argcheck
 using Formatting: format, sprintf1
 using ProgressMeter: Progress, next!
 using Infiltrator: @infiltrate
-using Statistics: mean
+using Statistics: mean, std
 using LineSearches: BackTracking
 using InfiniteOpt:
     Infinite,
@@ -34,7 +34,13 @@ using Optim: LBFGS, BFGS
 using ApproxFun: Chebyshev, Fun, Interval
 using Zygote: Zygote
 using Flux: glorot_uniform, ADAM, NADAM, sigmoid_fast, tanh_fast
-using SciMLBase: ODEProblem, DECallback, remake, AbstractODEAlgorithm, AbstractSensitivityAlgorithm, AbstractODEProblem
+using SciMLBase:
+    ODEProblem,
+    DECallback,
+    remake,
+    AbstractODEAlgorithm,
+    AbstractSensitivityAlgorithm,
+    AbstractODEProblem
 using DiffEqCallbacks: FunctionCallingCallback
 using OrdinaryDiffEq: solve, AutoTsit5, Rosenbrock23  # Tsit5
 using DiffEqFlux: FastChain, FastDense, initial_params, sciml_train
@@ -51,7 +57,6 @@ using PyPlot: plt, matplotlib, ColorMap
 import CommonSolve: solve
 
 export batch_reactor, van_der_pol, reference_tracking, bioreactor, semibatch_reactor
-
 
 # https://diffeqflux.sciml.ai/stable/ControllingAdjoints/#Choosing-a-sensealg-in-a-Nutshell
 const INTEGRATOR = AutoTsit5(Rosenbrock23())

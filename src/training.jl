@@ -103,12 +103,7 @@ function preconditioner(
         end
 
         optimization = sciml_train(
-            precondition_loss,
-            θ,
-            optimizer;
-            maxiters,
-            allow_f_increases,
-            kwargs...,
+            precondition_loss, θ, optimizer; maxiters, allow_f_increases, kwargs...
         )
         θ = optimization.minimizer
         pvar = plot_progress ? :unicode : nothing
@@ -157,19 +152,13 @@ function constrained_training(
         #     println(loss)
         #     return false
         # end
+
+        result = sciml_train(loss, θ, optimizer; maxiters, allow_f_increases, kwargs...)
         @infiltrate
-        result = sciml_train(
-            loss,
-            θ,
-            optimizer;
-            maxiters,
-            allow_f_increases,
-            kwargs...,
-        )
         θ = result.minimizer
 
         objective, state_penalty, control_penalty, regularization = losses(
-            θ; α, δ, tsteps
+            controlODE, θ; α, δ, kwargs...
         )
 
         local_metadata = Dict(
@@ -178,16 +167,22 @@ function constrained_training(
             :control_penalty => control_penalty,
             :regularization_cost => regularization,
             :parameters => θ,
-            :num_params => length(initial_params(controller)),
-            :layers => controller_shape(controller),
+            :num_params => length(initial_params(controlODE.controller)),
+            :layers => controller_shape(controlODE.controller),
             :penalty_relaxations => δs,
             :penalty_coefficients => αs,
-            :tspan => prob.tspan,
-            :tsteps => tsteps,
+            :tspan => controlODE.tspan,
+            :tsteps => controlODE.tsteps,
         )
         metadata = merge(metadata, local_metadata)
         store_simulation(
-            "delta_$(round(δ, digits=2))", controller, prob, θ, tsteps; metadata, datadir
+            "delta_$(round(δ, digits=2))",
+            controlODE.controller,
+            controlODE.prob,
+            θ,
+            controlODE.tsteps;
+            metadata,
+            datadir,
         )
         next!(
             prog;

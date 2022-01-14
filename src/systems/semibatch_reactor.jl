@@ -114,7 +114,7 @@ function semibatch_reactor(; store_results=false::Bool)
         (u, p) -> fogler_ref,
         fixed_prob,
         nothing,
-        range(fogler_timespan..., step=Δt);
+        range(fogler_timespan...; step=Δt);
         only=:states,
         vars=[1, 2, 3],
     )
@@ -122,7 +122,7 @@ function semibatch_reactor(; store_results=false::Bool)
         (u, p) -> fogler_ref,
         fixed_prob,
         nothing,
-        range(fogler_timespan..., step=Δt);
+        range(fogler_timespan...; step=Δt);
         only=:states,
         vars=[4, 5],
     )
@@ -134,17 +134,12 @@ function semibatch_reactor(; store_results=false::Bool)
         constrain_states::Bool=false,
     )
         optimizer = optimizer_with_attributes(
-            Ipopt.Optimizer,
-            "print_level" => 0,
-            "check_derivatives_for_naninf" => "yes"
+            Ipopt.Optimizer, "print_level" => 0, "check_derivatives_for_naninf" => "yes"
         )
         model = InfiniteModel(optimizer)
         method = OrthogonalCollocation(nodes_per_element)
         @infinite_parameter(
-            model,
-            t in [t0, tf],
-            num_supports = num_supports,
-            derivative_method = method
+            model, t in [t0, tf], num_supports = num_supports, derivative_method = method
         )
 
         @variables(
@@ -245,7 +240,7 @@ function semibatch_reactor(; store_results=false::Bool)
 
         # list possible termination status: model |> termination_status |> typeof
         @info solution_summary(jump_model; verbose=false)
-        if Int(termination_status(jump_model)) ∉ (1,4)  # OPTIMAL = 1, LOCALLY_SOLVED = 4
+        if Int(termination_status(jump_model)) ∉ (1, 4)  # OPTIMAL = 1, LOCALLY_SOLVED = 4
             @warn raw_status(jump_model) termination_status(jump_model)
         end
 
@@ -343,7 +338,7 @@ function semibatch_reactor(; store_results=false::Bool)
     # destructure model weights into a vector of parameters
     # initial_parameters = initial_params(controller)
 
-    controlODE = ControlODE(; controller, system!, u0, tspan, tsteps)
+    controlODE = ControlODE(controller, system!, u0, tspan; tsteps)
 
     dudt!(du, u, p, t) = system!(du, u, p, t, controller)
     prob = ODEProblem(dudt!, u0, tspan)
@@ -353,7 +348,7 @@ function semibatch_reactor(; store_results=false::Bool)
     store_simulation("precondition", controller, prob, θ, tsteps; datadir)
 
     # objective function splitted componenets to optimize
-    function losses(controlODE, params; α=1.0f-3, δ=1.0f1, ρ=1f-2, kwargs...)
+    function losses(controlODE, params; α=1.0f-3, δ=1.0f1, ρ=1.0f-2, kwargs...)
 
         # integrate ODE system
         sol_array = Array(solve(controlODE, params; kwargs...))
@@ -368,14 +363,14 @@ function semibatch_reactor(; store_results=false::Bool)
 
         # integral penalty
         state_penalty = α * Δt * (sum(out_temp) + sum(out_vols))
-        control_penalty = 0f0
+        control_penalty = 0.0f0
         regularization = ρ * mean(abs2, θ)
         return objective, state_penalty, control_penalty, regularization
     end
 
     # α: penalty coefficient
     # δ: barrier relaxation coefficient
-    α0, δ0 = 1f-5, 1f1
+    α0, δ0 = 1.0f-5, 1.0f1
     barrier_iterations = 0:10
     αs = [α0 for _ in barrier_iterations]
     δs = [δ0 * 0.8f0^i for i in barrier_iterations]
@@ -387,7 +382,7 @@ function semibatch_reactor(; store_results=false::Bool)
         δs,
         show_progressbar=true,
         # plots_callback,
-        datadir
+        datadir,
     )
 
     @info "Final states"
@@ -397,9 +392,11 @@ function semibatch_reactor(; store_results=false::Bool)
     )
 
     @info "Final controls"
-    plot_simulation(controller, prob, θ, tsteps; only=:controls, show=loss)#  only=:states, vars=[1,2,3])
+    plot_simulation(controller, prob, θ, tsteps; only=:controls)#  only=:states, vars=[1,2,3])
 
-    @info "Final loss" losses(controlODE, θ; δ=δs[end])
+    @info "Final loss" final_objective, final_state_penalty, final_control_penalty, final_regularization = losses(
+        controlODE, θ; δ=δs[end]
+    )
 
     return store_simulation(
         "constrained",
@@ -409,10 +406,11 @@ function semibatch_reactor(; store_results=false::Bool)
         tsteps;
         datadir,
         metadata=Dict(
-            :loss => final_objective + final_penalty,
             :objective => final_objective,
+            :state_penalty => final_state_penalty,
+            :cotrol_penalty => final_cotrol_penalty,
             :penalty => final_penalty,
-            :num_params => length(initial_params(controller)),
+            :num_params => length(θ),
             :layers => controller_shape(controller),
             :deltas => δs,
             :t0 => t0,
