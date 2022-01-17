@@ -107,6 +107,10 @@ function plot_simulation(
     return false  # if return true, then optimization stops
 end
 
+function plot_simulation(controlODE, params; kwargs...)
+    plot_simulation(controlODE.controller, controlODE.prob, params, controlODE.tsteps; kwargs...)
+end
+
 function plot_collocation(controls_collocation, interpol, tsteps)
     plt.figure()
     finer_tsteps = range(tsteps[1], tsteps[end]; length=1000)

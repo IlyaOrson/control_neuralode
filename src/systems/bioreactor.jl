@@ -211,8 +211,7 @@ function bioreactor(; store_results=false::Bool)
     )
 
         # integrate ODE system
-        sensealg = InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
-        sol_raw = solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, sensealg)
+        sol_raw = solve(prob, INTEGRATOR; p=params, saveat=tsteps, sensealg=SENSEALG)
         sol = Array(sol_raw)
 
         # approximate integral penalty

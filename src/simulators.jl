@@ -24,7 +24,7 @@ function run_simulation(
     end
 
     # integrate with given parameters
-    solution = solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, callback=callback)
+    solution = solve(prob, INTEGRATOR; p=params, saveat=tsteps, callback=callback)
 
     # construct arrays with the same type used by the integrator
     elements_type = eltype(solution.t)

@@ -25,8 +25,7 @@ function batch_reactor(; store_results=false::Bool)
 
     # define objective function to optimize
     function loss(params, prob, tsteps)
-        sensealg = InterpolatingAdjoint(autojacvec=ZygoteVJP(), checkpointing=true)
-        sol = solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, sensealg)
+        sol = solve(prob, INTEGRATOR; p=params, saveat=tsteps, sensealg=SENSEALG)
         return -Array(sol)[2, end]  # second variable, last value, maximize
     end
 

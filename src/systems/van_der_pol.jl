@@ -184,8 +184,7 @@ function van_der_pol(; store_results=false::Bool)
     ### define objective function to optimize
     function loss(params, prob, tsteps)
         # integrate ODE system (stiff problem)
-        sensealg = InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
-        sol = solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, sensealg)
+        sol = solve(prob, INTEGRATOR; p=params, saveat=tsteps, sensealg=SENSEALG)
         return Array(sol)[3, end]  # return last value of third variable ...to be minimized
     end
     loss(params) = loss(params, prob, tsteps)
@@ -212,9 +211,7 @@ function van_der_pol(; store_results=false::Bool)
     ### now add state constraint x1(t) > -0.4 with
     function penalty_loss(params, prob, tsteps; α=10.0f0)
         # integrate ODE system
-        sensealg = InterpolatingAdjoint(autojacvec=ZygoteVJP(), checkpointing=true)
-        # sensealg = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
-        sol = Array(solve(prob, AutoTsit5(Rosenbrock23()); p=params, saveat=tsteps, sensealg))
+        sol = Array(solve(prob, INTEGRATOR; p=params, saveat=tsteps, sensealg=SENSEALG))
         fault = min.(sol[1, 1:end] .+ 0.4f0, 0.0f0)
         penalty = α * Δt * sum(fault .^ 2)  # quadratic penalty
         return sol[3, end] + penalty

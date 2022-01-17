@@ -11,9 +11,11 @@ function preconditioner(
     control_range_scaling=nothing,
     plot_progress=false,
     plot_final=true,
-    optimizer=NADAM(),  # LBFGS(; linesearch=BackTracking())
+    optimizer=LBFGS(; linesearch=BackTracking()),
     maxiters=20,
     allow_f_increases=true,
+    sensealg=SENSEALG,
+    adtype=GalacticOptim.AutoForwardDiff(),
     kwargs...,
 )
     @argcheck t0 < time_fractions[1]
@@ -29,8 +31,8 @@ function preconditioner(
     for partial_time in time_fractions
         tspan = (t0, partial_time)
         fixed_prob = ODEProblem(fixed_dudt!, u0, tspan)
-        sensealg = InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
-        fixed_sol = solve(fixed_prob, AutoTsit5(Rosenbrock23()); saveat, sensealg)
+        # sensealg = SENSEALG
+        fixed_sol = solve(fixed_prob, INTEGRATOR; saveat)  # , sensealg)
         function precondition_loss(params; plot=nothing)
             plot_arrays = Dict(:reference => [], :control => [])
             sum_squares = 0.0f0
@@ -103,7 +105,7 @@ function preconditioner(
         end
 
         optimization = sciml_train(
-            precondition_loss, θ, optimizer; maxiters, allow_f_increases, kwargs...
+            precondition_loss, θ, optimizer; maxiters, allow_f_increases, adtype, kwargs...
         )
         θ = optimization.minimizer
         pvar = plot_progress ? :unicode : nothing
@@ -126,9 +128,11 @@ function constrained_training(
     plots_callback=nothing,
     datadir=nothing,
     metadata=Dict(),  # metadata is added to this dict always
-    optimizer=LBFGS(; linesearch=BackTracking()),
-    maxiters=200,
+    optimizer=NADAM(),  # LBFGS(; linesearch=BackTracking()),
+    maxiters=100,
     allow_f_increases=true,
+    sensealg=SENSEALG,
+    adtype=GalacticOptim.AutoForwardDiff(),
     kwargs...,
 )
     @argcheck length(αs) == length(δs)
@@ -141,7 +145,7 @@ function constrained_training(
     for (α, δ) in zip(αs, δs)
 
         # closure to comply with optimization interface
-        loss(params) = reduce(+, losses(controlODE, params; α, δ, kwargs...))
+        loss(params) = reduce(+, losses(controlODE, params; α, δ, sensealg, kwargs...))
 
         # TODO update to use ControlODE
         # if !isnothing(plots_callback)
@@ -153,9 +157,9 @@ function constrained_training(
         #     return false
         # end
 
-        result = sciml_train(loss, θ, optimizer; maxiters, allow_f_increases, kwargs...)
+        result = sciml_train(loss, θ, optimizer; maxiters, allow_f_increases, adtype, kwargs...)
         @infiltrate
-        θ = result.minimizer
+        θ = result.minimizer + 1f-1*std(result.minimizer)*randn(length(result.minimizer))
 
         objective, state_penalty, control_penalty, regularization = losses(
             controlODE, θ; α, δ, kwargs...

@@ -48,7 +48,7 @@ function scaled_sigmoids(control_ranges)
 end
 
 find_array_param(arr::AbstractArray{T}) where {T} = T
-# TODO finish this abstraction
+
 struct ControlODE{uType<:Real,tType<:Real}
     controller::Function
     system!::Function
@@ -65,9 +65,8 @@ struct ControlODE{uType<:Real,tType<:Real}
         tspan;
         tsteps=range(tspan...; length=101),
         Δt::@optional(Real)=nothing,
-        integrator=AutoTsit5(Rosenbrock23()),  # Tsit5()
-        sensealg=QuadratureAdjoint(; autojacvec=ReverseDiffVJP()),
-        # sensealg=InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true),
+        integrator=INTEGRATOR,  # Tsit5()
+        sensealg=SENSEALG,
     )
         # check tsteps construction
         @argcheck isnothing(tsteps) || isnothing(Δt)

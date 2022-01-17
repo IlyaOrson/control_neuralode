@@ -108,7 +108,7 @@ function semibatch_reactor(; store_results=false::Bool)
     fogler_timespan = (0.0f0, 1.5f0)
     fixed_dudt!(du, u, p, t) = system!(du, u, p, t, (u, p) -> fogler_ref)
     fixed_prob = ODEProblem(fixed_dudt!, u0, fogler_timespan)
-    fixed_sol = solve(fixed_prob, AutoTsit5(Rosenbrock23())) |> Array
+    fixed_sol = solve(fixed_prob, INTEGRATOR) |> Array
     @info "Fogler's case: final time state" fixed_sol[:, end]
     plot_simulation(
         (u, p) -> fogler_ref,
@@ -252,6 +252,7 @@ function semibatch_reactor(; store_results=false::Bool)
 
     # set arquitecture of neural network controller
     controller = FastChain(
+        (x, p) -> [1f2x[1], 1f2x[2], 1f2x[3], x[4], x[5]],
         FastDense(5, 8, tanh_fast),
         FastDense(8, 8, tanh_fast),
         FastDense(8, 2),
@@ -332,6 +333,8 @@ function semibatch_reactor(; store_results=false::Bool)
         tsteps[2:end];
         progressbar=true,
         plot_progress=false,
+        # sensealg=ForwardDiffSensitivity(),
+        # adtype=AutoForwardDiff(),
         # control_range_scaling=[range[end] - range[1] for range in control_ranges],
     )
 
@@ -348,10 +351,10 @@ function semibatch_reactor(; store_results=false::Bool)
     store_simulation("precondition", controller, prob, θ, tsteps; datadir)
 
     # objective function splitted componenets to optimize
-    function losses(controlODE, params; α=1.0f-3, δ=1.0f1, ρ=1.0f-2, kwargs...)
+    function losses(controlODE, params; α=1.0f-3, δ=1.0f1, ρ=1.0f-2, sensealg=SENSEALG, kwargs...)
 
         # integrate ODE system
-        sol_array = Array(solve(controlODE, params; kwargs...))
+        sol_array = Array(solve(controlODE, params; sensealg, kwargs...))
 
         # running cost
         out_temp = map(x -> relaxed_log_barrier(T_up - x; δ), sol_array[4, 1:end])
@@ -371,7 +374,7 @@ function semibatch_reactor(; store_results=false::Bool)
     # α: penalty coefficient
     # δ: barrier relaxation coefficient
     α0, δ0 = 1.0f-5, 1.0f1
-    barrier_iterations = 0:10
+    barrier_iterations = 0:8
     αs = [α0 for _ in barrier_iterations]
     δs = [δ0 * 0.8f0^i for i in barrier_iterations]
     θ = constrained_training(
@@ -382,6 +385,8 @@ function semibatch_reactor(; store_results=false::Bool)
         δs,
         show_progressbar=true,
         # plots_callback,
+        # sensealg=ForwardDiffSensitivity(),
+        # adtype=AutoForwardDiff(),
         datadir,
     )
 
@@ -394,10 +399,11 @@ function semibatch_reactor(; store_results=false::Bool)
     @info "Final controls"
     plot_simulation(controller, prob, θ, tsteps; only=:controls)#  only=:states, vars=[1,2,3])
 
-    @info "Final loss" final_objective, final_state_penalty, final_control_penalty, final_regularization = losses(
+    @info "Final loss"
+    final_objective, final_state_penalty, final_control_penalty, final_regularization = losses(
         controlODE, θ; δ=δs[end]
     )
-
+    @infiltrate
     return store_simulation(
         "constrained",
         controller,

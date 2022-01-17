@@ -32,6 +32,8 @@ using InfiniteOpt:
 using Ipopt: Ipopt
 using Optim: LBFGS, BFGS
 using ApproxFun: Chebyshev, Fun, Interval
+using ForwardDiff: ForwardDiff
+using ReverseDiff: ReverseDiff
 using Zygote: Zygote
 using Flux: glorot_uniform, ADAM, NADAM, sigmoid_fast, tanh_fast
 using SciMLBase:
@@ -43,8 +45,15 @@ using SciMLBase:
     AbstractODEProblem
 using DiffEqCallbacks: FunctionCallingCallback
 using OrdinaryDiffEq: solve, AutoTsit5, Rosenbrock23  # Tsit5
+using DiffEqSensitivity:
+    InterpolatingAdjoint,
+    QuadratureAdjoint,
+    ZygoteVJP,
+    ReverseDiffVJP,
+    ForwardDiffSensitivity
+using GalacticOptim: GalacticOptim
+# using GalacticOptim: AutoForwardDiff, AutoZygote
 using DiffEqFlux: FastChain, FastDense, initial_params, sciml_train
-using DiffEqSensitivity: InterpolatingAdjoint, QuadratureAdjoint, ZygoteVJP, ReverseDiffVJP
 using UnicodePlots: lineplot, lineplot!
 using BSON: BSON
 using JSON3: JSON3
@@ -60,13 +69,15 @@ export batch_reactor, van_der_pol, reference_tracking, bioreactor, semibatch_rea
 
 # https://diffeqflux.sciml.ai/stable/ControllingAdjoints/#Choosing-a-sensealg-in-a-Nutshell
 const INTEGRATOR = AutoTsit5(Rosenbrock23())
-const SENSEALG = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
+# const ADTYPE = AutoForwardDiff()  # AutoZygote()  # precompilation fails...
+const SENSEALG = ForwardDiffSensitivity()
+# QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
 # InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
 
 include("auxiliaries.jl")
-include("plotting.jl")
 include("simulators.jl")
 include("training.jl")
+include("plotting.jl")
 
 # case studies
 include("systems/batch_reactor.jl")
