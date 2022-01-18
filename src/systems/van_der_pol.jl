@@ -101,12 +101,9 @@ function van_der_pol(; store_results=false::Bool)
         (x, p) -> (1.3f0 .* sigmoid_fast.(x)) .- 0.3f0,
     )
 
-    # model weights are destructured into a vector of parameters
-    θ = initial_params(controller)
+    controlODE = ControlODE(controller, system!, u0, tspan; tsteps)
 
-    # set differential equation problem
-    dudt!(du, u, p, t) = system!(du, u, p, t, controller)
-    prob = ODEProblem(dudt!, u0, tspan, θ)
+    θ = initial_params(controlODE.controller)
 
     phase_time = 0.0f0
     function square_bounds(u0, arista)
@@ -116,14 +113,13 @@ function van_der_pol(; store_results=false::Bool)
         return bounds
     end
 
-    _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
+    _, states_raw, _ = run_simulation(controlODE, θ)
 
     start_mark = InitialState(; points=states_raw[:, 1])
     marker_path = IntegrationPath(; points=states_raw)
     final_mark = FinalState(; points=states_raw[:, end])
     phase_portrait(
-        system!,
-        controller,
+        controlODE,
         θ,
         phase_time,
         square_bounds(u0, 7);
@@ -141,28 +137,20 @@ function van_der_pol(; store_results=false::Bool)
 
     @info "Preconditioning..."
     θ = preconditioner(
-        controller,
-        control_profile,
-        system!,
-        t0,
-        u0,
-        tsteps[2:2:end],
+        controlODE,
+        control_profile;
         #control_range_scaling=[maximum(controls_collocation) - minimum(controls_collocation)],
     )
 
-    # prob = ODEProblem(dudt!, u0, tspan, θ)
-    prob = remake(prob; p=θ)
+    plot_simulation(controlODE, θ; only=:controls)
+    store_simulation("precondition", controlODE, θ; datadir)
 
-    plot_simulation(controller, prob, θ, tsteps; only=:controls)
-    store_simulation("precondition", controller, prob, θ, tsteps; datadir)
-
-    _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
+    _, states_raw, _ = run_simulation(controlODE, θ)
     start_mark = InitialState(; points=states_raw[:, 1])
     marker_path = IntegrationPath(; points=states_raw)
     final_mark = FinalState(; points=states_raw[:, end])
     phase_portrait(
-        system!,
-        controller,
+        controlODE,
         θ,
         phase_time,
         square_bounds(u0, 7);
@@ -177,17 +165,16 @@ function van_der_pol(; store_results=false::Bool)
     # closures to comply with required interface
     function plotting_callback(params, loss)
         return plot_simulation(
-            controller, prob, params, tsteps; only=:states, vars=[1], show=loss
+            controlODE, params; only=:states, vars=[1], show=loss
         )
     end
 
     ### define objective function to optimize
-    function loss(params, prob, tsteps)
-        # integrate ODE system (stiff problem)
-        sol = solve(prob, INTEGRATOR; p=params, saveat=tsteps, sensealg=SENSEALG)
+    function loss(controlODE, params; kwargs...)
+        sol = solve(controlODE, params; kwargs...)
         return Array(sol)[3, end]  # return last value of third variable ...to be minimized
     end
-    loss(params) = loss(params, prob, tsteps)
+    loss(params) = loss(controlODE, params)
 
     @info "Training..."
     result = sciml_train(
@@ -197,21 +184,20 @@ function van_der_pol(; store_results=false::Bool)
         # cb=plotting_callback,
         allow_f_increases=true,
     )
+    θ = result.minimizer
 
     store_simulation(
         "unconstrained",
-        controller,
-        prob,
-        result.minimizer,
-        tsteps;
+        controlODE,
+        θ;
         datadir,
-        metadata=Dict(:loss => loss(result.minimizer), :constraint => "none"),
+        metadata=Dict(:loss => loss(θ), :constraint => "none"),
     )
 
     ### now add state constraint x1(t) > -0.4 with
-    function penalty_loss(params, prob, tsteps; α=10.0f0)
+    function penalty_loss(controlODE, params; α=10.0f0, kwargs...)
         # integrate ODE system
-        sol = Array(solve(prob, INTEGRATOR; p=params, saveat=tsteps, sensealg=SENSEALG))
+        sol = Array(solve(controlODE, params; kwargs...))
         fault = min.(sol[1, 1:end] .+ 0.4f0, 0.0f0)
         penalty = α * Δt * sum(fault .^ 2)  # quadratic penalty
         return sol[3, end] + penalty
@@ -220,59 +206,52 @@ function van_der_pol(; store_results=false::Bool)
     penalty_coefficients = [10.0f0, 10.0f1, 10.0f2, 10.0f3]
     for α in penalty_coefficients
 
-        # set differential equation struct again
-        constrained_prob = ODEProblem(dudt!, u0, tspan, result.minimizer)
         # function plotting_callback(params, loss)
         #     return plot_simulation(
-        #         controller, constrained_prob, params, tsteps; only=:states, vars=[1], show=loss
+        #         controlODE, params; only=:states, vars=[1], show=loss
         #     )
         # end
 
         # closures to comply with interface
-        penalty_loss_(params) = penalty_loss(params, constrained_prob, tsteps; α)
+        penalty_loss_(params) = penalty_loss(controlODE, params; α)
 
         @info α
         # plot_simulation(
-        #     controller,
-        #     constrained_prob,
-        #     result.minimizer,
-        #     tsteps;
+        #     controlODE,
+        #     θ;
         #     only=:controls,
-        #     show=penalty_loss_(result.minimizer),
+        #     show=penalty_loss_(θ),
         # )
 
         result = sciml_train(
             penalty_loss_,
-            result.minimizer,
+            θ,
             LBFGS(; linesearch=BackTracking(; iterations=20));
             iterations=50,
             allow_f_increases=true,
             # cb=plotting_callback,
         )
+        θ = result.minimizer
     end
     θ_opt = result.minimizer
     optimal = result.minimum
 
-    constrained_prob = ODEProblem(dudt!, u0, tspan, θ_opt)
-
     # penalty_loss(result.minimizer, constrained_prob, tsteps; α=penalty_coefficients[end])
-    plot_simulation(controller, constrained_prob, θ_opt, tsteps; only=:controls)
+    plot_simulation(controlODE, θ_opt; only=:controls)
 
     store_simulation(
         "constrained",
-        controller,
-        constrained_prob,
-        θ_opt,
-        tsteps;
+        controlODE,
+        θ_opt;
         datadir,
         metadata=Dict(
             :loss =>
-                penalty_loss(θ_opt, constrained_prob, tsteps; α=penalty_coefficients[end]),
+                penalty_loss(controlODE, θ_opt; α=penalty_coefficients[end]),
             :constraint => "quadratic x2(t) > -0.4",
         ),
     )
 
-    _, states_opt, _ = run_simulation(controller, prob, θ_opt, tsteps)
+    _, states_opt, _ = run_simulation(controlODE, θ_opt)
     start_mark = InitialState(; points=states_opt[:, 1])
     marker_path = IntegrationPath(; points=states_opt)
     final_mark = FinalState(; points=states_opt[:, end])
@@ -283,8 +262,7 @@ function van_der_pol(; store_results=false::Bool)
         return false
     end)
     phase_portrait(
-        system!,
-        controller,
+        controlODE,
         θ_opt,
         phase_time,
         square_bounds(u0, 7);
@@ -304,20 +282,14 @@ function van_der_pol(; store_results=false::Bool)
         (variable=3, type=:positive, scale=20.0f0, samples=8, percentage=2.0f-2)
     ]
     constraint_spec = ConstRef(; val=-0.4, direction=:horizontal, class=:state, var=1)
-    # plot_initial_perturbations(
-    #     controller, prob, θ_opt, tsteps, u0, perturbation_specs; refs=[constraint_spec]
-    # )
 
     plot_initial_perturbations_collocation(
-        controller,
-        prob,
+        controlODE,
         θ_opt,
-        tsteps,
-        u0,
         perturbation_specs,
         collocation;
         refs=[constraint_spec],
         storedir=generate_data_subdir(@__FILE__),
     )
     return optimal
-end  # wrapper script
+end  # wrap

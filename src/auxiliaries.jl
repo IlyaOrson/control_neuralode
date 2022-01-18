@@ -64,7 +64,7 @@ struct ControlODE{uType<:Real,tType<:Real}
         u0,
         tspan;
         tsteps=range(tspan...; length=101),
-        Δt::@optional(Real)=nothing,
+        Δt::Union{Nothing,Real}=nothing,
         integrator=INTEGRATOR,  # Tsit5()
         sensealg=SENSEALG,
     )
@@ -94,11 +94,11 @@ end
 # TODO follow recommended interface https://github.com/SciML/CommonSolve.jl
 function solve(code::ControlODE, params; kwargs...)
     return solve(
-        code.prob, code.integrator; p=params, code.tsteps, code.sensealg, kwargs...
+        code.prob, code.integrator; p=params, saveat=code.tsteps, sensealg=code.sensealg, kwargs...
     )
 end
 
-function ChevyshevInterpolation(
+function chebyshev_interpolation(
     timepoints, values; undersample=length(timepoints) ÷ 4::Integer
 )
     @argcheck length(timepoints) == length(values)
@@ -110,7 +110,7 @@ function ChevyshevInterpolation(
     for k in 1:undersample
         V[:, k] = Fun(space, [zeros(k - 1); 1]).(timepoints)
     end
-    return Fun(space, V \ vec(values))  # ChevyshevInterpolation as one-variable function
+    return Fun(space, V \ vec(values))  # chebyshev_interpolation as one-variable function
 end
 
 function collocation_preconditioner(u0, collocation; plot=true, kwargs...)
@@ -123,7 +123,7 @@ function collocation_preconditioner(u0, collocation; plot=true, kwargs...)
     #     DataInterpolations.LinearInterpolation(controls_collocation[i, :], time_collocation) for i in 1:num_controls
     # ]
     interpolations = [
-        ChevyshevInterpolation(time_collocation, controls_collocation[i, :]) for
+        chebyshev_interpolation(time_collocation, controls_collocation[i, :]) for
         i in 1:num_controls
     ]
     function control_profile(t, p)

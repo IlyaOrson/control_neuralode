@@ -71,6 +71,11 @@ function reference_tracking(; store_results=false::Bool)
     α2 = 1.0f1
     α3 = 1.0f-1
 
+    # initial conditions and timepoints
+    @show u0 = [1.0f0, yf]
+    @show tspan = (0.0f0, time)
+    tsteps = 0.0f0:0.01f0:time
+
     function system!(du, u, p, t, controller)
 
         # neural network outputs controls taken by the system
@@ -100,11 +105,16 @@ function reference_tracking(; store_results=false::Bool)
         (x, p) -> [u_lower + (u_upper - u_lower) * sigmoid_fast(x[1])],  # controllers ∈ [u_lower, u_upper]
     )
 
+    controlODE = ControlODE(controller, system!, u0, tspan; tsteps)
+
+    # model weights are destructured into a vector of parameters
+    θ = initial_params(controller)
+
     # define objective function to optimize
-    function loss(params, prob, tsteps)
+    function loss(controlODE, params)
 
         # curious error with ROS3P()
-        sol = solve(prob, INTEGRATOR; p=params, saveat=tsteps, sensealg=SENSEALG) |> Array # integrate ODE system
+        sol = solve(controlODE, params) |> Array # integrate ODE system
 
         sum_squares = 0.0f0
         for state in eachcol(sol)
@@ -115,25 +125,13 @@ function reference_tracking(; store_results=false::Bool)
         return sum_squares * 0.01f0
     end
 
-    # initial conditions and timepoints
-    @show u0 = [1.0f0, yf]
-    @show tspan = (0.0f0, time)
-    tsteps = 0.0f0:0.01f0:time
-
-    # model weights are destructured into a vector of parameters
-    θ = initial_params(controller)
-
-    # set differential equation problem and solve it
-    dudt!(du, u, p, t) = system!(du, u, p, t, controller)
-    prob = ODEProblem(dudt!, u0, tspan, θ)
-
     # closures to comply with required interface
-    loss(params) = loss(params, prob, tsteps)
+    loss(params) = loss(controlODE, params)
     function plotting_callback(params, loss)
-        return plot_simulation(controller, prob, params, tsteps; only=:controls, show=loss)
+        return plot_simulation(controlODE, params; only=:controls, show=loss)
     end
 
-    plot_simulation(controller, prob, θ, tsteps; only=:controls, show=loss(θ))
+    plot_simulation(controlODE, θ; only=:controls, show=loss(θ))
 
     result = sciml_train(
         loss,
@@ -144,30 +142,24 @@ function reference_tracking(; store_results=false::Bool)
     )
 
     plot_simulation(
-        controller,
-        prob,
-        result.minimizer,
-        tsteps;
+        controlODE,
+        result.minimizer;
         only=:states,
         vars=[1],
         show=loss(result.minimizer),
         yrefs=[y1s],
     )
     plot_simulation(
-        controller,
-        prob,
-        result.minimizer,
-        tsteps;
+        controlODE,
+        result.minimizer;
         only=:states,
         vars=[2],
         show=loss(result.minimizer),
         yrefs=[y2s],
     )
     plot_simulation(
-        controller,
-        prob,
-        result.minimizer,
-        tsteps;
+        controlODE,
+        result.minimizer;
         only=:controls,
         show=loss(result.minimizer),
         yrefs=[us],
@@ -181,6 +173,6 @@ function reference_tracking(; store_results=false::Bool)
         :α3 => α3,
     )
     return store_simulation(
-        reaction, controller, prob, result.minimizer, tsteps; metadata, datadir
+        reaction, controlODE, result.minimizer; metadata, datadir
     )
 end  # script wrapper

@@ -55,7 +55,7 @@ using GalacticOptim: GalacticOptim
 # using GalacticOptim: AutoForwardDiff, AutoZygote
 using DiffEqFlux: FastChain, FastDense, initial_params, sciml_train
 using UnicodePlots: lineplot, lineplot!
-using BSON: BSON
+using Serialization: serialize, deserialize
 using JSON3: JSON3
 using CSV: CSV
 using Tables: table

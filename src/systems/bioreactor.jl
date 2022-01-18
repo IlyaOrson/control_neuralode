@@ -167,25 +167,19 @@ function bioreactor(; store_results=false::Bool)
         u0, collocation; plot=true
     )
 
+    controlODE = ControlODE(controller, system!, u0, tspan; tsteps)
+
     θ = preconditioner(
-        controller,
-        control_profile,
-        system!,
-        t0,
-        u0,
-        tsteps[2:2:end];
+        controlODE,
+        control_profile;
         progressbar=true,
         plot_progress=false,
         # control_range_scaling=[range[end] - range[1] for range in control_ranges],
     )
 
-    # set differential equation problem
-    dudt!(du, u, p, t) = system!(du, u, p, t, controller)
-    prob = ODEProblem(dudt!, u0, tspan)
-
-    plot_simulation(controller, prob, θ, tsteps; only=:states)
-    plot_simulation(controller, prob, θ, tsteps; only=:controls)
-    store_simulation("precondition", controller, prob, θ, tsteps; datadir)
+    plot_simulation(controlODE, θ; only=:states)
+    plot_simulation(controlODE, θ; only=:controls)
+    store_simulation("precondition", controlODE, θ; datadir)
 
     function state_penalty_functional(solution_array, time_intervals; δ=1.0f1)
         @argcheck size(solution_array, 2) == length(time_intervals) + 1
@@ -207,11 +201,11 @@ function bioreactor(; store_results=false::Bool)
     # C_N(t) − 800 ≤ 0              ∀t
     # 0.011 C_X(t) - C_qc(t) ≤ 3f-2 ∀t
     function losses(
-        params; δ=1.0f1, α=1.0f-5, μ=(3.125f-8, 3.125f-6), ρ=1.0f-1, tsteps=()
+        controlODE, params; δ=1.0f1, α=1.0f-5, μ=(3.125f-8, 3.125f-6), ρ=1.0f-1, tsteps=(), kwargs...
     )
 
         # integrate ODE system
-        sol_raw = solve(prob, INTEGRATOR; p=params, saveat=tsteps, sensealg=SENSEALG)
+        sol_raw = solve(controlODE, params; kwargs...)
         sol = Array(sol_raw)
 
         # approximate integral penalty
@@ -241,20 +235,18 @@ function bioreactor(; store_results=false::Bool)
         return objective, state_penalty, control_penalty, regularization
     end
 
-    function plots_callback(controller, prob, θ, tsteps)
+    function plots_callback(controlODE, θ)
         plot_simulation(
-            controller, prob, θ, tsteps; only=:states, vars=[2], yrefs=[800, 150]
+            controlODE, θ; only=:states, vars=[2], yrefs=[800, 150]
         )
         plot_simulation(
-            controller,
-            prob,
-            θ,
-            tsteps;
+            controlODE,
+            θ;
             only=:states,
             fun=(x, y, z) -> 1.1f-2x - z,
             yrefs=[3.0f-2],
         )
-        return plot_simulation(controller, prob, θ, tsteps; only=:controls)
+        return plot_simulation(controlODE, θ; only=:controls)
     end
 
     # α: penalty coefficient
@@ -264,13 +256,12 @@ function bioreactor(; store_results=false::Bool)
     αs = [α0 for _ in barrier_iterations]
     δs = [δ0 * 0.8f0^i for i in barrier_iterations]
     θ = constrained_training(
-        controller,
-        prob,
-        θ,
+        controlODE,
         losses;
         αs,
         δs,
         tsteps,
+        starting_params=θ,
         show_progressbar=true,
         # plots_callback,
         datadir,
@@ -283,23 +274,19 @@ function bioreactor(; store_results=false::Bool)
     )
 
     @info "Final states"
-    # plot_simulation(controller, prob, θ, tsteps; only=:states, vars=[1], show=final_values)
+    # plot_simulation(controlODE, θ; only=:states, vars=[1], show=final_values)
     plot_simulation(
-        controller,
-        prob,
-        θ,
-        tsteps;
+        controlODE,
+        θ;
         only=:states,
         vars=[2],
         show=final_values,
         yrefs=[800, 150],
     )
-    plot_simulation(controller, prob, θ, tsteps; only=:states, vars=[3], show=final_values)
+    plot_simulation(controODE, θ; only=:states, vars=[3], show=final_values)
     plot_simulation(
-        controller,
-        prob,
-        θ,
-        tsteps;
+        controlODE,
+        θ;
         only=:states,
         fun=(x, y, z) -> 1.1f-2x - z,
         yrefs=[3.0f-2],
@@ -307,10 +294,10 @@ function bioreactor(; store_results=false::Bool)
 
     @info "Final controls"
     plot_simulation(
-        controller, prob, θ, tsteps; only=:controls, vars=[1], show=final_values
+        controODE, θ; only=:controls, vars=[1], show=final_values
     )
     plot_simulation(
-        controller, prob, θ, tsteps; only=:controls, vars=[2], show=final_values
+        controODE, θ; only=:controls, vars=[2], show=final_values
     )
 
     # initial conditions and timepoints
@@ -327,5 +314,5 @@ function bioreactor(; store_results=false::Bool)
         (variable=2, type=:centered, scale=800.0f0, samples=10, percentage=2.0f-2)
         (variable=3, type=:positive, scale=5.0f-1, samples=10, percentage=2.0f-2)
     ]
-    return plot_initial_perturbations(controller, prob, θ, tsteps, u0, perturbation_specs)
+    return plot_initial_perturbations(controlODE, θ, perturbation_specs)
 end  # script wrapper

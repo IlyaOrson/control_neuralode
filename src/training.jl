@@ -1,10 +1,7 @@
 function preconditioner(
-    controller,
-    precondition,
-    system!,
-    t0,
-    u0,
-    time_fractions;
+    controlODE,
+    precondition;
+    θ=initial_params(controlODE.controller),
     reg_coeff=1.0f0,
     saveat=(),
     progressbar=true,
@@ -12,40 +9,42 @@ function preconditioner(
     plot_progress=false,
     plot_final=true,
     optimizer=LBFGS(; linesearch=BackTracking()),
-    maxiters=20,
+    maxiters=50,
     allow_f_increases=true,
+    integrator=INTEGRATOR,
     sensealg=SENSEALG,
     adtype=GalacticOptim.AutoForwardDiff(),
     kwargs...,
 )
-    @argcheck t0 < time_fractions[1]
-    θ = initial_params(controller)
-    fixed_dudt!(du, u, p, t) = system!(du, u, p, t, precondition, :time)
+    fixed_dudt!(du, u, p, t) = controlODE.system!(du, u, p, t, precondition, :time)
+
     prog = Progress(
-        length(time_fractions);
+        length(controlODE.tsteps[2:end]);
         desc="Pretraining in subintervals...",
         dt=0.5,
         showspeed=true,
         enabled=progressbar,
     )
-    for partial_time in time_fractions
-        tspan = (t0, partial_time)
-        fixed_prob = ODEProblem(fixed_dudt!, u0, tspan)
-        # sensealg = SENSEALG
-        fixed_sol = solve(fixed_prob, INTEGRATOR; saveat)  # , sensealg)
+    for partial_time in controlODE.tsteps[2:end]
+        partial_tspan = (controlODE.tspan[1], partial_time)
+        fixed_prob = ODEProblem(fixed_dudt!, controlODE.u0, partial_tspan)
+        fixed_sol = solve(fixed_prob, integrator; saveat, sensealg)
+
         function precondition_loss(params; plot=nothing)
             plot_arrays = Dict(:reference => [], :control => [])
             sum_squares = 0.0f0
+            mean_squares = 0.0f0
 
             # for (time, state) in zip(fixed_sol.t, fixed_sol.u)  # Zygote error
             for (i, state) in enumerate(eachcol(Array(fixed_sol)))
                 reference = precondition(fixed_sol.t[i], nothing)  # precondition(time, params)
-                control = controller(state, params)
+                control = controlODE.controller(state, params)
                 diff_square = (control - reference) .^ 2
                 if !isnothing(control_range_scaling)
                     diff_square ./ control_range_scaling
                 end
                 sum_squares += sum(diff_square)
+                mean_squares += mean(diff_square)
                 Zygote.ignore() do
                     if !isnothing(plot)
                         push!(plot_arrays[:reference], reference)
@@ -55,10 +54,11 @@ function preconditioner(
             end
             Zygote.ignore() do
                 if !isnothing(plot)
+
                     @argcheck plot in [:unicode, :pyplot]
                     reference = reduce(hcat, plot_arrays[:reference])
                     control = reduce(hcat, plot_arrays[:control])
-                    @argcheck length(reference) == length(control)
+
                     if plot == :unicode
                         for r in 1:size(reference, 1)
                             p = lineplot(reference[r, :]; name="fixed")
@@ -101,17 +101,17 @@ function preconditioner(
                 end
             end
             regularization = reg_coeff * mean(abs2, params)
-            return sum_squares + regularization
+            return sum_squares/mean_squares + regularization
         end
 
         optimization = sciml_train(
-            precondition_loss, θ, optimizer; maxiters, allow_f_increases, adtype, kwargs...
+            precondition_loss, θ, optimizer, adtype; maxiters, allow_f_increases, kwargs...
         )
         θ = optimization.minimizer
         pvar = plot_progress ? :unicode : nothing
         ploss = precondition_loss(θ; plot=pvar)
         next!(prog; showvalues=[(:loss, ploss)])
-        if partial_time == time_fractions[end] && plot_final
+        if partial_time == controlODE.tsteps[end] && plot_final
             precondition_loss(θ; plot=:pyplot)
         end
     end
@@ -123,7 +123,7 @@ function constrained_training(
     losses;
     αs,
     δs,
-    starting_point=initial_params(controlODE.controller),
+    starting_params=initial_params(controlODE.controller),
     show_progressbar=false,
     plots_callback=nothing,
     datadir=nothing,
@@ -141,15 +141,14 @@ function constrained_training(
         length(αs); desc="Training with constraints...", enabled=show_progressbar
     )
 
-    θ = starting_point
+    θ = starting_params
     for (α, δ) in zip(αs, δs)
 
         # closure to comply with optimization interface
         loss(params) = reduce(+, losses(controlODE, params; α, δ, sensealg, kwargs...))
 
-        # TODO update to use ControlODE
         # if !isnothing(plots_callback)
-        #     plots_callback(controller, prob, θ, tsteps)
+        #     plots_callback(controlODE, θ)
         # end
 
         # function print_callback(params, loss)
@@ -157,8 +156,8 @@ function constrained_training(
         #     return false
         # end
 
-        result = sciml_train(loss, θ, optimizer; maxiters, allow_f_increases, adtype, kwargs...)
-        @infiltrate
+        result = sciml_train(loss, θ, optimizer, adtype; maxiters, allow_f_increases, kwargs...)
+        # @infiltrate
         θ = result.minimizer + 1f-1*std(result.minimizer)*randn(length(result.minimizer))
 
         objective, state_penalty, control_penalty, regularization = losses(
@@ -181,10 +180,8 @@ function constrained_training(
         metadata = merge(metadata, local_metadata)
         store_simulation(
             "delta_$(round(δ, digits=2))",
-            controlODE.controller,
-            controlODE.prob,
-            θ,
-            controlODE.tsteps;
+            controlODE,
+            θ;
             metadata,
             datadir,
         )

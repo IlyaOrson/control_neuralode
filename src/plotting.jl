@@ -83,10 +83,8 @@ function unicode_plotter(states, controls; only=nothing, vars=nothing, fun=nothi
 end
 
 function plot_simulation(
-    controller,
-    prob,
-    params,
-    tsteps;
+    controlODE,
+    params;
     show=nothing,
     only=nothing,
     vars=nothing,
@@ -96,7 +94,7 @@ function plot_simulation(
     !isnothing(show) && @info show
 
     # TODO: use times in plotting?
-    times, states, controls = run_simulation(controller, prob, params, tsteps)
+    times, states, controls = run_simulation(controlODE, params)
     plt = unicode_plotter(states, controls; only, vars, fun)
     if !isnothing(yrefs)
         for yref in yrefs
@@ -105,10 +103,6 @@ function plot_simulation(
     end
     display(plt)
     return false  # if return true, then optimization stops
-end
-
-function plot_simulation(controlODE, params; kwargs...)
-    plot_simulation(controlODE.controller, controlODE.prob, params, controlODE.tsteps; kwargs...)
 end
 
 function plot_collocation(controls_collocation, interpol, tsteps)
@@ -192,8 +186,7 @@ end
 end
 
 function phase_portrait(
-    system!,
-    controller,
+    controlODE,
     params,
     phase_time,
     coord_lims;  #xlims, ylims
@@ -217,7 +210,7 @@ function phase_portrait(
         du = zeros(Float32, dimension)
         copyto!(u, coords)
         # du = deepcopy(coords)
-        system!(du, u, params, phase_time, controller)
+        controlODE.system!(du, u, params, phase_time, controlODE.controller)
         return du
     end
 
@@ -397,9 +390,8 @@ function set_state_control_subplots(
 end
 
 function plot_initial_perturbations(
-    controller, prob, θ, tsteps, u0, specs; refs=nothing, funcs=nothing
+    controlODE, θ, specs; refs=nothing, funcs=nothing
 )
-    prob = remake(prob; p=θ)
     state_size = size(u0, 1)
     control_size = size(controller(u0, θ), 1)
 
@@ -416,11 +408,18 @@ function plot_initial_perturbations(
             noise_vec = zeros(typeof(noise), length(u0))
             noise_vec[spec.variable] = noise
 
-            # local prob = ODEProblem(dudt!, u0 + noise_vec, tspan, θ)
             perturbed_u0 = u0 + noise_vec
-            prob = remake(prob; u0=perturbed_u0)
+            controlODE = ControlODE(
+                controlODE.controller,
+                controlODE.system!,
+                perturbed_u0,
+                controlODE.tspan;
+                tsteps=controlODE.tsteps,
+                integrator=controlODE.integrator,
+                sensealg=controlODE.sensealg
+            )
 
-            times, states, controls = run_simulation(controller, prob, θ, tsteps)
+            times, states, controls = run_simulation(controlODE, θ)
 
             for s in 1:state_size
                 axs_states[s].plot(
@@ -478,21 +477,18 @@ function plot_initial_perturbations(
 end
 
 function plot_initial_perturbations_collocation(
-    controller,
-    prob,
+    controlODE,
     θ,
-    tsteps,
-    u0,
     specs,
     collocation::Function;
     refs=nothing,
     funcs=nothing,
     storedir=nothing,
 )
-    prob = remake(prob; p=θ)
-    state_size = size(u0, 1)
-    control_size = size(controller(u0, θ), 1)
+    state_size = size(controlODE.u0, 1)
+    control_size = size(controlODE.controller(controlODE.u0, θ), 1)
 
+    u0 = controlODE.u0
     for spec in specs
         perturbations = local_grid(
             spec.samples, spec.percentage; scale=spec.scale, type=spec.type
@@ -500,24 +496,32 @@ function plot_initial_perturbations_collocation(
         for (tag, noise) in enumerate(perturbations)
             cmap = ColorMap("tab20")
             fig_states, axs_states, fig_controls, axs_controls = set_state_control_subplots(
-                length(u0), length(controller(u0, θ)); annotation=spec, refs
+                length(controlODE.u0), length(controlODE.controller(controlODE.u0, θ)); annotation=spec, refs
             )
 
-            noise_vec = zeros(typeof(noise), length(u0))
+            noise_vec = zeros(typeof(noise), length(controlODE.u0))
             noise_vec[spec.variable] = noise
 
-            # local prob = ODEProblem(dudt!, u0 + noise_vec, tspan, θ)
+            # perturbed prob = ODEProblem(dudt!, u0 + noise_vec, tspan, θ)
             perturbed_u0 = u0 + noise_vec
-            prob = remake(prob; u0=perturbed_u0)
+            controlODE = ControlODE(
+                controlODE.controller,
+                controlODE.system!,
+                perturbed_u0,
+                controlODE.tspan;
+                tsteps=controlODE.tsteps,
+                integrator=controlODE.integrator,
+                sensealg=controlODE.sensealg
+            )
 
             @info "simulation"
-            @time times, states, controls = run_simulation(controller, prob, θ, tsteps)
+            @time times, states, controls = run_simulation(controlODE, θ)
             @info "collocation"
             @time infopt_model, times_collocation, states_collocation, controls_collocation = collocation(
                 perturbed_u0; constrain_states=true
             )
             @info "interpolation"
-            @time interpol = ChevyshevInterpolation(tsteps, controls_collocation)
+            @time interpol = chebyshev_interpolation(controlODE.tsteps, controls_collocation)
 
             for s in 1:state_size
                 axs_states[s].plot(

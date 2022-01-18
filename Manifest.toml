@@ -102,11 +102,6 @@ git-tree-sha1 = "a598ecb0d717092b5539dbbe890c98bac842b072"
 uuid = "ab4f0b2a-ad5b-11e8-123f-65d77653426b"
 version = "0.2.0"
 
-[[deps.BSON]]
-git-tree-sha1 = "ebcd6e22d69f21249b7b8668351ebf42d6dc87a1"
-uuid = "fbb218c0-5317-5bc6-957e-2ee96dd4b1f0"
-version = "0.3.4"
-
 [[deps.BandedMatrices]]
 deps = ["ArrayLayouts", "FillArrays", "LinearAlgebra", "Random", "SparseArrays"]
 git-tree-sha1 = "ce68f8c2162062733f9b4c9e3700d5efc4a8ec47"

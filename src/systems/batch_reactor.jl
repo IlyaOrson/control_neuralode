@@ -24,8 +24,8 @@ function batch_reactor(; store_results=false::Bool)
     end
 
     # define objective function to optimize
-    function loss(params, prob, tsteps)
-        sol = solve(prob, INTEGRATOR; p=params, saveat=tsteps, sensealg=SENSEALG)
+    function loss(controlODE, params)
+        sol = solve(controlODE, params)
         return -Array(sol)[2, end]  # second variable, last value, maximize
     end
 
@@ -42,12 +42,9 @@ function batch_reactor(; store_results=false::Bool)
         (x, p) -> 5 * sigmoid_fast.(x),  # controllers ∈ (0, 5)
     )
 
-    # current model weights are destructured into a vector of parameters
-    θ = initial_params(controller)
+    controlODE = ControlODE(controller, system!, u0, tspan; tsteps)
 
-    # set differential equation problem
-    dudt!(du, u, p, t) = system!(du, u, p, t, controller)
-    prob = ODEProblem(dudt!, u0, tspan, θ)
+    θ = initial_params(controller)
 
     # variables for streamplots
     phase_time = 0.0f0
@@ -61,11 +58,10 @@ function batch_reactor(; store_results=false::Bool)
     # bug in streamplot won't plot points on the right and upper edges, so a bump is needed
     # https://github.com/matplotlib/matplotlib/issues/21649
 
-    _, states_raw, _ = run_simulation(controller, prob, θ, tsteps)
+    _, states_raw, _ = run_simulation(controlODE, θ)
     marker = FinalState(; points=states_raw[:, end], fmt="m*", markersize=20)
     phase_portrait(
-        system!,
-        controller,
+        controlODE,
         θ,
         phase_time,
         coord_lims;
@@ -76,9 +72,9 @@ function batch_reactor(; store_results=false::Bool)
     )
 
     # closures to comply with required interface
-    loss(params) = loss(params, prob, tsteps)
+    loss(params) = loss(controlODE, params)
     function plotting_callback(params, loss)
-        return plot_simulation(controller, prob, params, tsteps; only=:controls, show=loss)
+        return plot_simulation(controlODE, params; only=:controls, show=loss)
     end
 
     @info "Training..."
@@ -93,22 +89,19 @@ function batch_reactor(; store_results=false::Bool)
 
     store_simulation(
         "optimized",
-        controller,
-        prob,
-        result.minimizer,
-        tsteps;
+        controlODE,
+        result.minimizer;
         metadata=Dict(:loss => loss(result.minimizer)),
         datadir,
     )
-    plot_simulation(controller, prob, result.minimizer, tsteps; only=:controls)
+    plot_simulation(controlODE, result.minimizer; only=:controls)
 
     θ_opt = result.minimizer
 
-    _, states_opt, _ = run_simulation(controller, prob, θ_opt, tsteps)
+    _, states_opt, _ = run_simulation(controlODE, θ_opt)
     marker = FinalState(; points=states_opt[:, end], fmt="m*", markersize=20)
     return phase_portrait(
-        system!,
-        controller,
+        controlODE,
         θ_opt,
         phase_time,
         coord_lims;

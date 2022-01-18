@@ -106,23 +106,17 @@ function semibatch_reactor(; store_results=false::Bool)
     # to reproduce his results and verify correctness
     fogler_ref = [240.0f0, 298.0f0]  # reference values in Fogler
     fogler_timespan = (0.0f0, 1.5f0)
-    fixed_dudt!(du, u, p, t) = system!(du, u, p, t, (u, p) -> fogler_ref)
-    fixed_prob = ODEProblem(fixed_dudt!, u0, fogler_timespan)
-    fixed_sol = solve(fixed_prob, INTEGRATOR) |> Array
-    @info "Fogler's case: final time state" fixed_sol[:, end]
+    fixed_controlODE = ControlODE((u, p) -> fogler_ref, system!, u0, fogler_timespan)
+    @info "Fogler's case: final time state" solve(fixed_controlODE, nothing).u[end]
     plot_simulation(
-        (u, p) -> fogler_ref,
-        fixed_prob,
-        nothing,
-        range(fogler_timespan...; step=Δt);
+        fixed_controlODE,
+        nothing;
         only=:states,
         vars=[1, 2, 3],
     )
     plot_simulation(
-        (u, p) -> fogler_ref,
-        fixed_prob,
-        nothing,
-        range(fogler_timespan...; step=Δt);
+        fixed_controlODE,
+        nothing;
         only=:states,
         vars=[4, 5],
     )
@@ -324,13 +318,12 @@ function semibatch_reactor(; store_results=false::Bool)
     plt.legend()
     plt.show()
     =#
+
+    controlODE = ControlODE(controller, system!, u0, tspan; tsteps)
+
     θ = preconditioner(
-        controller,
-        control_profile,
-        system!,
-        t0,
-        u0,
-        tsteps[2:end];
+        controlODE,
+        control_profile;
         progressbar=true,
         plot_progress=false,
         # sensealg=ForwardDiffSensitivity(),
@@ -338,23 +331,15 @@ function semibatch_reactor(; store_results=false::Bool)
         # control_range_scaling=[range[end] - range[1] for range in control_ranges],
     )
 
-    # destructure model weights into a vector of parameters
-    # initial_parameters = initial_params(controller)
-
-    controlODE = ControlODE(controller, system!, u0, tspan; tsteps)
-
-    dudt!(du, u, p, t) = system!(du, u, p, t, controller)
-    prob = ODEProblem(dudt!, u0, tspan)
-
-    plot_simulation(controller, prob, θ, tsteps; only=:states)
-    plot_simulation(controller, prob, θ, tsteps; only=:controls)
-    store_simulation("precondition", controller, prob, θ, tsteps; datadir)
+    plot_simulation(controlODE, θ; only=:states)
+    plot_simulation(controlODE, θ; only=:controls)
+    store_simulation("precondition", controlODE, θ; datadir)
 
     # objective function splitted componenets to optimize
-    function losses(controlODE, params; α=1.0f-3, δ=1.0f1, ρ=1.0f-2, sensealg=SENSEALG, kwargs...)
+    function losses(controlODE, params; α=1.0f-3, δ=1.0f1, ρ=1.0f-2, kwargs...)
 
         # integrate ODE system
-        sol_array = Array(solve(controlODE, params; sensealg, kwargs...))
+        sol_array = Array(solve(controlODE, params; kwargs...))
 
         # running cost
         out_temp = map(x -> relaxed_log_barrier(T_up - x; δ), sol_array[4, 1:end])
@@ -380,7 +365,7 @@ function semibatch_reactor(; store_results=false::Bool)
     θ = constrained_training(
         controlODE,
         losses;
-        starting_point=θ,
+        starting_params=θ,
         αs,
         δs,
         show_progressbar=true,
@@ -391,31 +376,29 @@ function semibatch_reactor(; store_results=false::Bool)
     )
 
     @info "Final states"
-    plot_simulation(controller, prob, θ, tsteps; only=:states, vars=[1, 2, 3])
+    plot_simulation(controlODE, θ; only=:states, vars=[1, 2, 3])
     plot_simulation(
-        controller, prob, θ, tsteps; only=:states, vars=[4, 5], yrefs=[T_up, V_up]
+        controlODE, θ; only=:states, vars=[4, 5], yrefs=[T_up, V_up]
     )
 
     @info "Final controls"
-    plot_simulation(controller, prob, θ, tsteps; only=:controls)#  only=:states, vars=[1,2,3])
+    plot_simulation(controlODE, θ; only=:controls)#  only=:states, vars=[1,2,3])
 
     @info "Final loss"
     final_objective, final_state_penalty, final_control_penalty, final_regularization = losses(
         controlODE, θ; δ=δs[end]
     )
-    @infiltrate
+    # @infiltrate
     return store_simulation(
         "constrained",
-        controller,
-        prob,
-        θ,
-        tsteps;
+        controlODE,
+        θ;
         datadir,
         metadata=Dict(
             :objective => final_objective,
             :state_penalty => final_state_penalty,
-            :cotrol_penalty => final_cotrol_penalty,
-            :penalty => final_penalty,
+            :cotrol_penalty => final_control_penalty,
+            :regularization => final_regularization,
             :num_params => length(θ),
             :layers => controller_shape(controller),
             :deltas => δs,

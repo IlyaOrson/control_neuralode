@@ -1,15 +1,13 @@
 function run_simulation(
-    controller,
-    prob,
-    params,
-    tsteps;
-    noise::@optional(Real)=nothing,
-    vars::@optional(AbstractArray{<:Integer})=nothing,
-    callback::@optional(DECallback)=nothing,
+    controlODE,
+    params;
+    noise::Union{Nothing, Real}=nothing,
+    vars::Union{Nothing, AbstractArray{<:Integer}}=nothing,
+    callback::Union{Nothing, DECallback}=nothing,
 )
     if !isnothing(noise) && !isnothing(vars)
         @argcheck noise > zero(noise)
-        @argcheck all(var in eachindex(prob.u0) for var in vars)
+        @argcheck all(var in eachindex(controlODE.u0) for var in vars)
 
         function noiser(u, t, integrator)
             for var in vars
@@ -24,29 +22,28 @@ function run_simulation(
     end
 
     # integrate with given parameters
-    solution = solve(prob, INTEGRATOR; p=params, saveat=tsteps, callback=callback)
+    solution = solve(controlODE, params; callback)
 
     # construct arrays with the same type used by the integrator
     elements_type = eltype(solution.t)
     states = Array(solution)
     total_steps = size(states, 2)
     # state_dimension = size(states, 1)
-    control_dimension = length(controller(solution.u[1], params))
+    control_dimension = length(controlODE.controller(solution.u[1], params))
 
-    # regenerate controls from controller
+    # regenerate controls from controlODE.controller
     controls = zeros(elements_type, control_dimension, total_steps)
     for (step, state) in enumerate(solution.u)
-        controls[:, step] = controller(state, params)
+        controls[:, step] = controlODE.controller(state, params)
     end
     return solution.t, states, controls
 end
 
+# TODO: use DrWatson jl
 function store_simulation(
     filename::Union{Nothing,String},
-    controller::FastChain,
-    prob::ODEProblem,
-    params::AbstractVector{<:Real},
-    tsteps::AbstractVector{<:Real};
+    controlODE::ControlODE,
+    params::AbstractVector{<:Real};
     metadata=nothing::Union{Nothing,Dict},
     datadir=nothing::Union{Nothing,String},
     store_policy=true::Bool,
@@ -57,14 +54,14 @@ function store_simulation(
     end
 
     if store_policy
-        bson_path = joinpath(datadir, filename * ".bson")
-        BSON.@save bson_path controller
+        policy_path = joinpath(datadir, filename * ".jls")
+        open(io -> serialize(io, controlODE.controller), policy_path, "w")
 
         # weights_path = joinpath(datadir, filename * "_nnweights.csv")
-        # CSV.write(weights_path, Tables.table(initial_params(controller)), writeheader=false)
+        # CSV.write(weights_path, Tables.table(initial_params(controlODE.controller)), writeheader=false)
     end
 
-    times, states, controls = run_simulation(controller, prob, params, tsteps)
+    times, states, controls = run_simulation(controlODE, params)
 
     state_headers = ["x$i" for i in 1:size(states, 1)]
     control_headers = ["c$i" for i in 1:size(controls, 1)]
