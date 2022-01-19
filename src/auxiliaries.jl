@@ -63,26 +63,36 @@ struct ControlODE{uType<:Real,tType<:Real}
         system!,
         u0,
         tspan;
-        tsteps=range(tspan...; length=101),
+        tsteps::Union{Nothing, AbstractVector{<:Real}}=nothing,
         Δt::Union{Nothing,Real}=nothing,
+        npoints::Union{Nothing,Real}=nothing,
         integrator=INTEGRATOR,  # Tsit5()
         sensealg=SENSEALG,
     )
         # check tsteps construction
-        @argcheck isnothing(tsteps) || isnothing(Δt)
-        if !isnothing(Δt)
-            tsteps = range(tspan...; step=Δt)
-        else
+        if !isnothing(tsteps)
             @argcheck tspan[begin] == tsteps[begin]
             @argcheck tspan[end] == tsteps[end]
+        elseif !isnothing(Δt)
+            tsteps = range(tspan...; step=Δt)
+        elseif !isnothing(npoints)
+            tsteps = range(tspan...; length=npoints)
+        else
+            # @argcheck !isnothing(tsteps) || !isnothing(Δt) || !isnothing(npoints)
+            throw(
+                ArgumentError(
+                    "Either tsteps, Δt or npoints keyword must be provided (they follow that order of priority if multiple are given).",
+                ),
+            )
         end
+
         # check domain types
         time_type = find_array_param(tsteps)
         space_type = find_array_param(u0)
         control_type = find_array_param(controller(u0, initial_params(controller)))
         @argcheck space_type == control_type
 
-        # cosntruct ODE problem
+        # construct ODE problem
         dudt!(du, u, p, t) = system!(du, u, p, t, controller)
         prob = ODEProblem(dudt!, u0, tspan)
 
@@ -94,7 +104,12 @@ end
 # TODO follow recommended interface https://github.com/SciML/CommonSolve.jl
 function solve(code::ControlODE, params; kwargs...)
     return solve(
-        code.prob, code.integrator; p=params, saveat=code.tsteps, sensealg=code.sensealg, kwargs...
+        code.prob,
+        code.integrator;
+        p=params,
+        saveat=code.tsteps,
+        sensealg=code.sensealg,
+        kwargs...,
     )
 end
 
@@ -114,7 +129,7 @@ function chebyshev_interpolation(
 end
 
 function collocation_preconditioner(u0, collocation; plot=true, kwargs...)
-    @info "Preconditioning with collocation..."
+    @info "Solving through collocation..."
     infopt_model, time_collocation, states_collocation, controls_collocation = collocation(
         u0; kwargs...
     )

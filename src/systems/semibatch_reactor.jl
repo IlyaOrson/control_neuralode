@@ -17,7 +17,6 @@ function semibatch_reactor(; store_results=false::Bool)
     tf = 0.4f0  # Bradfoard uses 0.4
     Δt = 0.01f0
     tspan = (t0, tf)
-    tsteps = t0:Δt:tf
 
     # state: CA, CB, CC, T, Vol
     u0 = [1.0f0, 0.0f0, 0.0f0, 290.0f0, 100.0f0]
@@ -123,7 +122,7 @@ function semibatch_reactor(; store_results=false::Bool)
 
     function collocation(
         u0;
-        num_supports::Integer=length(tsteps),
+        num_supports::Integer=length(controlODE.tsteps),
         nodes_per_element::Integer=3,
         constrain_states::Bool=false,
     )
@@ -258,7 +257,6 @@ function semibatch_reactor(; store_results=false::Bool)
         u0,
         collocation;
         plot=false,
-        num_supports=length(tsteps),
         nodes_per_element=2,
         constrain_states=false,
     )
@@ -266,7 +264,6 @@ function semibatch_reactor(; store_results=false::Bool)
         u0,
         collocation;
         plot=false,
-        num_supports=length(tsteps),
         nodes_per_element=2,
         constrain_states=true,
     )
@@ -326,8 +323,6 @@ function semibatch_reactor(; store_results=false::Bool)
         control_profile;
         progressbar=true,
         plot_progress=false,
-        # sensealg=ForwardDiffSensitivity(),
-        # adtype=AutoForwardDiff(),
         # control_range_scaling=[range[end] - range[1] for range in control_ranges],
     )
 
@@ -370,8 +365,6 @@ function semibatch_reactor(; store_results=false::Bool)
         δs,
         show_progressbar=true,
         # plots_callback,
-        # sensealg=ForwardDiffSensitivity(),
-        # adtype=AutoForwardDiff(),
         datadir,
     )
 
@@ -384,7 +377,8 @@ function semibatch_reactor(; store_results=false::Bool)
     @info "Final controls"
     plot_simulation(controlODE, θ; only=:controls)#  only=:states, vars=[1,2,3])
 
-    @info "Final loss"
+    @info "Final loss" losses(controlODE, θ; δ=δs[end])
+
     final_objective, final_state_penalty, final_control_penalty, final_regularization = losses(
         controlODE, θ; δ=δs[end]
     )

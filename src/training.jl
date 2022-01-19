@@ -13,9 +13,11 @@ function preconditioner(
     allow_f_increases=true,
     integrator=INTEGRATOR,
     sensealg=SENSEALG,
-    adtype=GalacticOptim.AutoForwardDiff(),
+    adtype=GalacticOptim.AutoZygote(),
     kwargs...,
 )
+    @info "Preconditioning..."
+
     fixed_dudt!(du, u, p, t) = controlODE.system!(du, u, p, t, precondition, :time)
 
     prog = Progress(
@@ -33,7 +35,7 @@ function preconditioner(
         function precondition_loss(params; plot=nothing)
             plot_arrays = Dict(:reference => [], :control => [])
             sum_squares = 0.0f0
-            mean_squares = 0.0f0
+            # mean_squares = 0.0f0
 
             # for (time, state) in zip(fixed_sol.t, fixed_sol.u)  # Zygote error
             for (i, state) in enumerate(eachcol(Array(fixed_sol)))
@@ -44,7 +46,7 @@ function preconditioner(
                     diff_square ./ control_range_scaling
                 end
                 sum_squares += sum(diff_square)
-                mean_squares += mean(diff_square)
+                # mean_squares += mean(diff_square)
                 Zygote.ignore() do
                     if !isnothing(plot)
                         push!(plot_arrays[:reference], reference)
@@ -54,7 +56,6 @@ function preconditioner(
             end
             Zygote.ignore() do
                 if !isnothing(plot)
-
                     @argcheck plot in [:unicode, :pyplot]
                     reference = reduce(hcat, plot_arrays[:reference])
                     control = reduce(hcat, plot_arrays[:control])
@@ -101,7 +102,8 @@ function preconditioner(
                 end
             end
             regularization = reg_coeff * mean(abs2, params)
-            return sum_squares/mean_squares + regularization
+            return sum_squares + regularization
+            # return sum_squares / mean_squares + regularization
         end
 
         optimization = sciml_train(
@@ -132,13 +134,15 @@ function constrained_training(
     maxiters=100,
     allow_f_increases=true,
     sensealg=SENSEALG,
-    adtype=GalacticOptim.AutoForwardDiff(),
+    adtype=GalacticOptim.AutoZygote(),
     kwargs...,
 )
     @argcheck length(αs) == length(δs)
 
+    @info "Training with constraints..."
+
     prog = Progress(
-        length(αs); desc="Training with constraints...", enabled=show_progressbar
+        length(αs); desc="Fiacco-McCormick barrier iterations", enabled=show_progressbar
     )
 
     θ = starting_params
@@ -156,9 +160,13 @@ function constrained_training(
         #     return false
         # end
 
-        result = sciml_train(loss, θ, optimizer, adtype; maxiters, allow_f_increases, kwargs...)
+        result = sciml_train(
+            loss, θ, optimizer, adtype; maxiters, allow_f_increases, kwargs...
+        )
         # @infiltrate
-        θ = result.minimizer + 1f-1*std(result.minimizer)*randn(length(result.minimizer))
+        θ =
+            result.minimizer +
+            1.0f-1 * std(result.minimizer) * randn(length(result.minimizer))
 
         objective, state_penalty, control_penalty, regularization = losses(
             controlODE, θ; α, δ, kwargs...
@@ -178,13 +186,7 @@ function constrained_training(
             :tsteps => controlODE.tsteps,
         )
         metadata = merge(metadata, local_metadata)
-        store_simulation(
-            "delta_$(round(δ, digits=2))",
-            controlODE,
-            θ;
-            metadata,
-            datadir,
-        )
+        store_simulation("delta_$(round(δ, digits=2))", controlODE, θ; metadata, datadir)
         next!(
             prog;
             showvalues=[

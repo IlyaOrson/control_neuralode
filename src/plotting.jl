@@ -514,13 +514,13 @@ function plot_initial_perturbations_collocation(
                 sensealg=controlODE.sensealg
             )
 
-            @info "simulation"
+            @info "Simulation"
             @time times, states, controls = run_simulation(controlODE, θ)
-            @info "collocation"
+            @info "Collocation"
             @time infopt_model, times_collocation, states_collocation, controls_collocation = collocation(
                 perturbed_u0; constrain_states=true
             )
-            @info "interpolation"
+            @info "Interpolation"
             @time interpol = chebyshev_interpolation(controlODE.tsteps, controls_collocation)
 
             for s in 1:state_size

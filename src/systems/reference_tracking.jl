@@ -74,7 +74,7 @@ function reference_tracking(; store_results=false::Bool)
     # initial conditions and timepoints
     @show u0 = [1.0f0, yf]
     @show tspan = (0.0f0, time)
-    tsteps = 0.0f0:0.01f0:time
+    Δt = 1f-2
 
     function system!(du, u, p, t, controller)
 
@@ -105,7 +105,7 @@ function reference_tracking(; store_results=false::Bool)
         (x, p) -> [u_lower + (u_upper - u_lower) * sigmoid_fast(x[1])],  # controllers ∈ [u_lower, u_upper]
     )
 
-    controlODE = ControlODE(controller, system!, u0, tspan; tsteps)
+    controlODE = ControlODE(controller, system!, u0, tspan; Δt)
 
     # model weights are destructured into a vector of parameters
     θ = initial_params(controller)

@@ -19,10 +19,9 @@ function bioreactor(; store_results=false::Bool)
     t0 = 0.0f0
     tf = 240.0f0
     Δt = 10.0f0
+    tspan = (t0, tf)
     C_X₀, C_N₀, C_qc₀ = 1.0f0, 150.0f0, 0.0f0
     u0 = [C_X₀, C_N₀, C_qc₀]
-    tspan = (t0, tf)
-    tsteps = t0:Δt:tf
     control_ranges = [(120.0f0, 400.0f0), (0.0f0, 40.0f0)]
 
     system_params = (
@@ -72,9 +71,22 @@ function bioreactor(; store_results=false::Bool)
         end
     end
 
+    # set arquitecture of neural network controller
+    controller = FastChain(
+        (x, p) -> [x[1], x[2] / 10.0f0, x[3] * 10.0f0],  # input scaling
+        FastDense(3, 16, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
+        FastDense(16, 16, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
+        FastDense(16, 2; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
+        # I ∈ [120, 400] & F ∈ [0, 40] in Bradford 2020
+        # (x, p) -> [280f0 * sigmoid(x[1]) + 120f0, 40f0 * sigmoid(x[2])],
+        scaled_sigmoids(control_ranges),
+    )
+
+    controlODE = ControlODE(controller, system!, u0, tspan; Δt)
+
     function collocation(
         u0;
-        num_supports::Integer=length(tsteps),
+        num_supports::Integer=length(controlODE.tsteps),
         nodes_per_element::Integer=4,
         constrain_states::Bool=false,
     )
@@ -152,22 +164,9 @@ function bioreactor(; store_results=false::Bool)
         return model, supports(t), states, controls
     end
 
-    # set arquitecture of neural network controller
-    controller = FastChain(
-        (x, p) -> [x[1], x[2] / 10.0f0, x[3] * 10.0f0],  # input scaling
-        FastDense(3, 16, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
-        FastDense(16, 16, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
-        FastDense(16, 2; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
-        # I ∈ [120, 400] & F ∈ [0, 40] in Bradford 2020
-        # (x, p) -> [280f0 * sigmoid(x[1]) + 120f0, 40f0 * sigmoid(x[2])],
-        scaled_sigmoids(control_ranges),
-    )
-
     control_profile, infopt_model, times_collocation, states_collocation, controls_collocation = collocation_preconditioner(
         u0, collocation; plot=true
     )
-
-    controlODE = ControlODE(controller, system!, u0, tspan; tsteps)
 
     θ = preconditioner(
         controlODE,
@@ -280,10 +279,9 @@ function bioreactor(; store_results=false::Bool)
         θ;
         only=:states,
         vars=[2],
-        show=final_values,
         yrefs=[800, 150],
     )
-    plot_simulation(controODE, θ; only=:states, vars=[3], show=final_values)
+    plot_simulation(controODE, θ; only=:states, vars=[3])
     plot_simulation(
         controlODE,
         θ;
@@ -294,11 +292,13 @@ function bioreactor(; store_results=false::Bool)
 
     @info "Final controls"
     plot_simulation(
-        controODE, θ; only=:controls, vars=[1], show=final_values
+        controODE, θ; only=:controls, vars=[1]
     )
     plot_simulation(
-        controODE, θ; only=:controls, vars=[2], show=final_values
+        controODE, θ; only=:controls, vars=[2]
     )
+
+    @info "Final loss" loss(θ; δ=δs[end], α=αs[end], tsteps)
 
     # initial conditions and timepoints
     # t0 = 0f0

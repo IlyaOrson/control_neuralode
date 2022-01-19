@@ -52,7 +52,7 @@ using DiffEqSensitivity:
     ReverseDiffVJP,
     ForwardDiffSensitivity
 using GalacticOptim: GalacticOptim
-# using GalacticOptim: AutoForwardDiff, AutoZygote
+# using GalacticOptim: AutoForwardDiff, AutoZygote  # does not precompile
 using DiffEqFlux: FastChain, FastDense, initial_params, sciml_train
 using UnicodePlots: lineplot, lineplot!
 using Serialization: serialize, deserialize
@@ -69,9 +69,9 @@ export batch_reactor, van_der_pol, reference_tracking, bioreactor, semibatch_rea
 
 # https://diffeqflux.sciml.ai/stable/ControllingAdjoints/#Choosing-a-sensealg-in-a-Nutshell
 const INTEGRATOR = AutoTsit5(Rosenbrock23())
-# const ADTYPE = AutoForwardDiff()  # AutoZygote()  # precompilation fails...
-const SENSEALG = ForwardDiffSensitivity()
-# QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
+# const SENSEALG = ForwardDiffSensitivity()
+# const SENSEALG = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
+const SENSEALG = QuadratureAdjoint(; autojacvec=ZygoteVJP())
 # InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
 
 include("auxiliaries.jl")

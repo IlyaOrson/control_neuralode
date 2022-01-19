@@ -32,7 +32,7 @@ function batch_reactor(; store_results=false::Bool)
     # initial conditions and timepoints
     u0 = [1.0f0, 0.0f0]
     tspan = (0.0f0, 1.0f0)
-    tsteps = 0.0f0:0.01f0:1.0f0
+    Δt = 1f-2
 
     # set arquitecture of neural network controller
     controller = FastChain(
@@ -42,7 +42,7 @@ function batch_reactor(; store_results=false::Bool)
         (x, p) -> 5 * sigmoid_fast.(x),  # controllers ∈ (0, 5)
     )
 
-    controlODE = ControlODE(controller, system!, u0, tspan; tsteps)
+    controlODE = ControlODE(controller, system!, u0, tspan; Δt)
 
     θ = initial_params(controller)
 
@@ -54,9 +54,6 @@ function batch_reactor(; store_results=false::Bool)
     # ywidth = ylims[end] - ylims[1]
     # start_points_x = range(u0[1] - 1e-4, u0[1] - xwidth/5; length=3)
     # start_points_y = range(u0[2] + 1e-4, u0[2] + ywidth/5; length=3)
-
-    # bug in streamplot won't plot points on the right and upper edges, so a bump is needed
-    # https://github.com/matplotlib/matplotlib/issues/21649
 
     _, states_raw, _ = run_simulation(controlODE, θ)
     marker = FinalState(; points=states_raw[:, end], fmt="m*", markersize=20)

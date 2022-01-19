@@ -13,7 +13,6 @@ function van_der_pol(; store_results=false::Bool)
     u0 = [0.0f0, 1.0f0, 0.0f0]
     tspan = (t0, tf)
     Δt = 0.1f0
-    tsteps = t0:Δt:tf
 
     function system!(du, u, p, t, controller, input=:state)
         @argcheck input in (:state, :time)
@@ -40,9 +39,21 @@ function van_der_pol(; store_results=false::Bool)
         end
     end
 
+    # set arquitecture of neural network controller
+    controller = FastChain(
+        FastDense(3, 16, tanh_fast),
+        FastDense(16, 16, tanh_fast),
+        FastDense(16, 1),
+        (x, p) -> (1.3f0 .* sigmoid_fast.(x)) .- 0.3f0,
+    )
+
+    controlODE = ControlODE(controller, system!, u0, tspan; Δt)
+
+    θ = initial_params(controlODE.controller)
+
     function collocation(
         u0;
-        num_supports::Integer=length(tsteps),
+        num_supports::Integer=length(controlODE.tsteps),
         nodes_per_element::Integer=4,
         constrain_states::Bool=false,
     )
@@ -90,20 +101,9 @@ function van_der_pol(; store_results=false::Bool)
         model |> optimizer_model |> solution_summary
         states = hcat(value.(x)...) |> permutedims
         controls = hcat(value.(c)...) |> permutedims
+        @infiltrate
         return model, supports(t), states, controls
     end
-
-    # set arquitecture of neural network controller
-    controller = FastChain(
-        FastDense(3, 16, tanh_fast),
-        FastDense(16, 16, tanh_fast),
-        FastDense(16, 1),
-        (x, p) -> (1.3f0 .* sigmoid_fast.(x)) .- 0.3f0,
-    )
-
-    controlODE = ControlODE(controller, system!, u0, tspan; tsteps)
-
-    θ = initial_params(controlODE.controller)
 
     phase_time = 0.0f0
     function square_bounds(u0, arista)
@@ -135,7 +135,6 @@ function van_der_pol(; store_results=false::Bool)
         u0, collocation; plot=true
     )
 
-    @info "Preconditioning..."
     θ = preconditioner(
         controlODE,
         control_profile;
@@ -204,6 +203,13 @@ function van_der_pol(; store_results=false::Bool)
     end
 
     penalty_coefficients = [10.0f0, 10.0f1, 10.0f2, 10.0f3]
+    prog = Progress(
+        length(penalty_coefficients);
+        desc="Fiacco-McCormick iterations",
+        dt=0.5,
+        showspeed=true,
+        enabled=true,
+    )
     for α in penalty_coefficients
 
         # function plotting_callback(params, loss)
@@ -215,7 +221,6 @@ function van_der_pol(; store_results=false::Bool)
         # closures to comply with interface
         penalty_loss_(params) = penalty_loss(controlODE, params; α)
 
-        @info α
         # plot_simulation(
         #     controlODE,
         #     θ;
@@ -232,6 +237,7 @@ function van_der_pol(; store_results=false::Bool)
             # cb=plotting_callback,
         )
         θ = result.minimizer
+        next!(prog; showvalues=[(:α, α), (:loss, penalty_loss_(θ))])
     end
     θ_opt = result.minimizer
     optimal = result.minimum
