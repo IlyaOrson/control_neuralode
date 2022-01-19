@@ -69,9 +69,9 @@ export batch_reactor, van_der_pol, reference_tracking, bioreactor, semibatch_rea
 
 # https://diffeqflux.sciml.ai/stable/ControllingAdjoints/#Choosing-a-sensealg-in-a-Nutshell
 const INTEGRATOR = AutoTsit5(Rosenbrock23())
-# const SENSEALG = ForwardDiffSensitivity()
+const SENSEALG = ForwardDiffSensitivity()
 # const SENSEALG = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
-const SENSEALG = QuadratureAdjoint(; autojacvec=ZygoteVJP())
+# const SENSEALG = QuadratureAdjoint(; autojacvec=ZygoteVJP())
 # InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
 
 include("auxiliaries.jl")

@@ -13,12 +13,12 @@ function preconditioner(
     allow_f_increases=true,
     integrator=INTEGRATOR,
     sensealg=SENSEALG,
-    adtype=GalacticOptim.AutoZygote(),
+    adtype=GalacticOptim.AutoForwardDiff(),
     kwargs...,
 )
     @info "Preconditioning..."
-
-    fixed_dudt!(du, u, p, t) = controlODE.system!(du, u, p, t, precondition, :time)
+    @infiltrate
+    fixed_dudt!(du, u, p, t) = controlODE.system!(du, u, p, t, precondition; input=:time)
 
     prog = Progress(
         length(controlODE.tsteps[2:end]);
@@ -134,7 +134,7 @@ function constrained_training(
     maxiters=100,
     allow_f_increases=true,
     sensealg=SENSEALG,
-    adtype=GalacticOptim.AutoZygote(),
+    adtype=GalacticOptim.AutoForwardDiff(),
     kwargs...,
 )
     @argcheck length(αs) == length(δs)
@@ -163,7 +163,7 @@ function constrained_training(
         result = sciml_train(
             loss, θ, optimizer, adtype; maxiters, allow_f_increases, kwargs...
         )
-        # @infiltrate
+
         θ =
             result.minimizer +
             1.0f-1 * std(result.minimizer) * randn(length(result.minimizer))

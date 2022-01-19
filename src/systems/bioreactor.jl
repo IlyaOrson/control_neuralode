@@ -38,7 +38,7 @@ function bioreactor(; store_results=false::Bool)
         K_Np=16.89f0,
     )
 
-    function system!(du, u, p, t, controller, input=:state)
+    function system!(du, u, p, t, controller; input=:state)
         @argcheck input in (:state, :time)
 
         u_m, u_d, K_N, Y_NX, k_m, k_d, k_s, k_i, k_sq, k_iq, K_Np = values(system_params)

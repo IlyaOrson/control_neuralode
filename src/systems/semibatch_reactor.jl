@@ -53,7 +53,7 @@ function semibatch_reactor(; store_results=false::Bool)
         Tr2=290.0f0,  # 400, Bradford value
     )
 
-    function system!(du, u, p, t, controller, input=:state)
+    function system!(du, u, p, t, controller; input=:state)
         @argcheck input in (:state, :time)
 
         CpA, CpB, CpC, CpH2SO4, N0H2S04, T0, CA0, HRA, HRB, E1A, E2B, A1, A2, UA, Tr1, Tr2 = values(
@@ -382,7 +382,7 @@ function semibatch_reactor(; store_results=false::Bool)
     final_objective, final_state_penalty, final_control_penalty, final_regularization = losses(
         controlODE, θ; δ=δs[end]
     )
-    # @infiltrate
+
     return store_simulation(
         "constrained",
         controlODE,

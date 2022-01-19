@@ -66,6 +66,7 @@ struct ControlODE{uType<:Real,tType<:Real}
         tsteps::Union{Nothing, AbstractVector{<:Real}}=nothing,
         Δt::Union{Nothing,Real}=nothing,
         npoints::Union{Nothing,Real}=nothing,
+        input::Symbol=:state,
         integrator=INTEGRATOR,  # Tsit5()
         sensealg=SENSEALG,
     )
@@ -93,7 +94,7 @@ struct ControlODE{uType<:Real,tType<:Real}
         @argcheck space_type == control_type
 
         # construct ODE problem
-        dudt!(du, u, p, t) = system!(du, u, p, t, controller)
+        dudt!(du, u, p, t) = system!(du, u, p, t, controller; input)
         prob = ODEProblem(dudt!, u0, tspan)
 
         return new{space_type,time_type}(

@@ -14,7 +14,7 @@ function van_der_pol(; store_results=false::Bool)
     tspan = (t0, tf)
     Δt = 0.1f0
 
-    function system!(du, u, p, t, controller, input=:state)
+    function system!(du, u, p, t, controller; input=:state)
         @argcheck input in (:state, :time)
 
         # neural network outputs the controls taken by the system
@@ -101,7 +101,7 @@ function van_der_pol(; store_results=false::Bool)
         model |> optimizer_model |> solution_summary
         states = hcat(value.(x)...) |> permutedims
         controls = hcat(value.(c)...) |> permutedims
-        @infiltrate
+
         return model, supports(t), states, controls
     end
 
@@ -176,6 +176,7 @@ function van_der_pol(; store_results=false::Bool)
     loss(params) = loss(controlODE, params)
 
     @info "Training..."
+    @infiltrate
     result = sciml_train(
         loss,
         θ,
@@ -201,7 +202,7 @@ function van_der_pol(; store_results=false::Bool)
         penalty = α * Δt * sum(fault .^ 2)  # quadratic penalty
         return sol[3, end] + penalty
     end
-
+    @info "Enforcing constraints..."
     penalty_coefficients = [10.0f0, 10.0f1, 10.0f2, 10.0f3]
     prog = Progress(
         length(penalty_coefficients);
