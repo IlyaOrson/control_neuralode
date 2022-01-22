@@ -13,11 +13,11 @@ function preconditioner(
     allow_f_increases=true,
     integrator=INTEGRATOR,
     sensealg=SENSEALG,
-    adtype=GalacticOptim.AutoForwardDiff(),
+    adtype=GalacticOptim.AutoZygote(),
     kwargs...,
 )
     @info "Preconditioning..."
-    @infiltrate
+
     fixed_dudt!(du, u, p, t) = controlODE.system!(du, u, p, t, precondition; input=:time)
 
     prog = Progress(
@@ -134,7 +134,7 @@ function constrained_training(
     maxiters=100,
     allow_f_increases=true,
     sensealg=SENSEALG,
-    adtype=GalacticOptim.AutoForwardDiff(),
+    adtype=GalacticOptim.AutoZygote(),
     kwargs...,
 )
     @argcheck length(αs) == length(δs)

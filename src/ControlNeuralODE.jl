@@ -61,7 +61,7 @@ using CSV: CSV
 using Tables: table
 
 # using PyCall: PyObject
-using PyPlot: plt, matplotlib, ColorMap
+using PyPlot: plt, matplotlib, ColorMap, plot3D, scatter3D
 
 import CommonSolve: solve
 
@@ -69,8 +69,8 @@ export batch_reactor, van_der_pol, reference_tracking, bioreactor, semibatch_rea
 
 # https://diffeqflux.sciml.ai/stable/ControllingAdjoints/#Choosing-a-sensealg-in-a-Nutshell
 const INTEGRATOR = AutoTsit5(Rosenbrock23())
-const SENSEALG = ForwardDiffSensitivity()
-# const SENSEALG = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
+# const SENSEALG = ForwardDiffSensitivity()
+const SENSEALG = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
 # const SENSEALG = QuadratureAdjoint(; autojacvec=ZygoteVJP())
 # InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
 

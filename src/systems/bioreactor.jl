@@ -43,8 +43,8 @@ function bioreactor(; store_results=false::Bool)
 
         u_m, u_d, K_N, Y_NX, k_m, k_d, k_s, k_i, k_sq, k_iq, K_Np = values(system_params)
 
-        # neural network outputs controls based on state
         C_X, C_N, C_qc = u
+
         if input == :state
             I, F_N = controller(u, p)
         elseif input == :time

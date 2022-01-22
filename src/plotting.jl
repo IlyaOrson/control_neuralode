@@ -116,17 +116,17 @@ function plot_collocation(controls_collocation, interpol, tsteps)
     return plt.show()
 end
 
-abstract type PhasePlotMarker end
+abstract type PhasePlotMarkers end
 
-@kwdef struct IntegrationPath <: PhasePlotMarker
+@kwdef struct IntegrationPath <: PhasePlotMarkers
     points
-    fmt = "m:"
+    fmt = "m.-"
     label = "Integration path"
     markersize = nothing
     linewidth = 4
 end
 
-@kwdef struct InitialState <: PhasePlotMarker
+@kwdef struct InitialMarkers <: PhasePlotMarkers
     points
     fmt = "bD"
     label = "Initial state"
@@ -134,7 +134,7 @@ end
     linewidth = nothing
 end
 
-@kwdef struct FinalState <: PhasePlotMarker
+@kwdef struct FinalMarkers <: PhasePlotMarkers
     points
     fmt = "r*"
     label = "Final state"
@@ -188,12 +188,12 @@ end
 function phase_portrait(
     controlODE,
     params,
-    phase_time,
-    coord_lims;  #xlims, ylims
+    coord_lims;
+    time=0f0,
+    point_base=controlODE.prob.u0,
     points_per_dim=1000,
-    dimension=2,
     projection=[1, 2],
-    markers=nothing,
+    markers::Union{Nothing, AbstractVector{<:PhasePlotMarkers}}=nothing,
     start_points=nothing,
     start_points_x=nothing,
     start_points_y=nothing,
@@ -201,32 +201,49 @@ function phase_portrait(
     shader=nothing,
     kwargs...,
 )
-    @argcheck length(projection) == 2
-    @argcheck all(x -> isa(x, Tuple) && length(x) == 2, coord_lims)
-    @argcheck all(marker isa PhasePlotMarker for marker in markers)
+    dimension = length(controlODE.prob.u0)
 
+    @argcheck length(projection) == 2
+    @argcheck all(ind in 1:dimension for ind in projection)
+    @argcheck all(x -> isa(x, Tuple) && length(x) == 2, coord_lims)
+
+    state_dtype = find_array_param(controlODE.prob.u0)
     function stream_interface(coords...)
-        u = zeros(Float32, dimension)
-        du = zeros(Float32, dimension)
+        @argcheck length(coords) == dimension
+        u = zeros(state_dtype, dimension)
+        du = zeros(state_dtype, dimension)
         copyto!(u, coords)
         # du = deepcopy(coords)
-        controlODE.system!(du, u, params, phase_time, controlODE.controller)
+        controlODE.system!(du, u, params, time, controlODE.controller)
         return du
     end
 
     # evaluate system over each combination of coords in the specified ranges
-
     # NOTE: float64 is relevant for the conversion to pyplot due to inner
     #       numerical checks of equidistant input in the streamplot function
     ranges = [range(Float64.(lims)...; length=points_per_dim) for lims in coord_lims]
     xpoints, ypoints = collect.(ranges[projection])
 
+    coord_arrays = Vector{Array{state_dtype}}(undef, dimension)
+    for ind in 1:dimension
+        if ind == projection[1]
+            coord_arrays[ind] = xpoints
+        elseif ind == projection[2]
+            coord_arrays[ind] = ypoints
+        else
+            coord_arrays[ind] = [point_base[ind]]
+        end
+    end
     # NOTE: the transpose is required to get f.(a',b) instead of the default f.(a, b')
-    xgrid, ygrid = ndgrid(xpoints, ypoints)  # NOTE: is this switched?
-    phase_array_tuples = stream_interface.(xgrid, ygrid)'
-    # phase_array_tuples = stream_interface.(xpoints', ypoints)
+    # states_grid = stream_interface.(xpoints', ypoints)
+    coord_grids = ndgrid(coord_arrays...)
+    states_grid = stream_interface.(coord_grids...)
 
-    xphase, yphase = [getindex.(phase_array_tuples, dim) for dim in projection]
+    disposable_dims = Tuple(filter(x -> x ∉ projection, 1:dimension))
+    filtered_states_grid = dropdims(states_grid; dims=disposable_dims) |> permutedims
+
+    xphase, yphase = [getindex.(filtered_states_grid, dim) for dim in projection]
+
 
     magnitude = map((x, y) -> sqrt(sum(x^2 + y^2)), xphase, yphase)
 
@@ -287,7 +304,7 @@ function phase_portrait(
     xlims, ylims = coord_lims[projection]
 
     if !isnothing(shader)
-        mask = shader.indicator.(xgrid, ygrid)'
+        mask = dropdims(shader.indicator.(coord_grids...); dims=disposable_dims) |> permutedims
         ax.imshow(
             mask;
             extent=(xlims..., ylims...),

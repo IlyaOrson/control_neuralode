@@ -4,13 +4,20 @@ function batch_reactor(; store_results=false::Bool)
         datadir = generate_data_subdir(@__FILE__)
     end
 
-    function system!(du, u, p, t, controller)
+    function system!(du, u, p, t, controller; input=:state)
+        @argcheck input in (:state, :time)
+
         # fixed parameters
         α, β, γ, δ = 0.5f0, 1.0f0, 1.0f0, 1.0f0
 
-        # neural network outputs controls taken by the system
         y1, y2 = u
-        c1, c2 = controller(u, p)
+
+        # neural network outputs controls taken by the system
+        if input == :state
+            c1, c2 = controller(u, p)
+        elseif input == :time
+            c1, c2 = controller(t, p)
+        end
 
         # dynamics of the controlled system
         y1_prime = -(c1 + α * c1^2) * y1 + δ * c2
@@ -56,11 +63,10 @@ function batch_reactor(; store_results=false::Bool)
     # start_points_y = range(u0[2] + 1e-4, u0[2] + ywidth/5; length=3)
 
     _, states_raw, _ = run_simulation(controlODE, θ)
-    marker = FinalState(; points=states_raw[:, end], fmt="m*", markersize=20)
+    marker = FinalMarkers(; points=states_raw[:, end])
     phase_portrait(
         controlODE,
         θ,
-        phase_time,
         coord_lims;
         markers=[marker],
         # start_points_x, start_points_y,
@@ -96,11 +102,10 @@ function batch_reactor(; store_results=false::Bool)
     θ_opt = result.minimizer
 
     _, states_opt, _ = run_simulation(controlODE, θ_opt)
-    marker = FinalState(; points=states_opt[:, end], fmt="m*", markersize=20)
+    marker = FinalMarkers(; points=states_opt[:, end])
     return phase_portrait(
         controlODE,
         θ_opt,
-        phase_time,
         coord_lims;
         markers=[marker],
         # start_points_x, start_points_y,

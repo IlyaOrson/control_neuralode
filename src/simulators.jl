@@ -4,8 +4,12 @@ function run_simulation(
     noise::Union{Nothing, Real}=nothing,
     vars::Union{Nothing, AbstractArray{<:Integer}}=nothing,
     callback::Union{Nothing, DECallback}=nothing,
+    kwargs...
 )
     if !isnothing(noise) && !isnothing(vars)
+        if !isnothing(callback)
+            @warn "Supplied callback will be replaced by a noise callback."
+        end
         @argcheck noise > zero(noise)
         @argcheck all(var in eachindex(controlODE.u0) for var in vars)
 
@@ -22,7 +26,7 @@ function run_simulation(
     end
 
     # integrate with given parameters
-    solution = solve(controlODE, params; callback)
+    solution = solve(controlODE, params; callback, kwargs...)
 
     # construct arrays with the same type used by the integrator
     elements_type = eltype(solution.t)

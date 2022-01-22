@@ -76,11 +76,16 @@ function reference_tracking(; store_results=false::Bool)
     @show tspan = (0.0f0, time)
     Δt = 1f-2
 
-    function system!(du, u, p, t, controller)
+    function system!(du, u, p, t, controller; input=:state)
+        @argcheck input in (:state, :time)
 
-        # neural network outputs controls taken by the system
         y1, y2 = u
-        c = controller(u, p)[1]  # controller output is a 1-element container
+
+        if input == :state
+            c = controller(u, p)[1]
+        elseif input == :time
+            c = controller(t, p)[1]
+        end
 
         # reaction rate
         r = k10 * y1 * exp(-N / y2)  # irreversible (case 1 & case 2)

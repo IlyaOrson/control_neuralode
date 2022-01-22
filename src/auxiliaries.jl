@@ -1,7 +1,4 @@
-# https://discourse.julialang.org/t/aliases-for-union-t-nothing-and-union-t-missing/15402/41
-macro optional(ex)
-    return :(Union{$ex,Nothing})
-end
+find_array_param(arr::AbstractArray{T}) where {T} = T
 
 string_datetime() = replace(string(now()), (":" => "_"))
 
@@ -46,8 +43,6 @@ function scaled_sigmoids(control_ranges)
         control_ranges[i][1] for i in eachindex(control_ranges)
     ]
 end
-
-find_array_param(arr::AbstractArray{T}) where {T} = T
 
 struct ControlODE{uType<:Real,tType<:Real}
     controller::Function
