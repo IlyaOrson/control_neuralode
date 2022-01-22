@@ -10,7 +10,7 @@ function van_der_pol(; store_results=false::Bool)
     # initial conditions and timepoints
     t0 = 0.0f0
     tf = 5.0f0
-    u0 = [0.0f0, 1.0f0, 0.0f0]
+    u0 = [0.0f0, 1.0f0] #, 0.0f0]
     tspan = (t0, tf)
     Δt = 0.1f0
 
@@ -18,7 +18,7 @@ function van_der_pol(; store_results=false::Bool)
         @argcheck input in (:state, :time)
 
         # neural network outputs the controls taken by the system
-        x1, x2, x3 = u
+        x1, x2 = u
 
         if input == :state
             c1 = controller(u, p)[1]  # control based on state and parameters
@@ -29,19 +29,19 @@ function van_der_pol(; store_results=false::Bool)
         # dynamics of the controlled system
         x1_prime = (1 - x2^2) * x1 - x2 + c1
         x2_prime = x1
-        x3_prime = x1^2 + x2^2 + c1^2
+        # x3_prime = x1^2 + x2^2 + c1^2
 
         # update in-place
         @inbounds begin
             du[1] = x1_prime
             du[2] = x2_prime
-            du[3] = x3_prime
+            # du[3] = x3_prime
         end
     end
 
     # set arquitecture of neural network controller
     controller = FastChain(
-        FastDense(3, 16, tanh_fast),
+        FastDense(2, 16, tanh_fast),
         FastDense(16, 16, tanh_fast),
         FastDense(16, 1),
         (x, p) -> (1.3f0 .* sigmoid_fast.(x)) .- 0.3f0,
@@ -75,7 +75,7 @@ function van_der_pol(; store_results=false::Bool)
         )
 
         # initial conditions
-        @constraint(model, [i = 1:3], x[i](0) == u0[i])
+        @constraint(model, [i = 1:2], x[i](0) == u0[i])
 
         # control range
         @constraint(model, -0.3 <= c[1] <= 1.0)
@@ -90,11 +90,12 @@ function van_der_pol(; store_results=false::Bool)
             begin
                 ∂(x[1], t) == (1 - x[2]^2) * x[1] - x[2] + c[1]
                 ∂(x[2], t) == x[1]
-                ∂(x[3], t) == x[1]^2 + x[2]^2 + c[1]^2
+                # ∂(x[3], t) == x[1]^2 + x[2]^2 + c[1]^2
             end
         )
 
-        @objective(model, Min, x[3](tf))
+        # @objective(model, Min, x[3](tf))
+        @objective(model, Min, integral(x[1]^2 + x[2]^2 + c[1]^2, t))
 
         optimize!(model)
 
@@ -119,7 +120,7 @@ function van_der_pol(; store_results=false::Bool)
     phase_portrait(
         controlODE,
         θ,
-        square_bounds(u0, 7);
+        square_bounds(u0, 6);
         projection=[1, 2],
         markers=[marker_path, start_mark, final_mark],
         # start_points_x, start_points_y,
@@ -147,7 +148,7 @@ function van_der_pol(; store_results=false::Bool)
     phase_portrait(
         controlODE,
         θ,
-        square_bounds(u0, 7);
+        square_bounds(u0, 6);
         projection=[1, 2],
         markers=[marker_path, start_mark, final_mark],
         # start_points_x, start_points_y,
@@ -164,8 +165,15 @@ function van_der_pol(; store_results=false::Bool)
 
     ### define objective function to optimize
     function loss(controlODE, params; kwargs...)
-        sol = solve(controlODE, params; kwargs...)
-        return Array(sol)[3, end]  # return last value of third variable ...to be minimized
+        sol = solve(controlODE, params; kwargs...) |> Array
+        # return Array(sol)[3, end]  # return last value of third variable ...to be minimized
+        sum_squared = 0f0
+        for i in 1:size(sol, 2)
+            s = sol[:,i]
+            c = controlODE.controller(s, params)
+            sum_squared += s[1]^2 + s[2]^2 + c[1]^2
+        end
+        return sum_squared
     end
     loss(params) = loss(controlODE, params)
 
@@ -186,7 +194,7 @@ function van_der_pol(; store_results=false::Bool)
     phase_portrait(
         controlODE,
         θ,
-        square_bounds(u0, 7);
+        square_bounds(u0, 6);
         projection=[1, 2],
         markers=[marker_path, start_mark, final_mark],
         # start_points_x, start_points_y,
@@ -205,13 +213,19 @@ function van_der_pol(; store_results=false::Bool)
     ### now add state constraint x1(t) > -0.4 with
     function penalty_loss(controlODE, params; α=10.0f0, kwargs...)
         # integrate ODE system
-        sol = Array(solve(controlODE, params; kwargs...))
+        sol = solve(controlODE, params; kwargs...) |> Array
+        sum_squared = 0f0
+        for i in 1:size(sol, 2)
+            s = sol[:,i]
+            c = controlODE.controller(s, params)
+            sum_squared += s[1]^2 + s[2]^2 + c[1]^2
+        end
         fault = min.(sol[1, 1:end] .+ 0.4f0, 0.0f0)
-        penalty = α * Δt * sum(fault .^ 2)  # quadratic penalty
-        return sol[3, end] + penalty
+        penalty = α * sum(fault .^ 2)  # quadratic penalty
+        return sum_squared + penalty
     end
     @info "Enforcing constraints..."
-    penalty_coefficients = [10.0f0, 10.0f1, 10.0f2, 10.0f3]
+    penalty_coefficients = [1f1, 1f2, 1f3, 1f4]
     prog = Progress(
         length(penalty_coefficients);
         desc="Fiacco-McCormick iterations",
@@ -248,7 +262,7 @@ function van_der_pol(; store_results=false::Bool)
         θ = result.minimizer
         next!(prog; showvalues=[(:α, α), (:loss, penalty_loss_(θ))])
     end
-    # θ = result.minimizer
+    θ = result.minimizer
     optimal = result.minimum
 
     # penalty_loss(result.minimizer, constrained_prob, tsteps; α=penalty_coefficients[end])
@@ -280,7 +294,7 @@ function van_der_pol(; store_results=false::Bool)
     phase_portrait(
         controlODE,
         θ,
-        square_bounds(u0, 7);
+        square_bounds(u0, 6);
         shader,
         projection=[1, 2],
         markers=[marker_path, start_mark, final_mark],
@@ -289,21 +303,21 @@ function van_der_pol(; store_results=false::Bool)
         title="Optimized policy",
     )
 
-    # # u0 = [0f0, 1f0, 0f0]
-    # perturbation_specs = [
-    #     (variable=1, type=:positive, scale=1.0f0, samples=8, percentage=2.0f-2)
-    #     (variable=2, type=:negative, scale=1.0f0, samples=8, percentage=2.0f-2)
-    #     (variable=3, type=:positive, scale=20.0f0, samples=8, percentage=2.0f-2)
-    # ]
-    # constraint_spec = ConstRef(; val=-0.4, direction=:horizontal, class=:state, var=1)
+    # u0 = [0f0, 1f0]
+    perturbation_specs = [
+        (variable=1, type=:positive, scale=1.0f0, samples=8, percentage=2.0f-2)
+        (variable=2, type=:negative, scale=1.0f0, samples=8, percentage=2.0f-2)
+        # (variable=3, type=:positive, scale=20.0f0, samples=8, percentage=2.0f-2)
+    ]
+    constraint_spec = ConstRef(; val=-0.4, direction=:horizontal, class=:state, var=1)
 
-    # plot_initial_perturbations_collocation(
-    #     controlODE,
-    #     θ,
-    #     perturbation_specs,
-    #     collocation;
-    #     refs=[constraint_spec],
-    #     storedir=generate_data_subdir(@__FILE__),
-    # )
+    plot_initial_perturbations_collocation(
+        controlODE,
+        θ,
+        perturbation_specs,
+        collocation;
+        refs=[constraint_spec],
+        storedir=generate_data_subdir(@__FILE__),
+    )
     return optimal
 end  # wrap

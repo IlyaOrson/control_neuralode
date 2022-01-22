@@ -20,6 +20,7 @@ using InfiniteOpt:
     @constraint,
     @constraints,
     @objective,
+    integral,
     set_start_value_function,
     optimizer_with_attributes,
     optimizer_model,
