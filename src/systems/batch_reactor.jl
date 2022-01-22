@@ -55,7 +55,7 @@ function batch_reactor(; store_results=false::Bool)
 
     # variables for streamplots
     phase_time = 0.0f0
-    xlims, ylims = (0.0f0, 1.5f0), (0.0f0, 1.5f0)
+    xlims, ylims = (0.0f0, 1.5f0), (0.0f0, 0.8f0)
     coord_lims = [xlims, ylims]
     # xwidth = xlims[end] - xlims[1]
     # ywidth = ylims[end] - ylims[1]
@@ -63,12 +63,14 @@ function batch_reactor(; store_results=false::Bool)
     # start_points_y = range(u0[2] + 1e-4, u0[2] + ywidth/5; length=3)
 
     _, states_raw, _ = run_simulation(controlODE, θ)
-    marker = FinalMarkers(; points=states_raw[:, end])
+    start_mark = InitialMarkers(; points=states_raw[:, 1])
+    marker_path = IntegrationPath(; points=states_raw)
+    final_marker = FinalMarkers(; points=states_raw[:, end])
     phase_portrait(
         controlODE,
         θ,
         coord_lims;
-        markers=[marker],
+        markers=[start_mark, marker_path, final_marker],
         # start_points_x, start_points_y,
         start_points=reshape(u0 .+ (-1e-4, 0), 1, 2),
         title="Initial policy",
@@ -99,15 +101,17 @@ function batch_reactor(; store_results=false::Bool)
     )
     plot_simulation(controlODE, result.minimizer; only=:controls)
 
-    θ_opt = result.minimizer
+    θ = result.minimizer
 
-    _, states_opt, _ = run_simulation(controlODE, θ_opt)
-    marker = FinalMarkers(; points=states_opt[:, end])
+    _, states_raw, _ = run_simulation(controlODE, θ)
+    start_mark = InitialMarkers(; points=states_raw[:, 1])
+    marker_path = IntegrationPath(; points=states_raw)
+    final_marker = FinalMarkers(; points=states_raw[:, end])
     return phase_portrait(
         controlODE,
-        θ_opt,
+        θ,
         coord_lims;
-        markers=[marker],
+        markers=[start_mark, marker_path, final_marker],
         # start_points_x, start_points_y,
         start_points=reshape(u0 .+ (-1e-4, 0), 1, 2),
         title="Optimized policy",

@@ -13,7 +13,7 @@ function preconditioner(
     allow_f_increases=true,
     integrator=INTEGRATOR,
     sensealg=SENSEALG,
-    adtype=GalacticOptim.AutoZygote(),
+    adtype=GalacticOptim.AutoReverseDiff(),
     kwargs...,
 )
     @info "Preconditioning..."
@@ -134,7 +134,7 @@ function constrained_training(
     maxiters=100,
     allow_f_increases=true,
     sensealg=SENSEALG,
-    adtype=GalacticOptim.AutoZygote(),
+    adtype=GalacticOptim.AutoReverseDiff(),
     kwargs...,
 )
     @argcheck length(αs) == length(δs)
