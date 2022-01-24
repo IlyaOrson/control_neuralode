@@ -27,6 +27,7 @@ using InfiniteOpt:
     optimize!,
     solution_summary,
     termination_status,
+    objective_value,
     supports,
     value,
     ∂

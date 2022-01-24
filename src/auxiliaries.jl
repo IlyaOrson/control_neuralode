@@ -26,6 +26,13 @@ function local_grid(npoints::Integer, percentage::Real; scale=1.0f0, type=:cente
     return [n * percentage * scale - translation for n in 0:(npoints - 1)]
 end
 
+function square_bounds(u0, arista)
+    low_bounds = u0 .- repeat([arista / 2], length(u0))
+    high_bounds = u0 .+ repeat([arista / 2], length(u0))
+    bounds = [(l, h) for (l, h) in zip(low_bounds, high_bounds)]
+    return bounds
+end
+
 function controller_shape(controller)
     # this method is brittle as any function inside the Chain
     # will not be identified, could be a problem if those change dimensions
@@ -124,42 +131,58 @@ function chebyshev_interpolation(
     return Fun(space, V \ vec(values))  # chebyshev_interpolation as one-variable function
 end
 
-function collocation_preconditioner(u0, collocation; plot=true, kwargs...)
+function optimize_collocation!(collocation_model::InfiniteModel)
+
+    optimize!(collocation_model)
+
+    # list possible termination status: model |> termination_status |> typeof
+    jump_model = optimizer_model(collocation_model)
+    # OPTIMAL = 1, LOCALLY_SOLVED = 4
+    if Int(termination_status(jump_model)) ∉ (1, 4)
+        @error raw_status(jump_model) termination_status(jump_model)
+        error("The collocation optimization failed.")
+    else
+        @info solution_summary(jump_model; verbose=false)
+        # @info "Objective value" objective_value(collocation_model)
+    end
+    return collocation_model
+end
+
+function interpolant_controller(collocation; plot=true)
     @info "Solving through collocation..."
-    infopt_model, time_collocation, states_collocation, controls_collocation = collocation(
-        u0; kwargs...
-    )
-    num_controls = size(controls_collocation, 1)
+
+    num_controls = size(collocation.controls, 1)
+
     # interpolations = [
-    #     DataInterpolations.LinearInterpolation(controls_collocation[i, :], time_collocation) for i in 1:num_controls
+    #     DataInterpolations.LinearInterpolation(collocation.controls[i, :], collocation.times) for i in 1:num_controls
     # ]
     interpolations = [
-        chebyshev_interpolation(time_collocation, controls_collocation[i, :]) for
+        chebyshev_interpolation(collocation.times, collocation.controls[i, :]) for
         i in 1:num_controls
     ]
+
     function control_profile(t, p)
         Zygote.ignore() do
             return [interpolations[i](t) for i in 1:num_controls]
         end
     end
+
     if plot
         for c in 1:num_controls
             display(
                 lineplot(
                     t -> control_profile(t, nothing)[c],
-                    time_collocation[begin],
-                    time_collocation[end];
-                    xlim=(time_collocation[begin], time_collocation[end]),
+                    collocation.times[begin],
+                    collocation.times[end];
+                    xlim=(collocation.times[begin], collocation.times[end]),
                 ),
             )
             plot_collocation(
-                controls_collocation[c, :], interpolations[c], time_collocation
+                collocation.controls[c, :], interpolations[c], collocation.times
             )
         end
     end
-    return control_profile,
-    infopt_model, time_collocation, states_collocation,
-    controls_collocation
+    return control_profile
 end
 
 # Feller, C., & Ebenbauer, C. (2014).

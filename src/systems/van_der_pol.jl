@@ -41,9 +41,9 @@ function van_der_pol(; store_results=false::Bool)
 
     # set arquitecture of neural network controller
     controller = FastChain(
-        FastDense(2, 16, tanh_fast),
-        FastDense(16, 16, tanh_fast),
-        FastDense(16, 1),
+        FastDense(2, 12, tanh_fast),
+        FastDense(12, 12, tanh_fast),
+        FastDense(12, 1),
         (x, p) -> (1.3f0 .* sigmoid_fast.(x)) .- 0.3f0,
     )
 
@@ -51,8 +51,24 @@ function van_der_pol(; store_results=false::Bool)
 
     θ = initial_params(controlODE.controller)
 
-    function collocation(
-        u0;
+    _, states_raw, _ = run_simulation(controlODE, θ)
+    start_mark = InitialMarkers(; points=states_raw[:, 1])
+    marker_path = IntegrationPath(; points=states_raw)
+    final_mark = FinalMarkers(; points=states_raw[:, end])
+    phase_portrait(
+        controlODE,
+        θ,
+        square_bounds(u0, 7);
+        projection=[1, 2],
+        markers=[marker_path, start_mark, final_mark],
+        # start_points_x, start_points_y,
+        # start_points=reshape(u0 .+ repeat([-1e-4], 3), 1, 3),
+        title="Initial policy",
+    )
+
+    function infopt_collocation(;
+        u0=controlODE.u0,
+        tspan=controlODE.tspan,
         num_supports::Integer=length(controlODE.tsteps),
         nodes_per_element::Integer=4,
         constrain_states::Bool=false,
@@ -61,14 +77,14 @@ function van_der_pol(; store_results=false::Bool)
         model = InfiniteModel(optimizer)
         method = OrthogonalCollocation(nodes_per_element)
         @infinite_parameter(
-            model, t in [t0, tf], num_supports = num_supports, derivative_method = method
+            model, t in [tspan[1], tspan[2]], num_supports = num_supports, derivative_method = method
         )
 
         @variables(
             model,
             begin  # "start" sets the initial guess values
                 # state variables
-                x[1:3], Infinite(t)
+                x[1:2], Infinite(t)
                 # control variables
                 c[1], Infinite(t)
             end
@@ -97,45 +113,22 @@ function van_der_pol(; store_results=false::Bool)
         # @objective(model, Min, x[3](tf))
         @objective(model, Min, integral(x[1]^2 + x[2]^2 + c[1]^2, t))
 
-        optimize!(model)
+        optimize_collocation!(model)
 
-        model |> optimizer_model |> solution_summary
+        times = supports(t)
         states = hcat(value.(x)...) |> permutedims
         controls = hcat(value.(c)...) |> permutedims
 
-        return model, supports(t), states, controls
+        return (; model, times, states, controls)
     end
 
-    function square_bounds(u0, arista)
-        low_bounds = u0 .- repeat([arista / 2], length(u0))
-        high_bounds = u0 .+ repeat([arista / 2], length(u0))
-        bounds = [(l, h) for (l, h) in zip(low_bounds, high_bounds)]
-        return bounds
-    end
-
-    _, states_raw, _ = run_simulation(controlODE, θ)
-    start_mark = InitialMarkers(; points=states_raw[:, 1])
-    marker_path = IntegrationPath(; points=states_raw)
-    final_mark = FinalMarkers(; points=states_raw[:, end])
-    phase_portrait(
-        controlODE,
-        θ,
-        square_bounds(u0, 6);
-        projection=[1, 2],
-        markers=[marker_path, start_mark, final_mark],
-        # start_points_x, start_points_y,
-        # start_points=reshape(u0 .+ repeat([-1e-4], 3), 1, 3),
-        title="Initial policy",
-    )
-
-    control_profile, infopt_model, times_collocation, states_collocation, controls_collocation = collocation_preconditioner(
-        u0, collocation; plot=true
-    )
+    collocation = infopt_collocation()
+    reference_controller = interpolant_controller(collocation; plot=true)
 
     θ = preconditioner(
         controlODE,
-        control_profile;
-        #control_range_scaling=[maximum(controls_collocation) - minimum(controls_collocation)],
+        reference_controller;
+        #control_range_scaling=[maximum(collcation_results.controls) - minimum(collcation_results.controls)],
     )
 
     plot_simulation(controlODE, θ; only=:controls)
@@ -148,7 +141,7 @@ function van_der_pol(; store_results=false::Bool)
     phase_portrait(
         controlODE,
         θ,
-        square_bounds(u0, 6);
+        square_bounds(u0, 7);
         projection=[1, 2],
         markers=[marker_path, start_mark, final_mark],
         # start_points_x, start_points_y,
@@ -194,12 +187,12 @@ function van_der_pol(; store_results=false::Bool)
     phase_portrait(
         controlODE,
         θ,
-        square_bounds(u0, 6);
+        square_bounds(u0, 7);
         projection=[1, 2],
         markers=[marker_path, start_mark, final_mark],
         # start_points_x, start_points_y,
         # start_points=reshape(u0 .+ repeat([-1e-4], 3), 1, 3),
-        title="Initial policy",
+        title="Optimized policy",
     )
 
     store_simulation(
@@ -294,7 +287,7 @@ function van_der_pol(; store_results=false::Bool)
     phase_portrait(
         controlODE,
         θ,
-        square_bounds(u0, 6);
+        square_bounds(u0, 7);
         shader,
         projection=[1, 2],
         markers=[marker_path, start_mark, final_mark],
@@ -320,4 +313,5 @@ function van_der_pol(; store_results=false::Bool)
         storedir=generate_data_subdir(@__FILE__),
     )
     return optimal
+
 end  # wrap

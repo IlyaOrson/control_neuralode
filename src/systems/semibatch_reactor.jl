@@ -105,7 +105,7 @@ function semibatch_reactor(; store_results=false::Bool)
     # to reproduce his results and verify correctness
     fogler_ref = [240.0f0, 298.0f0]  # reference values in Fogler
     fogler_timespan = (0.0f0, 1.5f0)
-    fixed_controlODE = ControlODE((u, p) -> fogler_ref, system!, u0, fogler_timespan)
+    fixed_controlODE = ControlODE((u, p) -> fogler_ref, system!, u0, fogler_timespan; Δt)
     @info "Fogler's case: final time state" solve(fixed_controlODE, nothing).u[end]
     plot_simulation(
         fixed_controlODE,
@@ -120,8 +120,20 @@ function semibatch_reactor(; store_results=false::Bool)
         vars=[4, 5],
     )
 
-    function collocation(
-        u0;
+    # set arquitecture of neural network controller
+    controller = FastChain(
+        (x, p) -> [1f2x[1], 1f2x[2], 1f2x[3], x[4], x[5]],
+        FastDense(5, 12, tanh_fast),
+        FastDense(12, 12, tanh_fast),
+        FastDense(12, 2),
+        # (x, p) -> [240f0, 298f0],
+        scaled_sigmoids(control_ranges),
+    )
+    controlODE = ControlODE(controller, system!, u0, tspan; Δt)
+
+    function infopt_collocation(;
+        u0=controlODE.u0,
+        tspan=controlODE.tspan,
         num_supports::Integer=length(controlODE.tsteps),
         nodes_per_element::Integer=3,
         constrain_states::Bool=false,
@@ -132,7 +144,7 @@ function semibatch_reactor(; store_results=false::Bool)
         model = InfiniteModel(optimizer)
         method = OrthogonalCollocation(nodes_per_element)
         @infinite_parameter(
-            model, t in [t0, tf], num_supports = num_supports, derivative_method = method
+            model, t in [tspan[1], tspan[2]], num_supports = num_supports, derivative_method = method
         )
 
         @variables(
@@ -174,7 +186,8 @@ function semibatch_reactor(; store_results=false::Bool)
             system_params
         )
 
-        initial_conditions = @constraints(
+        # initial_conditions
+        @constraints(
             model,
             begin
                 x[1](0) == u0[1]
@@ -183,7 +196,8 @@ function semibatch_reactor(; store_results=false::Bool)
             end
         )
 
-        control_constraints = @constraints(
+        # control_constraints
+        @constraints(
             model,
             begin
                 control_ranges[1][1] <= c[1] <= control_ranges[1][2]
@@ -192,7 +206,8 @@ function semibatch_reactor(; store_results=false::Bool)
         )
 
         if constrain_states
-            state_constraints = @constraints(
+            # state_constraints
+            @constraints(
                 model,
                 begin
                     x[4] <= T_up
@@ -201,7 +216,8 @@ function semibatch_reactor(; store_results=false::Bool)
             )
         end
 
-        dynamic_constraints = @constraints(
+        # dynamic_constraints
+        @constraints(
             model,
             begin
                 ∂(x[1], t) ==
@@ -228,101 +244,70 @@ function semibatch_reactor(; store_results=false::Bool)
 
         @objective(model, Max, x[2](tf))
 
-        optimize!(model)
-        jump_model = optimizer_model(model)
+        optimize_collocation!(model)
 
-        # list possible termination status: model |> termination_status |> typeof
-        @info solution_summary(jump_model; verbose=false)
-        if Int(termination_status(jump_model)) ∉ (1, 4)  # OPTIMAL = 1, LOCALLY_SOLVED = 4
-            @warn raw_status(jump_model) termination_status(jump_model)
-        end
-
+        times = supports(t)
         states = hcat(value.(x)...) |> permutedims
         controls = hcat(value.(c)...) |> permutedims
 
-        return model, supports(t), states, controls
+        return (; model, times, states, controls)
     end
 
-    # set arquitecture of neural network controller
-    controller = FastChain(
-        (x, p) -> [1f2x[1], 1f2x[2], 1f2x[3], x[4], x[5]],
-        FastDense(5, 8, tanh_fast),
-        FastDense(8, 8, tanh_fast),
-        FastDense(8, 2),
-        # (x, p) -> [240f0, 298f0],
-        scaled_sigmoids(control_ranges),
-    )
+    collocation = infopt_collocation(constrain_states=false, nodes_per_element=2)
+    collocation_constrained = infopt_collocation(constrain_states=true, nodes_per_element=2)
 
-    control_profile, infopt_model, times_collocation, states_collocation, controls_collocation = collocation_preconditioner(
-        u0,
-        collocation;
-        plot=false,
-        nodes_per_element=2,
-        constrain_states=false,
-    )
-    _, _, _, states_collocation_constrained, controls_collocation_constrained = collocation_preconditioner(
-        u0,
-        collocation;
-        plot=false,
-        nodes_per_element=2,
-        constrain_states=true,
-    )
-    #=
+
     plt.figure()
-    plt.plot(times_collocation, states_collocation[1, :]; label="s1")
-    plt.plot(times_collocation, states_collocation[2, :]; label="s2")
-    plt.plot(times_collocation, states_collocation[3, :]; label="s3")
+    plt.plot(collocation.times, collocation.states[1, :]; label="s1")
+    plt.plot(collocation.times, collocation.states[2, :]; label="s2")
+    plt.plot(collocation.times, collocation.states[3, :]; label="s3")
     plt.plot(
-        times_collocation, states_collocation_constrained[1, :];
+        collocation.times, collocation_constrained.states[1, :];
         label="s1_constrained", color=plt.gca().lines[1].get_color(), ls="dashdot"
     )
     plt.plot(
-        times_collocation, states_collocation_constrained[2, :];
+        collocation.times, collocation_constrained.states[2, :];
         label="s2_constrained", color=plt.gca().lines[2].get_color(), ls="dashdot"
     )
     plt.plot(
-        times_collocation, states_collocation_constrained[3, :];
+        collocation.times, collocation_constrained.states[3, :];
         label="s3_constrained", color=plt.gca().lines[3].get_color(), ls="dashdot"
     )
     plt.legend()
     plt.show()
 
     plt.figure()
-    plt.plot(times_collocation, states_collocation[4, :]; label="s4")
-    plt.plot(times_collocation, states_collocation[5, :]; label="s5")
+    plt.plot(collocation.times, collocation.states[4, :]; label="s4")
+    plt.plot(collocation.times, collocation.states[5, :]; label="s5")
     plt.plot(
-        times_collocation, states_collocation_constrained[4, :];
+        collocation.times, collocation_constrained.states[4, :];
         label="s4_constrained", color=plt.gca().lines[1].get_color(), ls="dashdot"
     )
     plt.plot(
-        times_collocation, states_collocation_constrained[5, :];
+        collocation.times, collocation_constrained.states[5, :];
         label="s5_constrained", color=plt.gca().lines[2].get_color(), ls="dashdot"
     )
     plt.legend()
     plt.show()
 
     plt.figure()
-    plt.plot(times_collocation, controls_collocation[1, :]; label="c1")
-    plt.plot(times_collocation, controls_collocation[2, :]; label="c2")
+    plt.plot(collocation.times, collocation.controls[1, :]; label="c1")
+    plt.plot(collocation.times, collocation.controls[2, :]; label="c2")
     plt.plot(
-        times_collocation, controls_collocation_constrained[1, :];
+        collocation.times, collocation_constrained.controls[1, :];
         label="c1_constrained", color=plt.gca().lines[1].get_color(), ls="dashdot"
     )
     plt.plot(
-        times_collocation, controls_collocation_constrained[2, :];
+        collocation.times, collocation_constrained.controls[2, :];
         label="c2_constrained", color=plt.gca().lines[2].get_color(), ls="dashdot"
     )
     plt.legend()
     plt.show()
-    =#
 
-    controlODE = ControlODE(controller, system!, u0, tspan; tsteps)
-
+    reference_controller = interpolant_controller(collocation; plot=true)
     θ = preconditioner(
         controlODE,
-        control_profile;
-        progressbar=true,
-        plot_progress=false,
+        reference_controller;
         # control_range_scaling=[range[end] - range[1] for range in control_ranges],
     )
 

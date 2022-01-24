@@ -120,10 +120,10 @@ abstract type PhasePlotMarkers end
 
 @kwdef struct IntegrationPath <: PhasePlotMarkers
     points
-    fmt = "m-."
+    fmt = "m:"
     label = "Integration path"
     markersize = nothing
-    linewidth = 4
+    linewidth = 6
 end
 
 @kwdef struct InitialMarkers <: PhasePlotMarkers

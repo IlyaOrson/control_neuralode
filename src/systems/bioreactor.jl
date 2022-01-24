@@ -84,8 +84,9 @@ function bioreactor(; store_results=false::Bool)
 
     controlODE = ControlODE(controller, system!, u0, tspan; Δt)
 
-    function collocation(
-        u0;
+    function infopt_collocation(;
+        u0=controlODE.u0,
+        tspan=controlODE.tspan,
         num_supports::Integer=length(controlODE.tsteps),
         nodes_per_element::Integer=4,
         constrain_states::Bool=false,
@@ -94,7 +95,7 @@ function bioreactor(; store_results=false::Bool)
         model = InfiniteModel(optimizer)
         method = OrthogonalCollocation(nodes_per_element)
         @infinite_parameter(
-            model, t in [t0, tf], num_supports = num_supports, derivative_method = method
+            model, t in [tspan[1], tspan[2]], num_supports = num_supports, derivative_method = method
         )
 
         @variables(
@@ -156,23 +157,20 @@ function bioreactor(; store_results=false::Bool)
 
         @objective(model, Max, x[3](tf))
 
-        optimize!(model)
+        optimize_collocation!(model)
 
-        model |> optimizer_model |> solution_summary
+        times = supports(t)
         states = hcat(value.(x)...) |> permutedims
         controls = hcat(value.(c)...) |> permutedims
-        return model, supports(t), states, controls
+        return (; model, times, states, controls)
     end
 
-    control_profile, infopt_model, times_collocation, states_collocation, controls_collocation = collocation_preconditioner(
-        u0, collocation; plot=true
-    )
+    collocation = infopt_collocation()
+    reference_controller = interpolant_controller(collocation; plot=true)
 
     θ = preconditioner(
         controlODE,
-        control_profile;
-        progressbar=true,
-        plot_progress=false,
+        reference_controller;
         # control_range_scaling=[range[end] - range[1] for range in control_ranges],
     )
 
@@ -259,7 +257,6 @@ function bioreactor(; store_results=false::Bool)
         losses;
         αs,
         δs,
-        tsteps,
         starting_params=θ,
         show_progressbar=true,
         # plots_callback,
