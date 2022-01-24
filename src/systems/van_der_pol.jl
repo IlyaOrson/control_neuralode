@@ -308,7 +308,7 @@ function van_der_pol(; store_results=false::Bool)
         controlODE,
         θ,
         perturbation_specs,
-        collocation;
+        infopt_collocation;
         refs=[constraint_spec],
         storedir=generate_data_subdir(@__FILE__),
     )

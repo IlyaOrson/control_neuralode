@@ -497,7 +497,7 @@ function plot_initial_perturbations_collocation(
     controlODE,
     θ,
     specs,
-    collocation::Function;
+    infopt_collocation::Function;
     refs=nothing,
     funcs=nothing,
     storedir=nothing,
@@ -534,12 +534,10 @@ function plot_initial_perturbations_collocation(
             @info "Simulation"
             @time times, states, controls = run_simulation(controlODE, θ)
             @info "Collocation"
-            @time infopt_model, times_collocation, states_collocation, controls_collocation = collocation(
-                perturbed_u0; constrain_states=true
-            )
+            @time collocation = infopt_collocation(; u0=perturbed_u0, constrain_states=true)
             @info "Interpolation"
-            @time interpol = chebyshev_interpolation(controlODE.tsteps, controls_collocation)
-
+            @time interpol = chebyshev_interpolation(controlODE.tsteps, collocation.controls)
+            # infopt_model, times_collocation, states_collocation, controls_collocation
             for s in 1:state_size
                 axs_states[s].plot(
                     times,
@@ -550,7 +548,7 @@ function plot_initial_perturbations_collocation(
                 )
                 axs_states[s].plot(
                     times,
-                    states_collocation[s, :];
+                    collocation.states[s, :];
                     label="collocation",
                     marker="x",
                     linestyle="None",
@@ -568,7 +566,7 @@ function plot_initial_perturbations_collocation(
                 )
                 axs_controls[c].plot(
                     times,
-                    controls_collocation[c, :];
+                    collocation.controls[c, :];
                     label="collocation",
                     marker="x",
                     linestyle="None",
