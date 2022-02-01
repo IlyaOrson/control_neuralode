@@ -178,7 +178,7 @@ function constrained_training(
             :control_penalty => control_penalty,
             :regularization_cost => regularization,
             :parameters => θ,
-            :num_params => length(initial_params(controlODE.controller)),
+            :count_params => length(initial_params(controlODE.controller)),
             :layers => controller_shape(controlODE.controller),
             :penalty_relaxations => δs,
             :penalty_coefficients => αs,
