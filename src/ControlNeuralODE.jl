@@ -16,6 +16,7 @@ using InfiniteOpt:
     InfiniteModel,
     OrthogonalCollocation,
     @infinite_parameter,
+    @variable,
     @variables,
     @constraint,
     @constraints,
@@ -89,8 +90,15 @@ include("plotting.jl")
 # case studies
 include("systems/batch_reactor.jl")
 include("systems/van_der_pol.jl")
-include("systems/reference_tracking.jl")
 include("systems/bioreactor.jl")
 include("systems/semibatch_reactor.jl")
+# include("systems/reference_tracking.jl")
+
+include("scripts/batch_reactor.jl")
+include("scripts/van_der_pol.jl")
+include("scripts/van_der_pol_direct.jl")
+include("scripts/bioreactor.jl")
+include("scripts/semibatch_reactor.jl")
+# include("scripts/reference_tracking.jl")
 
 end # module

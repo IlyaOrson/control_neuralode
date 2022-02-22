@@ -1,6 +1,6 @@
 struct ControlODE{uType<:Real,tType<:Real}
-    controller::Function
-    system!::Function
+    controller
+    system!
     u0::AbstractVector{uType}
     tspan::Tuple{tType,tType}
     tsteps::AbstractVector{tType}
@@ -9,7 +9,7 @@ struct ControlODE{uType<:Real,tType<:Real}
     prob::AbstractODEProblem
     function ControlODE(
         controller,
-        system!,
+        system!,  # this must be in-place
         u0,
         tspan;
         params=initial_params(controller),
@@ -32,7 +32,8 @@ struct ControlODE{uType<:Real,tType<:Real}
             # @argcheck !isnothing(tsteps) || !isnothing(Δt) || !isnothing(npoints)
             throw(
                 ArgumentError(
-                    "Either tsteps, Δt or npoints keyword must be provided (they follow that order of priority if multiple are given).",
+                    "Either tsteps, Δt or npoints keyword must be provided.
+                    They follow that order of priority if several are given.",
                 ),
             )
         end
@@ -52,6 +53,7 @@ struct ControlODE{uType<:Real,tType<:Real}
         )
     end
 end
+
 # TODO follow recommended interface https://github.com/SciML/CommonSolve.jl
 function solve(code::ControlODE, params; kwargs...)
     return solve(

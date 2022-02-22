@@ -1,5 +1,5 @@
-using InfiniteOpt, ArgCheck, Ipopt
-import ControlNeuralODE as cnode
+# using InfiniteOpt, ArgCheck, Ipopt
+# import ControlNeuralODE as cnode
 
 function van_der_pol_direct(; store_results=false::Bool)
 
@@ -15,14 +15,14 @@ function van_der_pol_direct(; store_results=false::Bool)
     layer_sizes = (8, 8, 1)
     activations = (tanh, tanh, identity)
 
-    nparams = cnode.count_params(nstates, layer_sizes)
-    xavier_weights = cnode.start_values_sampler(nstates, layer_sizes)
+    nparams = count_params(nstates, layer_sizes)
+    xavier_weights = start_values_sampler(nstates, layer_sizes)
 
     function vector_fun(z)
         # @show z typeof(z) z[1:nstates] z[nstates+1:end]
         x = collect(z[1:nstates])
         p = collect(z[(nstates + 1):end])
-        return cnode.chain(x, p, layer_sizes, activations)
+        return chain(x, p, layer_sizes, activations)
     end
 
     # NOTE: JUMP does not support vector valued functions
@@ -81,47 +81,21 @@ function van_der_pol_direct(; store_results=false::Bool)
     end
 
     model_opt = infopt_direct()
-    result = cnode.extract_infopt_results(model_opt)
+    result = extract_infopt_results(model_opt)
 
-    # TODO: deduplicate this
-    function system!(du, u, p, t, controller; input=:state)
-        @argcheck input in (:state, :time)
-
-        # neural network outputs the controls taken by the system
-        x1, x2 = u
-
-        if input == :state
-            c1 = controller(u, p)[1]  # control based on state and parameters
-        elseif input == :time
-            c1 = controller(t, p)[1]  # control based on time and parameters
-        end
-
-        # dynamics of the controlled system
-        x1_prime = (1 - x2^2) * x1 - x2 + c1
-        x2_prime = x1
-        # x3_prime = x1^2 + x2^2 + c1^2
-
-        # update in-place
-        @inbounds begin
-            du[1] = x1_prime
-            du[2] = x2_prime
-            # du[3] = x3_prime
-        end
-    end
-
-    controller = (x, p) -> cnode.chain(x, p, layer_sizes, activations)
-    controlODE = cnode.ControlODE(controller, system!, u0, tspan; Δt = 0.1f0, params=result.params)
+    system! = VanDerPol()
+    controller = (x, p) -> chain(x, p, layer_sizes, activations)
+    controlODE = ControlODE(controller, system!, u0, tspan; Δt = 0.1f0, params=result.params)
     # @infiltrate
-    cnode.phase_portrait(
+    phase_portrait(
         controlODE,
         result.params,
-        cnode.square_bounds(u0, 7);
+        square_bounds(u0, 7);
         markers=[
-            cnode.InitialMarkers(; points=result.states[:, 1]),
-            cnode.IntegrationPath(; points=result.states),
-            cnode.FinalMarkers(; points=result.states[:, end]),
+            InitialMarkers(; points=result.states[:, 1]),
+            IntegrationPath(; points=result.states),
+            FinalMarkers(; points=result.states[:, end]),
         ],
     )
     return nothing
 end
-van_der_pol_direct()
