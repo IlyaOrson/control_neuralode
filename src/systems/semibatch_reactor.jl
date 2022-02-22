@@ -244,7 +244,7 @@ function semibatch_reactor(; store_results=false::Bool)
 
         @objective(model, Max, x[2](tf))
 
-        optimize_collocation!(model)
+        optimize_infopt!(model)
 
         times = supports(t)
         states = hcat(value.(x)...) |> permutedims

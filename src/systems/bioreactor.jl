@@ -157,7 +157,7 @@ function bioreactor(; store_results=false::Bool)
 
         @objective(model, Max, x[3](tf))
 
-        optimize_collocation!(model)
+        optimize_infopt!(model)
 
         times = supports(t)
         states = hcat(value.(x)...) |> permutedims

@@ -113,7 +113,7 @@ function van_der_pol(; store_results=false::Bool)
         # @objective(model, Min, x[3](tf))
         @objective(model, Min, integral(x[1]^2 + x[2]^2 + c[1]^2, t))
 
-        optimize_collocation!(model)
+        optimize_infopt!(model)
 
         times = supports(t)
         states = hcat(value.(x)...) |> permutedims
