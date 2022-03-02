@@ -11,7 +11,7 @@ function van_der_pol(; store_results=false::Bool)
     # initial conditions and timepoints
     t0 = 0.0f0
     tf = 5.0f0
-    u0 = [0.0f0, 1.0f0] #, 0.0f0]
+    u0 = [0.0f0, 1.0f0]
     tspan = (t0, tf)
     Δt = 0.1f0
 
@@ -43,63 +43,13 @@ function van_der_pol(; store_results=false::Bool)
         title="Initial policy",
     )
 
-    function infopt_collocation(;
-        u0=controlODE.u0,
-        tspan=controlODE.tspan,
-        num_supports::Integer=length(controlODE.tsteps),
-        nodes_per_element::Integer=4,
-        constrain_states::Bool=false,
+    collocation = van_der_pol_collocation(
+        controlODE.u0,
+        controlODE.tspan;
+        num_supports=length(controlODE.tsteps),
+        nodes_per_element=2,
+        constrain_states=false,
     )
-        optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
-        model = InfiniteModel(optimizer)
-        method = OrthogonalCollocation(nodes_per_element)
-        @infinite_parameter(
-            model, t in [tspan[1], tspan[2]], num_supports = num_supports, derivative_method = method
-        )
-
-        @variables(
-            model,
-            begin  # "start" sets the initial guess values
-                # state variables
-                x[1:2], Infinite(t)
-                # control variables
-                c[1], Infinite(t)
-            end
-        )
-
-        # initial conditions
-        @constraint(model, [i = 1:2], x[i](0) == u0[i])
-
-        # control range
-        @constraint(model, -0.3 <= c[1] <= 1.0)
-
-        if constrain_states
-            @constraint(model, -0.4 <= x[1])
-        end
-
-        # dynamic equations
-        @constraints(
-            model,
-            begin
-                ∂(x[1], t) == (1 - x[2]^2) * x[1] - x[2] + c[1]
-                ∂(x[2], t) == x[1]
-                # ∂(x[3], t) == x[1]^2 + x[2]^2 + c[1]^2
-            end
-        )
-
-        # @objective(model, Min, x[3](tf))
-        @objective(model, Min, integral(x[1]^2 + x[2]^2 + c[1]^2, t))
-
-        optimize_infopt!(model)
-
-        times = supports(t)
-        states = hcat(value.(x)...) |> permutedims
-        controls = hcat(value.(c)...) |> permutedims
-
-        return (; model, times, states, controls)
-    end
-
-    collocation = infopt_collocation()
     reference_controller = interpolant_controller(collocation; plot=true)
 
     θ = preconditioner(
@@ -128,18 +78,16 @@ function van_der_pol(; store_results=false::Bool)
 
     # closures to comply with required interface
     function plotting_callback(params, loss)
-        return plot_simulation(
-            controlODE, params; only=:states, vars=[1], show=loss
-        )
+        return plot_simulation(controlODE, params; only=:states, vars=[1], show=loss)
     end
 
     ### define objective function to optimize
     function loss(controlODE, params; kwargs...)
         sol = solve(controlODE, params; kwargs...) |> Array
         # return Array(sol)[3, end]  # return last value of third variable ...to be minimized
-        sum_squared = 0f0
+        sum_squared = 0.0f0
         for i in 1:size(sol, 2)
-            s = sol[:,i]
+            s = sol[:, i]
             c = controlODE.controller(s, params)
             sum_squared += s[1]^2 + s[2]^2 + c[1]^2
         end
@@ -184,9 +132,9 @@ function van_der_pol(; store_results=false::Bool)
     function penalty_loss(controlODE, params; α=10.0f0, kwargs...)
         # integrate ODE system
         sol = solve(controlODE, params; kwargs...) |> Array
-        sum_squared = 0f0
+        sum_squared = 0.0f0
         for i in 1:size(sol, 2)
-            s = sol[:,i]
+            s = sol[:, i]
             c = controlODE.controller(s, params)
             sum_squared += s[1]^2 + s[2]^2 + c[1]^2
         end
@@ -196,7 +144,7 @@ function van_der_pol(; store_results=false::Bool)
     end
 
     @info "Enforcing constraints..."
-    penalty_coefficients = [1f1, 1f2, 1f3, 1f4]
+    penalty_coefficients = [1.0f1, 1.0f2, 1.0f3, 1.0f4]
     prog = Progress(
         length(penalty_coefficients);
         desc="Fiacco-McCormick iterations",
@@ -245,8 +193,7 @@ function van_der_pol(; store_results=false::Bool)
         θ;
         datadir,
         metadata=Dict(
-            :loss =>
-                penalty_loss(controlODE, θ; α=penalty_coefficients[end]),
+            :loss => penalty_loss(controlODE, θ; α=penalty_coefficients[end]),
             :constraint => "quadratic x2(t) > -0.4",
         ),
     )
@@ -286,10 +233,9 @@ function van_der_pol(; store_results=false::Bool)
         controlODE,
         θ,
         perturbation_specs,
-        infopt_collocation;
+        van_der_pol_collocation;
         refs=[constraint_spec],
         storedir=generate_data_subdir(@__FILE__),
     )
     return optimal
-
 end  # wrap

@@ -1,3 +1,7 @@
+# Vassiliadis, V. S., Sargent, R. W. H., & Pantelides, C. C. (1994).
+# Solution of a Class of Multistage Dynamic Optimization Problems. 2. Problems with Path Constraints.
+# Industrial & Engineering Chemistry Research, 33(9), 2123–2133. https://doi.org/10.1021/ie00033a015
+
 @kwdef struct VanDerPol
     μ=1f0
 end

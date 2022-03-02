@@ -83,13 +83,7 @@ function unicode_plotter(states, controls; only=nothing, vars=nothing, fun=nothi
 end
 
 function plot_simulation(
-    controlODE,
-    params;
-    show=nothing,
-    only=nothing,
-    vars=nothing,
-    fun=nothing,
-    yrefs=nothing,
+    controlODE, params; show=nothing, only=nothing, vars=nothing, fun=nothing, yrefs=nothing
 )
     !isnothing(show) && @info show
 
@@ -189,11 +183,11 @@ function phase_portrait(
     controlODE,
     params,
     coord_lims;
-    time=0f0,
+    time=0.0f0,
     point_base=controlODE.prob.u0,
     points_per_dim=1000,
     projection=[1, 2],
-    markers::Union{Nothing, AbstractVector{<:PhasePlotMarkers}}=nothing,
+    markers::Union{Nothing,AbstractVector{<:PhasePlotMarkers}}=nothing,
     start_points=nothing,
     start_points_x=nothing,
     start_points_y=nothing,
@@ -243,7 +237,6 @@ function phase_portrait(
     filtered_states_grid = dropdims(states_grid; dims=disposable_dims) |> permutedims
 
     xphase, yphase = [getindex.(filtered_states_grid, dim) for dim in projection]
-
 
     magnitude = map((x, y) -> sqrt(sum(x^2 + y^2)), xphase, yphase)
 
@@ -304,7 +297,8 @@ function phase_portrait(
     xlims, ylims = coord_lims[projection]
 
     if !isnothing(shader)
-        mask = dropdims(shader.indicator.(coord_grids...); dims=disposable_dims) |> permutedims
+        mask =
+            dropdims(shader.indicator.(coord_grids...); dims=disposable_dims) |> permutedims
         ax.imshow(
             mask;
             extent=(xlims..., ylims...),
@@ -406,9 +400,7 @@ function set_state_control_subplots(
     return fig_states, axs_states, fig_controls, axs_controls
 end
 
-function plot_initial_perturbations(
-    controlODE, θ, specs; refs=nothing, funcs=nothing
-)
+function plot_initial_perturbations(controlODE, θ, specs; refs=nothing, funcs=nothing)
     state_size = size(u0, 1)
     control_size = size(controller(u0, θ), 1)
 
@@ -433,7 +425,7 @@ function plot_initial_perturbations(
                 controlODE.tspan;
                 tsteps=controlODE.tsteps,
                 integrator=controlODE.integrator,
-                sensealg=controlODE.sensealg
+                sensealg=controlODE.sensealg,
             )
 
             times, states, controls = run_simulation(controlODE, θ)
@@ -494,13 +486,7 @@ function plot_initial_perturbations(
 end
 
 function plot_initial_perturbations_collocation(
-    controlODE,
-    θ,
-    specs,
-    infopt_collocation::Function;
-    refs=nothing,
-    funcs=nothing,
-    storedir=nothing,
+    controlODE, θ, specs, infopt_collocation; refs=nothing, funcs=nothing, storedir=nothing
 )
     state_size = size(controlODE.u0, 1)
     control_size = size(controlODE.controller(controlODE.u0, θ), 1)
@@ -513,7 +499,10 @@ function plot_initial_perturbations_collocation(
         for (tag, noise) in enumerate(perturbations)
             cmap = ColorMap("tab20")
             fig_states, axs_states, fig_controls, axs_controls = set_state_control_subplots(
-                length(controlODE.u0), length(controlODE.controller(controlODE.u0, θ)); annotation=spec, refs
+                length(controlODE.u0),
+                length(controlODE.controller(controlODE.u0, θ));
+                annotation=spec,
+                refs,
             )
 
             noise_vec = zeros(typeof(noise), length(controlODE.u0))
@@ -528,15 +517,22 @@ function plot_initial_perturbations_collocation(
                 controlODE.tspan;
                 tsteps=controlODE.tsteps,
                 integrator=controlODE.integrator,
-                sensealg=controlODE.sensealg
+                sensealg=controlODE.sensealg,
             )
 
             @info "Simulation"
             @time times, states, controls = run_simulation(controlODE, θ)
             @info "Collocation"
-            @time collocation = infopt_collocation(; u0=perturbed_u0, constrain_states=true)
+            @time collocation = infopt_collocation(
+                perturbed_u0,
+                controlODE.tspan;
+                num_supports=length(controlODE.tsteps),
+                constrain_states=true,
+            )
             @info "Interpolation"
-            @time interpol = chebyshev_interpolation(controlODE.tsteps, collocation.controls)
+            @time interpol = chebyshev_interpolation(
+                controlODE.tsteps, collocation.controls
+            )
             # infopt_model, times_collocation, states_collocation, controls_collocation
             for s in 1:state_size
                 axs_states[s].plot(

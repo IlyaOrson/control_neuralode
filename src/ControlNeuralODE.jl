@@ -69,7 +69,8 @@ using PyPlot: plt, matplotlib, ColorMap, plot3D, scatter3D
 
 import CommonSolve: solve
 
-export batch_reactor, van_der_pol, reference_tracking, bioreactor, semibatch_reactor
+export batch_reactor, reference_tracking, bioreactor, semibatch_reactor
+export van_der_pol, van_der_pol_direct
 
 # https://diffeqflux.sciml.ai/stable/ControllingAdjoints/#Choosing-a-sensealg-in-a-Nutshell
 const INTEGRATOR = AutoTsit5(Rosenbrock23())
@@ -94,6 +95,13 @@ include("systems/bioreactor.jl")
 include("systems/semibatch_reactor.jl")
 # include("systems/reference_tracking.jl")
 
+# classic collocation
+include("classic_collocation/van_der_pol.jl")
+
+# neural collocation
+include("neural_collocation/van_der_pol.jl")
+
+# scripts with analysis
 include("scripts/batch_reactor.jl")
 include("scripts/van_der_pol.jl")
 include("scripts/van_der_pol_direct.jl")
