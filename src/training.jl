@@ -13,7 +13,7 @@ function preconditioner(
     allow_f_increases=true,
     integrator=INTEGRATOR,
     sensealg=SENSEALG,
-    adtype=GalacticOptim.AutoReverseDiff(),
+    adtype=GalacticOptim.AutoZygote(),
     kwargs...,
 )
     @info "Preconditioning..."
@@ -105,7 +105,6 @@ function preconditioner(
             return sum_squares + regularization
             # return sum_squares / mean_squares + regularization
         end
-
         optimization = sciml_train(
             precondition_loss, θ, optimizer, adtype; maxiters, allow_f_increases, kwargs...
         )
@@ -130,11 +129,11 @@ function constrained_training(
     plots_callback=nothing,
     datadir=nothing,
     metadata=Dict(),  # metadata is added to this dict always
-    optimizer=NADAM(),  # LBFGS(; linesearch=BackTracking()),
+    optimizer=LBFGS(; linesearch=BackTracking()), #NADAM()
     maxiters=100,
     allow_f_increases=true,
     sensealg=SENSEALG,
-    adtype=GalacticOptim.AutoReverseDiff(),
+    adtype=GalacticOptim.AutoZygote(),
     kwargs...,
 )
     @argcheck length(αs) == length(δs)
@@ -159,13 +158,12 @@ function constrained_training(
         #     println(loss)
         #     return false
         # end
-
+        @infiltrate
         result = sciml_train(
             loss, θ, optimizer, adtype; maxiters, allow_f_increases, kwargs...
         )
 
-        θ =
-            result.minimizer +
+        θ = result.minimizer +
             1.0f-1 * std(result.minimizer) * randn(length(result.minimizer))
 
         objective, state_penalty, control_penalty, regularization = losses(

@@ -1,7 +1,10 @@
+authors = ["Ilya Orson Sandoval <ilya.orson@gmail.com>"]
 name = "ControlNeuralODE"
 uuid = "43796e44-9168-426f-8631-80c2c8cc7fef"
-authors = ["Ilya Orson Sandoval <ilya.orson@gmail.com>"]
 version = "0.1.0"
+
+[compat]
+julia = "1.7"
 
 [deps]
 ApproxFun = "28f2ccd6-bb30-5033-b560-165f7b14dc2f"
@@ -28,6 +31,7 @@ LineSearches = "d3d80556-e9d4-5f37-9878-2ab0fcc64255"
 OhMyREPL = "5fb14364-9ced-5910-84b2-373655c76a03"
 Optim = "429524aa-4258-5aef-a3af-852621145aeb"
 OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
+Pluto = "c3e4b0f8-55cb-11ea-2926-15256bba5781"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 PyPlot = "d330b81b-6aea-500a-939a-2ce795aea3ee"
 ReverseDiff = "37e2e3b7-166d-5795-8a7a-e32c996b4267"
@@ -39,5 +43,5 @@ Tables = "bd369af6-aec1-5ad0-b16a-f7cc5008161c"
 UnicodePlots = "b8865327-cd53-5732-bb35-84acbb429228"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
-[compat]
-julia = "1.7"
+[extras]
+CPUSummary = "2a0fbf3d-bb9c-48f3-b0a9-814d99fd7ab9"

@@ -27,6 +27,7 @@ using InfiniteOpt:
     optimizer_model,
     optimize!,
     solution_summary,
+    raw_status,
     termination_status,
     has_values,
     objective_value,
@@ -50,11 +51,21 @@ using SciMLBase:
 using DiffEqCallbacks: FunctionCallingCallback
 using OrdinaryDiffEq: solve, AutoTsit5, Rosenbrock23  # Tsit5
 using DiffEqSensitivity:
+    # discrete forward
+    ForwardDiffSensitivity,
+    # discrete adjoint
+    ReverseDiffAdjoint,
+    TrackerAdjoint,
+    ZygoteAdjoint,
+    # continuous forward
+    ForwardSensitivity,
+    # continuous adjoint
     InterpolatingAdjoint,
     QuadratureAdjoint,
+    BacksolveAdjoint,
+    TrackerVJP,
     ZygoteVJP,
-    ReverseDiffVJP,
-    ForwardDiffSensitivity
+    ReverseDiffVJP
 using GalacticOptim: GalacticOptim
 # using GalacticOptim: AutoForwardDiff, AutoZygote  # does not precompile
 using DiffEqFlux: FastChain, FastDense, initial_params, sciml_train
@@ -74,10 +85,18 @@ export van_der_pol, van_der_pol_direct
 
 # https://diffeqflux.sciml.ai/stable/ControllingAdjoints/#Choosing-a-sensealg-in-a-Nutshell
 const INTEGRATOR = AutoTsit5(Rosenbrock23())
+
+# Discrete sensitivity analysis
+const SENSEALG = ForwardSensitivity()
+
+# Continuous sensitivity analysis
 # const SENSEALG = ForwardDiffSensitivity()
-const SENSEALG = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
+# const SENSEALG = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
 # const SENSEALG = QuadratureAdjoint(; autojacvec=ZygoteVJP())
-# InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
+# const SENSEALG = QuadratureAdjoint(; autojacvec=TrackerVJP())
+# const SENSEALG = InterpolatingAdjoint(; autojacvec=ReverseDiffVJP(), checkpointing=true)
+# const SENSEALG = InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
+# const SENSEALG = InterpolatingAdjoint(; autojacvec=TrackerVJP(), checkpointing=true)
 
 include("auxiliaries.jl")
 include("controlODE.jl")
@@ -96,10 +115,10 @@ include("systems/semibatch_reactor.jl")
 # include("systems/reference_tracking.jl")
 
 # classic collocation
-include("classic_collocation/van_der_pol.jl")
+include("collocation/classic/van_der_pol.jl")
 
 # neural collocation
-include("neural_collocation/van_der_pol.jl")
+include("collocation/neural/van_der_pol.jl")
 
 # scripts with analysis
 include("scripts/batch_reactor.jl")

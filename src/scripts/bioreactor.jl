@@ -25,11 +25,12 @@ function bioreactor(; store_results=false::Bool)
     control_ranges = [(120.0f0, 400.0f0), (0.0f0, 40.0f0)]
 
     # set arquitecture of neural network controller
+    # weights initializer reference https://pytorch.org/docs/stable/nn.init.html
     controller = FastChain(
-        (x, p) -> [x[1], x[2] / 10.0f0, x[3] * 10.0f0],  # input scaling
+        (x, p) -> [x[1], x[2] / 100.0f0, x[3] * 10.0f0],  # input scaling
         FastDense(3, 16, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
         FastDense(16, 16, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
-        FastDense(16, 2; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
+        FastDense(16, 2; initW=(x, y) -> glorot_uniform(x, y)),
         # I ∈ [120, 400] & F ∈ [0, 40] in Bradford 2020
         # (x, p) -> [280f0 * sigmoid(x[1]) + 120f0, 40f0 * sigmoid(x[2])],
         scaled_sigmoids(control_ranges),
@@ -49,7 +50,10 @@ function bioreactor(; store_results=false::Bool)
         model = InfiniteModel(optimizer)
         method = OrthogonalCollocation(nodes_per_element)
         @infinite_parameter(
-            model, t in [tspan[1], tspan[2]], num_supports = num_supports, derivative_method = method
+            model,
+            t in [tspan[1], tspan[2]],
+            num_supports = num_supports,
+            derivative_method = method
         )
 
         @variables(
@@ -120,7 +124,7 @@ function bioreactor(; store_results=false::Bool)
     end
 
     collocation = infopt_collocation()
-    reference_controller = interpolant_controller(collocation; plot=true)
+    reference_controller = interpolant_controller(collocation; plot=false)
 
     θ = preconditioner(
         controlODE,
@@ -152,7 +156,14 @@ function bioreactor(; store_results=false::Bool)
     # C_N(t) − 800 ≤ 0              ∀t
     # 0.011 C_X(t) - C_qc(t) ≤ 3f-2 ∀t
     function losses(
-        controlODE, params; δ=1.0f1, α=1.0f-5, μ=(3.125f-8, 3.125f-6), ρ=1.0f-1, tsteps=(), kwargs...
+        controlODE,
+        params;
+        δ=1.0f1,
+        α=1.0f-5,
+        μ=(3.125f-8, 3.125f-6),
+        ρ=1.0f-1,
+        tsteps=(),
+        kwargs...,
     )
 
         # integrate ODE system
@@ -169,15 +180,15 @@ function bioreactor(; store_results=false::Bool)
 
         state_penalty = α * state_penalty_functional(sol, time_intervals; δ)
 
-        # penalty on change of controls
+        # # penalty on change of controls
         control_penalty = 0.0f0
-        for i in 1:(size(sol, 2) - 1)
-            prev = controller(sol[:, i], params)
-            post = controller(sol[:, i + 1], params)
-            for j in 1:length(prev)
-                control_penalty += μ[j] * (prev[j] - post[j])^2
-            end
-        end
+        # for i in 1:(size(sol, 2) - 1)
+        #     prev = controller(sol[:, i], params)
+        #     post = controller(sol[:, i + 1], params)
+        #     for j in 1:length(prev)
+        #         control_penalty += μ[j] * (prev[j] - post[j])^2
+        #     end
+        # end
 
         regularization = ρ * mean(abs2, θ)  # sum(abs2, θ)
 
@@ -187,15 +198,9 @@ function bioreactor(; store_results=false::Bool)
     end
 
     function plots_callback(controlODE, θ)
+        plot_simulation(controlODE, θ; only=:states, vars=[2], yrefs=[800, 150])
         plot_simulation(
-            controlODE, θ; only=:states, vars=[2], yrefs=[800, 150]
-        )
-        plot_simulation(
-            controlODE,
-            θ;
-            only=:states,
-            fun=(x, y, z) -> 1.1f-2x - z,
-            yrefs=[3.0f-2],
+            controlODE, θ; only=:states, fun=(x, y, z) -> 1.1f-2x - z, yrefs=[3.0f-2]
         )
         return plot_simulation(controlODE, θ; only=:controls)
     end
@@ -220,36 +225,22 @@ function bioreactor(; store_results=false::Bool)
     final_values = NamedTuple{(
         :objective, :state_penalty, :control_penalty, :regularization
     )}(
-        loss(θ; δ=δs[end], α=αs[end], tsteps)
+        loss(θ; δ=δs[end], α=αs[end], controlODE.tsteps)
     )
 
     @info "Final states"
     # plot_simulation(controlODE, θ; only=:states, vars=[1], show=final_values)
-    plot_simulation(
-        controlODE,
-        θ;
-        only=:states,
-        vars=[2],
-        yrefs=[800, 150],
-    )
+    plot_simulation(controlODE, θ; only=:states, vars=[2], yrefs=[800, 150])
     plot_simulation(controODE, θ; only=:states, vars=[3])
     plot_simulation(
-        controlODE,
-        θ;
-        only=:states,
-        fun=(x, y, z) -> 1.1f-2x - z,
-        yrefs=[3.0f-2],
+        controlODE, θ; only=:states, fun=(x, y, z) -> 1.1f-2x - z, yrefs=[3.0f-2]
     )
 
     @info "Final controls"
-    plot_simulation(
-        controODE, θ; only=:controls, vars=[1]
-    )
-    plot_simulation(
-        controODE, θ; only=:controls, vars=[2]
-    )
+    plot_simulation(controODE, θ; only=:controls, vars=[1])
+    plot_simulation(controODE, θ; only=:controls, vars=[2])
 
-    @info "Final loss" loss(θ; δ=δs[end], α=αs[end], tsteps)
+    @info "Final loss" loss(θ; δ=δs[end], α=αs[end], controlODE.tsteps)
 
     # initial conditions and timepoints
     # t0 = 0f0
