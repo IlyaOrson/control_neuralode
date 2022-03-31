@@ -136,6 +136,14 @@ end
     linewidth = nothing
 end
 
+function states_markers(states_array)
+    start_mark = InitialMarkers(; points=states_array[:, 1])
+    marker_path = IntegrationPath(; points=states_array)
+    final_mark = FinalMarkers(; points=states_array[:, end])
+    # returned order is irrelevant
+    return [marker_path, start_mark, final_mark]
+end
+
 @kwdef struct ShadeConf
     indicator::Function
     cmap = "gray"
@@ -608,12 +616,12 @@ function plot_initial_perturbations_collocation(
                 # bbox_extra_artists must be an iterable
                 filename = "u0_$(spec.variable)_" * sprintf1("%04d", tag)
                 fig_states.savefig(
-                    joinpath(storedir, filename * "_states.png");
+                    joinpath(storedir, filename * "_states.pdf");
                     bbox_extra_artists=(legend_states,),
                     # bbox_inches="tight",  # this adjusts filesize slighly... problematic for gifs
                 )
                 fig_controls.savefig(
-                    joinpath(storedir, filename * "_controls.png");
+                    joinpath(storedir, filename * "_controls.pdf");
                     bbox_extra_artists=(legend_controls,),
                     # bbox_inches="tight",
                 )

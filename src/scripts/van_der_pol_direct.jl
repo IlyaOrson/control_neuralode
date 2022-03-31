@@ -26,11 +26,7 @@ function van_der_pol_direct_phase_plot()
         controlODE,
         result.params,
         square_bounds(u0, 7);
-        markers=[
-            InitialMarkers(; points=result.states[:, 1]),
-            IntegrationPath(; points=result.states),
-            FinalMarkers(; points=result.states[:, end]),
-        ],
+        markers=states_markers(result.states),
     )
     return nothing
 end

@@ -29,17 +29,12 @@ function van_der_pol(; store_results=false::Bool)
     θ = initial_params(controlODE.controller)
 
     _, states_raw, _ = run_simulation(controlODE, θ)
-    start_mark = InitialMarkers(; points=states_raw[:, 1])
-    marker_path = IntegrationPath(; points=states_raw)
-    final_mark = FinalMarkers(; points=states_raw[:, end])
     phase_portrait(
         controlODE,
         θ,
         square_bounds(u0, 7);
         projection=[1, 2],
-        markers=[marker_path, start_mark, final_mark],
-        # start_points_x, start_points_y,
-        # start_points=reshape(u0 .+ repeat([-1e-4], 3), 1, 3),
+        markers=states_markers(states_raw),
         title="Initial policy",
     )
 
@@ -50,7 +45,7 @@ function van_der_pol(; store_results=false::Bool)
         nodes_per_element=2,
         constrain_states=false,
     )
-    reference_controller = interpolant_controller(collocation; plot=true)
+    reference_controller = interpolant_controller(collocation; plot=false)
 
     θ = preconditioner(
         controlODE,
@@ -62,17 +57,12 @@ function van_der_pol(; store_results=false::Bool)
     store_simulation("precondition", controlODE, θ; datadir)
 
     _, states_raw, _ = run_simulation(controlODE, θ)
-    start_mark = InitialMarkers(; points=states_raw[:, 1])
-    marker_path = IntegrationPath(; points=states_raw)
-    final_mark = FinalMarkers(; points=states_raw[:, end])
     phase_portrait(
         controlODE,
         θ,
-        square_bounds(u0, 7);
+        square_bounds(u0, 3);
         projection=[1, 2],
-        markers=[marker_path, start_mark, final_mark],
-        # start_points_x, start_points_y,
-        # start_points=reshape(u0 .+ repeat([-1e-4], 3), 1, 3),
+        markers=states_markers(states_raw),
         title="Preconditioned policy",
     )
 
@@ -106,17 +96,12 @@ function van_der_pol(; store_results=false::Bool)
     θ = result.minimizer
 
     _, states_raw, _ = run_simulation(controlODE, θ)
-    start_mark = InitialMarkers(; points=states_raw[:, 1])
-    marker_path = IntegrationPath(; points=states_raw)
-    final_mark = FinalMarkers(; points=states_raw[:, end])
     phase_portrait(
         controlODE,
         θ,
-        square_bounds(u0, 7);
+        square_bounds(u0, 3);
         projection=[1, 2],
-        markers=[marker_path, start_mark, final_mark],
-        # start_points_x, start_points_y,
-        # start_points=reshape(u0 .+ repeat([-1e-4], 3), 1, 3),
+        markers=states_markers(states_raw),
         title="Optimized policy",
     )
 
@@ -199,9 +184,6 @@ function van_der_pol(; store_results=false::Bool)
     )
 
     _, states_opt, _ = run_simulation(controlODE, θ)
-    start_mark = InitialMarkers(; points=states_opt[:, 1])
-    marker_path = IntegrationPath(; points=states_opt)
-    final_mark = FinalMarkers(; points=states_opt[:, end])
     function indicator(coords...)
         if coords[1] > -0.4
             return true
@@ -212,30 +194,28 @@ function van_der_pol(; store_results=false::Bool)
     phase_portrait(
         controlODE,
         θ,
-        square_bounds(u0, 7);
+        square_bounds(u0, 3);
         shader,
         projection=[1, 2],
-        markers=[marker_path, start_mark, final_mark],
-        # start_points_x, start_points_y,
-        # start_points=reshape(u0 .+ repeat([-1e-4], 3), 1, 3),
-        title="Optimized policy",
+        markers=states_markers(states_opt),
+        title="Optimized policy with constraints",
     )
 
     # u0 = [0f0, 1f0]
     perturbation_specs = [
-        (variable=1, type=:positive, scale=1.0f0, samples=8, percentage=2.0f-2)
-        (variable=2, type=:negative, scale=1.0f0, samples=8, percentage=2.0f-2)
+        (variable=1, type=:positive, scale=1.0f0, samples=3, percentage=1.0f-1)
+        (variable=2, type=:negative, scale=1.0f0, samples=3, percentage=1.0f-1)
         # (variable=3, type=:positive, scale=20.0f0, samples=8, percentage=2.0f-2)
     ]
     constraint_spec = ConstRef(; val=-0.4, direction=:horizontal, class=:state, var=1)
 
-    plot_initial_perturbations_collocation(
-        controlODE,
-        θ,
-        perturbation_specs,
-        van_der_pol_collocation;
-        refs=[constraint_spec],
-        storedir=generate_data_subdir(@__FILE__),
-    )
+    # plot_initial_perturbations_collocation(
+    #     controlODE,
+    #     θ,
+    #     perturbation_specs,
+    #     van_der_pol_collocation;
+    #     refs=[constraint_spec],
+    #     storedir=datadir,
+    # )
     return optimal
 end  # wrap
