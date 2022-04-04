@@ -213,10 +213,10 @@ function phase_portrait(
     function stream_interface(coords...)
         @argcheck length(coords) == dimension
         u = zeros(state_dtype, dimension)
-        du = zeros(state_dtype, dimension)
+        # du = zeros(state_dtype, dimension)
         copyto!(u, coords)
         # du = deepcopy(coords)
-        controlODE.system!(du, u, params, time, controlODE.controller)
+        du = controlODE.system(u, params, time, controlODE.controller)
         return du
     end
 
@@ -409,8 +409,9 @@ function set_state_control_subplots(
 end
 
 function plot_initial_perturbations(controlODE, θ, specs; refs=nothing, funcs=nothing)
+    u0 = controlODE.u0
     state_size = size(u0, 1)
-    control_size = size(controller(u0, θ), 1)
+    control_size = size(controlODE.controller(u0, θ), 1)
 
     for spec in specs
         perturbations = local_grid(
@@ -418,7 +419,7 @@ function plot_initial_perturbations(controlODE, θ, specs; refs=nothing, funcs=n
         )
         cmap = ColorMap("tab10")
         fig_states, axs_states, fig_controls, axs_controls = set_state_control_subplots(
-            length(u0), length(controller(u0, θ)); annotation=spec, refs
+            length(u0), length(controlODE.controller(u0, θ)); annotation=spec, refs
         )
 
         for noise in perturbations
@@ -428,7 +429,7 @@ function plot_initial_perturbations(controlODE, θ, specs; refs=nothing, funcs=n
             perturbed_u0 = u0 + noise_vec
             controlODE = ControlODE(
                 controlODE.controller,
-                controlODE.system!,
+                controlODE.system,
                 perturbed_u0,
                 controlODE.tspan;
                 tsteps=controlODE.tsteps,
@@ -520,7 +521,7 @@ function plot_initial_perturbations_collocation(
             perturbed_u0 = u0 + noise_vec
             controlODE = ControlODE(
                 controlODE.controller,
-                controlODE.system!,
+                controlODE.system,
                 perturbed_u0,
                 controlODE.tspan;
                 tsteps=controlODE.tsteps,

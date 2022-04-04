@@ -27,7 +27,7 @@ function bioreactor(; store_results=false::Bool)
     # set arquitecture of neural network controller
     # weights initializer reference https://pytorch.org/docs/stable/nn.init.html
     controller = FastChain(
-        (x, p) -> [x[1], x[2] / 100.0f0, x[3] * 10.0f0],  # input scaling
+        (x, p) -> [x[1], x[2] / 100.0f0, x[3] * 100.0f0],  # input scaling
         FastDense(3, 16, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
         FastDense(16, 16, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
         FastDense(16, 2; initW=(x, y) -> glorot_uniform(x, y)),
@@ -36,8 +36,8 @@ function bioreactor(; store_results=false::Bool)
         scaled_sigmoids(control_ranges),
     )
 
-    system! = BioReactor()
-    controlODE = ControlODE(controller, system!, u0, tspan; Δt)
+    system = BioReactor()
+    controlODE = ControlODE(controller, system, u0, tspan; Δt)
 
     function infopt_collocation(;
         u0=controlODE.u0,
@@ -132,12 +132,13 @@ function bioreactor(; store_results=false::Bool)
         # control_range_scaling=[range[end] - range[1] for range in control_ranges],
     )
 
+    # θ = initial_params(controlODE.controller)
+
     plot_simulation(controlODE, θ; only=:states)
     plot_simulation(controlODE, θ; only=:controls)
     store_simulation("precondition", controlODE, θ; datadir)
-
-    function state_penalty_functional(solution_array, time_intervals; δ=1.0f1)
-        @argcheck size(solution_array, 2) == length(time_intervals) + 1
+    Zygote.@ignore @infiltrate
+    function state_penalty_functional(solution_array; δ=1.0f1)
 
         ratio_X_N = 3.0f-2 / 800.0f0
         C_N_over = map(y -> relaxed_log_barrier(800.0f0 - y; δ), solution_array[2, 1:end])
@@ -147,8 +148,8 @@ function bioreactor(; store_results=false::Bool)
             solution_array[3, 1:end],
         )
         C_N_over_last = relaxed_log_barrier(150.0f0 - solution_array[2, end]; δ)
-
-        return sum((C_N_over .+ C_X_over)[2:end] .* time_intervals) + C_N_over_last
+        # Zygote.@ignore @infiltrate
+        return sum(controlODE.tsteps.step * (C_N_over .+ C_X_over)[2:end]) + C_N_over_last
     end
 
     # state constraints on control change
@@ -160,7 +161,7 @@ function bioreactor(; store_results=false::Bool)
         params;
         δ=1.0f1,
         α=1.0f-5,
-        μ=(3.125f-8, 3.125f-6),
+        # μ=(3.125f-8, 3.125f-6),
         ρ=1.0f-1,
         tsteps=(),
         kwargs...,
@@ -170,15 +171,8 @@ function bioreactor(; store_results=false::Bool)
         sol_raw = solve(controlODE, params; kwargs...)
         sol = Array(sol_raw)
 
-        # approximate integral penalty
-        # state_penalty = Δt * (sum(C_N_over) + sum(C_X_over)) + C_N_over_last  # for fixed timesteps
-        Zygote.ignore() do
-            global time_intervals = [
-                sol_raw.t[i + 1] - sol_raw.t[i] for i in eachindex(sol_raw.t[1:(end - 1)])
-            ]
-        end
-
-        state_penalty = α * state_penalty_functional(sol, time_intervals; δ)
+        state_penalty = α * state_penalty_functional(sol; δ)
+        # state_penalty = 0.0f0
 
         # # penalty on change of controls
         control_penalty = 0.0f0
@@ -190,10 +184,11 @@ function bioreactor(; store_results=false::Bool)
         #     end
         # end
 
-        regularization = ρ * mean(abs2, θ)  # sum(abs2, θ)
+        # regularization = ρ * mean(abs2, θ)  # sum(abs2, θ)
+        regularization = 0.0f0
 
         objective = -sol[3, end]  # maximize C_qc
-
+        # Zygote.@ignore @infiltrate
         return objective, state_penalty, control_penalty, regularization
     end
 
@@ -208,7 +203,7 @@ function bioreactor(; store_results=false::Bool)
     # α: penalty coefficient
     # δ: barrier relaxation coefficient
     α0, δ0 = 1.0f-5, 100.0f0
-    barrier_iterations = 0:20
+    barrier_iterations = 0:5
     αs = [α0 for _ in barrier_iterations]
     δs = [δ0 * 0.8f0^i for i in barrier_iterations]
     θ = constrained_training(
@@ -222,26 +217,24 @@ function bioreactor(; store_results=false::Bool)
         datadir,
     )
 
-    final_values = NamedTuple{(
-        :objective, :state_penalty, :control_penalty, :regularization
-    )}(
-        loss(θ; δ=δs[end], α=αs[end], controlODE.tsteps)
+    @show objective, state_penalty, control_penalty, regularization = losses(
+        controlODE, θ; δ=δs[end], α=αs[end], controlODE.tsteps
     )
 
     @info "Final states"
     # plot_simulation(controlODE, θ; only=:states, vars=[1], show=final_values)
     plot_simulation(controlODE, θ; only=:states, vars=[2], yrefs=[800, 150])
-    plot_simulation(controODE, θ; only=:states, vars=[3])
+    plot_simulation(controlODE, θ; only=:states, vars=[3])
     plot_simulation(
         controlODE, θ; only=:states, fun=(x, y, z) -> 1.1f-2x - z, yrefs=[3.0f-2]
     )
 
     @info "Final controls"
-    plot_simulation(controODE, θ; only=:controls, vars=[1])
-    plot_simulation(controODE, θ; only=:controls, vars=[2])
+    plot_simulation(controlODE, θ; only=:controls, vars=[1])
+    plot_simulation(controlODE, θ; only=:controls, vars=[2])
 
-    @info "Final loss" loss(θ; δ=δs[end], α=αs[end], controlODE.tsteps)
-
+    @info "Final losses" losses(controlODE, θ; δ=δs[end], α=αs[end], controlODE.tsteps)
+    return
     # initial conditions and timepoints
     # t0 = 0f0
     # tf = 240f0
@@ -252,9 +245,9 @@ function bioreactor(; store_results=false::Bool)
     # tsteps = t0:Δt:tf
     # control_ranges = [(120f0, 400f0), (0f0, 40f0)]
     perturbation_specs = [
-        (variable=1, type=:centered, scale=10.0f0, samples=10, percentage=2.0f-2)
-        (variable=2, type=:centered, scale=800.0f0, samples=10, percentage=2.0f-2)
-        (variable=3, type=:positive, scale=5.0f-1, samples=10, percentage=2.0f-2)
+        (variable=1, type=:centered, scale=10.0f0, samples=5, percentage=5.0f-2)
+        (variable=2, type=:centered, scale=800.0f0, samples=5, percentage=5.0f-2)
+        (variable=3, type=:positive, scale=5.0f-1, samples=5, percentage=5.0f-2)
     ]
     return plot_initial_perturbations(controlODE, θ, perturbation_specs)
 end  # script wrapper

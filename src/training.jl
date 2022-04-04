@@ -8,7 +8,7 @@ function preconditioner(
     control_range_scaling=nothing,
     plot_progress=false,
     plot_final=true,
-    optimizer=LBFGS(; linesearch=BackTracking()),
+    optimizer=NADAM(), #LBFGS(; linesearch=BackTracking()),
     maxiters=50,
     allow_f_increases=true,
     integrator=INTEGRATOR,
@@ -18,7 +18,7 @@ function preconditioner(
 )
     @info "Preconditioning..."
 
-    fixed_dudt!(du, u, p, t) = controlODE.system!(du, u, p, t, precondition; input=:time)
+    fixed_dudt(u, p, t) = controlODE.system(u, p, t, precondition; input=:time)
 
     prog = Progress(
         length(controlODE.tsteps[2:end]);
@@ -29,11 +29,13 @@ function preconditioner(
     )
     for partial_time in controlODE.tsteps[2:end]
         partial_tspan = (controlODE.tspan[1], partial_time)
-        fixed_prob = ODEProblem(fixed_dudt!, controlODE.u0, partial_tspan)
+        fixed_prob = ODEProblem(fixed_dudt, controlODE.u0, partial_tspan)
         fixed_sol = solve(fixed_prob, integrator; saveat, sensealg)
 
+        # Zygote ignore anything unrelated to loss function
         function precondition_loss(params; plot=nothing)
             plot_arrays = Dict(:reference => [], :control => [])
+
             sum_squares = 0.0f0
             # mean_squares = 0.0f0
 
@@ -105,6 +107,7 @@ function preconditioner(
             return sum_squares + regularization
             # return sum_squares / mean_squares + regularization
         end
+        # Zygote.@ignore @infiltrate
         optimization = sciml_train(
             precondition_loss, θ, optimizer, adtype; maxiters, allow_f_increases, kwargs...
         )
@@ -129,7 +132,7 @@ function constrained_training(
     plots_callback=nothing,
     datadir=nothing,
     metadata=Dict(),  # metadata is added to this dict always
-    optimizer=LBFGS(; linesearch=BackTracking()), #NADAM()
+    optimizer=NADAM(),  # LBFGS(; linesearch=BackTracking()), NADAM()
     maxiters=100,
     allow_f_increases=true,
     sensealg=SENSEALG,
@@ -158,11 +161,12 @@ function constrained_training(
         #     println(loss)
         #     return false
         # end
-        @infiltrate
+        Zygote.@ignore @infiltrate
         result = sciml_train(
             loss, θ, optimizer, adtype; maxiters, allow_f_increases, kwargs...
         )
 
+        # add some noise to avoid local minima
         θ = result.minimizer +
             1.0f-1 * std(result.minimizer) * randn(length(result.minimizer))
 

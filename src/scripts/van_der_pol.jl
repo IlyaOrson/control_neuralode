@@ -23,8 +23,8 @@ function van_der_pol(; store_results=false::Bool)
         (x, p) -> (1.3f0 .* sigmoid_fast.(x)) .- 0.3f0,
     )
 
-    system! = VanDerPol()
-    controlODE = ControlODE(controller, system!, u0, tspan; Δt)
+    system = VanDerPol()
+    controlODE = ControlODE(controller, system, u0, tspan; Δt)
 
     θ = initial_params(controlODE.controller)
 

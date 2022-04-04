@@ -1,6 +1,6 @@
 struct ControlODE{uType<:Real,tType<:Real}
     controller
-    system!
+    system
     u0::AbstractVector{uType}
     tspan::Tuple{tType,tType}
     tsteps::AbstractVector{tType}
@@ -9,7 +9,7 @@ struct ControlODE{uType<:Real,tType<:Real}
     prob::AbstractODEProblem
     function ControlODE(
         controller,
-        system!,  # this must be in-place
+        system,
         u0,
         tspan;
         params=initial_params(controller),
@@ -45,11 +45,11 @@ struct ControlODE{uType<:Real,tType<:Real}
         @argcheck space_type == control_type
 
         # construct ODE problem
-        dudt!(du, u, p, t) = system!(du, u, p, t, controller; input)
-        prob = ODEProblem(dudt!, u0, tspan)
+        dudt(u, p, t) = system(u, p, t, controller; input)
+        prob = ODEProblem(dudt, u0, tspan)
 
         return new{space_type,time_type}(
-            controller, system!, u0, tspan, tsteps, integrator, sensealg, prob
+            controller, system, u0, tspan, tsteps, integrator, sensealg, prob
         )
     end
 end

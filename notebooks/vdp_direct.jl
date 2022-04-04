@@ -114,9 +114,9 @@ result = cn.extract_infopt_results(model_opt);
 
 # ╔═╡ 1772d71a-1f7f-43cd-a4ad-0f7f54c960d0
 begin
-	system! = cn.VanDerPol()
+	system = cn.VanDerPol()
 	controller = (x, p) -> cn.chain(x, p, layer_sizes, activations)
-	controlODE = cn.ControlODE(controller, system!, u0, tspan; Δt = 0.1f0, params=result.params)
+	controlODE = cn.ControlODE(controller, system, u0, tspan; Δt = 0.1f0, params=result.params)
 end
 
 # ╔═╡ ab404ab0-1f0c-48f1-97c8-c3d1e7ec68df

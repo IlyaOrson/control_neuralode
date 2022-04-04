@@ -9,6 +9,7 @@ using ArgCheck: @argcheck
 using Formatting: format, sprintf1
 using ProgressMeter: Progress, next!
 using Infiltrator: @infiltrate
+using StaticArrays: SA
 using Statistics: mean, std
 using LineSearches: BackTracking
 using InfiniteOpt:
@@ -49,7 +50,7 @@ using SciMLBase:
     AbstractSensitivityAlgorithm,
     AbstractODEProblem
 using DiffEqCallbacks: FunctionCallingCallback
-using OrdinaryDiffEq: solve, AutoTsit5, Rosenbrock23  # Tsit5
+using OrdinaryDiffEq: solve, AutoTsit5, Rodas4P, Rosenbrock23, Tsit5
 using DiffEqSensitivity:
     # discrete forward
     ForwardDiffSensitivity,
@@ -65,6 +66,7 @@ using DiffEqSensitivity:
     BacksolveAdjoint,
     TrackerVJP,
     ZygoteVJP,
+    EnzymeVJP,
     ReverseDiffVJP
 using GalacticOptim: GalacticOptim
 # using GalacticOptim: AutoForwardDiff, AutoZygote  # does not precompile
@@ -83,20 +85,27 @@ import CommonSolve: solve
 export batch_reactor, reference_tracking, bioreactor, semibatch_reactor
 export van_der_pol, van_der_pol_direct
 
+# TODO: mark the variables that work as constants (avoid constants for Revise.jl)
+@show INTEGRATOR = AutoTsit5(Rosenbrock23())
+
 # https://diffeqflux.sciml.ai/stable/ControllingAdjoints/#Choosing-a-sensealg-in-a-Nutshell
-const INTEGRATOR = AutoTsit5(Rosenbrock23())
 
 # Discrete sensitivity analysis
-const SENSEALG = ForwardSensitivity()
+# SENSEALG = ForwardSensitivity()
+# SENSEALG = ReverseDiffAdjoint()
+# SENSEALG = TrackerAdjoint()
+# SENSEALG = ZygoteAdjoint()
 
 # Continuous sensitivity analysis
-# const SENSEALG = ForwardDiffSensitivity()
-# const SENSEALG = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
-# const SENSEALG = QuadratureAdjoint(; autojacvec=ZygoteVJP())
-# const SENSEALG = QuadratureAdjoint(; autojacvec=TrackerVJP())
-# const SENSEALG = InterpolatingAdjoint(; autojacvec=ReverseDiffVJP(), checkpointing=true)
-# const SENSEALG = InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
-# const SENSEALG = InterpolatingAdjoint(; autojacvec=TrackerVJP(), checkpointing=true)
+# SENSEALG = ForwardDiffSensitivity()
+# SENSEALG = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
+SENSEALG = QuadratureAdjoint(; autojacvec=ZygoteVJP())
+# SENSEALG = QuadratureAdjoint(; autojacvec=TrackerVJP())
+# SENSEALG = QuadratureAdjoint(; autojacvec=EnzymeVJP())
+# SENSEALG = InterpolatingAdjoint(; autojacvec=ReverseDiffVJP(), checkpointing=true)
+# @show SENSEALG = InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
+# SENSEALG = InterpolatingAdjoint(; autojacvec=TrackerVJP(), checkpointing=true)
+# SENSEALG = InterpolatingAdjoint(; autojacvec=EnzymeVJP(), checkpointing=true)
 
 include("auxiliaries.jl")
 include("controlODE.jl")

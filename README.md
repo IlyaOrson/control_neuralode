@@ -7,7 +7,7 @@ The main ideas where presented in [this talk](https://www.youtube.com/watch?v=om
 
 [![Watch the video](https://img.youtube.com/vi/omS3ZngEygw/maxresdefault.jpg)](https://www.youtube.com/watch?v=omS3ZngEygw)
 
-## Running the test cases
+## Running the study cases
 This code requires Julia 1.7.
 
 Reproduce the environment with the required dependencies:
@@ -19,8 +19,8 @@ julia> Pkg.add(url="https://github.com/IlyaOrson/ControlNeuralODE.jl")
 Run the test cases:
 
 ```julia
-julia> using ControlNeuralODE: van_der_pol, bioreactor  # batch_reactor, semibatch_reactor
-julia> van_der_pol()
+julia> using ControlNeuralODE: van_der_pol, bioreactor  # batch_reactor, bioreactor, semibatch_reactor
+julia> van_der_pol(store_results=true)
 ```
 
 These will generate terminal plots while the optimization runs and results data in `data/`.
@@ -55,7 +55,6 @@ conditions as a set of boundary value problems:
 * Third equation defines optimal control parameters.
     * This equation defines the gradient of the functional, and should be zero in optimality.
     * In Control Vector Iteration, it is reduced iteratively by gradient-based optimization.
-
 
 The control box-constraints are hardly enforced through the last nonlinearity of the neural controller.
 

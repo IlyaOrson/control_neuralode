@@ -18,9 +18,9 @@ function van_der_pol_direct_phase_plot()
         u0, tspan, layer_sizes, activations; nodes_per_element, time_supports
     )
 
-    system! = VanDerPol()
+    system = VanDerPol()
     controller = (x, p) -> chain(x, p, layer_sizes, activations)
-    controlODE = ControlODE(controller, system!, u0, tspan; Δt, params=infopt_result.params)
+    controlODE = ControlODE(controller, system, u0, tspan; Δt, params=infopt_result.params)
 
     phase_portrait(
         controlODE,
