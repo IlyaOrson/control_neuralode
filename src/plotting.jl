@@ -213,11 +213,14 @@ function phase_portrait(
     function stream_interface(coords...)
         @argcheck length(coords) == dimension
         u = zeros(state_dtype, dimension)
-        # du = zeros(state_dtype, dimension)
         copyto!(u, coords)
-        # du = deepcopy(coords)
-        du = controlODE.system(u, params, time, controlODE.controller)
-        return du
+        if controlODE.inplace
+            # du = deepcopy(coords)
+            du = zeros(state_dtype, dimension)
+            controlODE.system(du, u, params, time, controlODE.controller)
+            return du
+        end
+        return controlODE.system(u, params, time, controlODE.controller)
     end
 
     # evaluate system over each combination of coords in the specified ranges

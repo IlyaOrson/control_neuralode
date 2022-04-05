@@ -7,6 +7,7 @@ struct ControlODE{uType<:Real,tType<:Real}
     integrator::AbstractODEAlgorithm
     sensealg::AbstractSensitivityAlgorithm
     prob::AbstractODEProblem
+    inplace::Bool
     function ControlODE(
         controller,
         system,
@@ -45,11 +46,20 @@ struct ControlODE{uType<:Real,tType<:Real}
         @argcheck space_type == control_type
 
         # construct ODE problem
-        dudt(u, p, t) = system(u, p, t, controller; input)
-        prob = ODEProblem(dudt, u0, tspan)
-
+        @assert length(methods(system)) == 1
+        # number of arguments for inplace form system (du, u, p, t, controller; input)
+        local prob, inplace
+        if methods(system)[1].nargs < 6
+            inplace = false
+            dudt(u, p, t) = system(u, p, t, controller; input)
+            prob = ODEProblem(dudt, u0, tspan)
+        else
+            inplace = true
+            dudt!(du, u, p, t) = system(du, u, p, t, controller; input)
+            prob = ODEProblem(dudt!, u0, tspan)
+        end
         return new{space_type,time_type}(
-            controller, system, u0, tspan, tsteps, integrator, sensealg, prob
+            controller, system, u0, tspan, tsteps, integrator, sensealg, prob, inplace
         )
     end
 end

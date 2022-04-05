@@ -18,8 +18,6 @@ function preconditioner(
 )
     @info "Preconditioning..."
 
-    fixed_dudt(u, p, t) = controlODE.system(u, p, t, precondition; input=:time)
-
     prog = Progress(
         length(controlODE.tsteps[2:end]);
         desc="Pretraining in subintervals...",
@@ -29,7 +27,15 @@ function preconditioner(
     )
     for partial_time in controlODE.tsteps[2:end]
         partial_tspan = (controlODE.tspan[1], partial_time)
-        fixed_prob = ODEProblem(fixed_dudt, controlODE.u0, partial_tspan)
+
+        local fixed_prob
+        if controlODE.inplace
+            fixed_dudt!(du, u, p, t) = controlODE.system(du, u, p, t, precondition; input=:time)
+            fixed_prob = ODEProblem(fixed_dudt!, controlODE.u0, partial_tspan)
+        else
+            fixed_dudt(u, p, t) = controlODE.system(u, p, t, precondition; input=:time)
+            fixed_prob = ODEProblem(fixed_dudt, controlODE.u0, partial_tspan)
+        end
         fixed_sol = solve(fixed_prob, integrator; saveat, sensealg)
 
         # Zygote ignore anything unrelated to loss function
@@ -107,7 +113,7 @@ function preconditioner(
             return sum_squares + regularization
             # return sum_squares / mean_squares + regularization
         end
-        # Zygote.@ignore @infiltrate
+
         optimization = sciml_train(
             precondition_loss, θ, optimizer, adtype; maxiters, allow_f_increases, kwargs...
         )
@@ -161,7 +167,7 @@ function constrained_training(
         #     println(loss)
         #     return false
         # end
-        Zygote.@ignore @infiltrate
+
         result = sciml_train(
             loss, θ, optimizer, adtype; maxiters, allow_f_increases, kwargs...
         )

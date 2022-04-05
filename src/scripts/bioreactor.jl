@@ -39,91 +39,13 @@ function bioreactor(; store_results=false::Bool)
     system = BioReactor()
     controlODE = ControlODE(controller, system, u0, tspan; Δt)
 
-    function infopt_collocation(;
-        u0=controlODE.u0,
-        tspan=controlODE.tspan,
-        num_supports::Integer=length(controlODE.tsteps),
-        nodes_per_element::Integer=4,
-        constrain_states::Bool=false,
+    collocation = bioreactor_collocation(
+        controlODE.u0,
+        controlODE.tspan;
+        num_supports=length(controlODE.tsteps),
+        nodes_per_element=2,
+        constrain_states=false,
     )
-        optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
-        model = InfiniteModel(optimizer)
-        method = OrthogonalCollocation(nodes_per_element)
-        @infinite_parameter(
-            model,
-            t in [tspan[1], tspan[2]],
-            num_supports = num_supports,
-            derivative_method = method
-        )
-
-        @variables(
-            model,
-            begin
-                # state variables
-                x[1:3], Infinite(t)
-                # control variables
-                c[1:2], Infinite(t)
-            end
-        )
-
-        # fixed parameters
-        (; u_m, u_d, K_N, Y_NX, k_m, k_d, k_s, k_i, k_sq, k_iq, K_Np) = BioReactor()
-
-        # initial conditions
-        @constraint(model, [i = 1:3], x[i](0) == u0[i])
-
-        # control range
-        @constraints(
-            model,
-            begin
-                control_ranges[1][1] <= c[1] <= control_ranges[1][2]
-                control_ranges[2][1] <= c[2] <= control_ranges[2][2]
-            end
-        )
-
-        if constrain_states
-            @constraints(
-                model,
-                begin
-                    x[2] <= 150
-                    x[2] <= 800
-                    1.1f-2 * x[1] - x[3] <= 3.0f-2
-                end
-            )
-        end
-
-        # dynamic equations
-        @constraints(
-            model,
-            begin
-                ∂(x[1], t) ==
-                u_m *
-                (c[1] / (c[1] + k_s + c[1]^2.0f0 / k_i)) *
-                x[1] *
-                (x[2] / (x[2] + K_N)) - u_d * x[1]
-                ∂(x[2], t) ==
-                -Y_NX *
-                u_m *
-                (c[1] / (c[1] + k_s + c[1]^2.0f0 / k_i)) *
-                x[1] *
-                (x[2] / (x[2] + K_N)) + c[2]
-                ∂(x[3], t) ==
-                k_m * (c[1] / (c[1] + k_sq + c[1]^2.0f0 / k_iq)) * x[1] -
-                k_d * (x[3] / (x[2] + K_Np))
-            end
-        )
-
-        @objective(model, Max, x[3](tf))
-
-        optimize_infopt!(model)
-
-        times = supports(t)
-        states = hcat(value.(x)...) |> permutedims
-        controls = hcat(value.(c)...) |> permutedims
-        return (; model, times, states, controls)
-    end
-
-    collocation = infopt_collocation()
     reference_controller = interpolant_controller(collocation; plot=false)
 
     θ = preconditioner(
@@ -137,7 +59,7 @@ function bioreactor(; store_results=false::Bool)
     plot_simulation(controlODE, θ; only=:states)
     plot_simulation(controlODE, θ; only=:controls)
     store_simulation("precondition", controlODE, θ; datadir)
-    Zygote.@ignore @infiltrate
+
     function state_penalty_functional(solution_array; δ=1.0f1)
 
         ratio_X_N = 3.0f-2 / 800.0f0
@@ -148,7 +70,7 @@ function bioreactor(; store_results=false::Bool)
             solution_array[3, 1:end],
         )
         C_N_over_last = relaxed_log_barrier(150.0f0 - solution_array[2, end]; δ)
-        # Zygote.@ignore @infiltrate
+
         return sum(controlODE.tsteps.step * (C_N_over .+ C_X_over)[2:end]) + C_N_over_last
     end
 
@@ -184,11 +106,11 @@ function bioreactor(; store_results=false::Bool)
         #     end
         # end
 
-        # regularization = ρ * mean(abs2, θ)  # sum(abs2, θ)
-        regularization = 0.0f0
+        regularization = ρ * mean(abs2, θ)  # sum(abs2, θ)
+        # regularization = 0.0f0
 
         objective = -sol[3, end]  # maximize C_qc
-        # Zygote.@ignore @infiltrate
+
         return objective, state_penalty, control_penalty, regularization
     end
 
@@ -203,9 +125,9 @@ function bioreactor(; store_results=false::Bool)
     # α: penalty coefficient
     # δ: barrier relaxation coefficient
     α0, δ0 = 1.0f-5, 100.0f0
-    barrier_iterations = 0:5
+    barrier_iterations = 0:10
     αs = [α0 for _ in barrier_iterations]
-    δs = [δ0 * 0.8f0^i for i in barrier_iterations]
+    δs = [δ0 * 0.7f0^i for i in barrier_iterations]
     θ = constrained_training(
         controlODE,
         losses;

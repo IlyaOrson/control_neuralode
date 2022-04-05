@@ -98,14 +98,15 @@ export van_der_pol, van_der_pol_direct
 
 # Continuous sensitivity analysis
 # SENSEALG = ForwardDiffSensitivity()
-# SENSEALG = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
-SENSEALG = QuadratureAdjoint(; autojacvec=ZygoteVJP())
+SENSEALG = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
+# SENSEALG = QuadratureAdjoint(; autojacvec=ZygoteVJP())
 # SENSEALG = QuadratureAdjoint(; autojacvec=TrackerVJP())
 # SENSEALG = QuadratureAdjoint(; autojacvec=EnzymeVJP())
 # SENSEALG = InterpolatingAdjoint(; autojacvec=ReverseDiffVJP(), checkpointing=true)
-# @show SENSEALG = InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
+# SENSEALG = InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
 # SENSEALG = InterpolatingAdjoint(; autojacvec=TrackerVJP(), checkpointing=true)
 # SENSEALG = InterpolatingAdjoint(; autojacvec=EnzymeVJP(), checkpointing=true)
+@show SENSEALG
 
 include("auxiliaries.jl")
 include("controlODE.jl")
@@ -125,6 +126,8 @@ include("systems/semibatch_reactor.jl")
 
 # classic collocation
 include("collocation/classic/van_der_pol.jl")
+include("collocation/classic/bioreactor.jl")
+include("collocation/classic/semibatch_reactor.jl")
 
 # neural collocation
 include("collocation/neural/van_der_pol.jl")

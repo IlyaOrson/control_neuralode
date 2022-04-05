@@ -38,22 +38,15 @@ function van_der_pol_collocation(
         begin
             ∂(x[1], t) == (1 - x[2]^2) * x[1] - x[2] + c[1]
             ∂(x[2], t) == x[1]
-            # ∂(x[3], t) == x[1]^2 + x[2]^2 + c[1]^2
         end
     )
 
-    # @objective(model, Min, x[3](tf))
     @objective(model, Min, integral(x[1]^2 + x[2]^2 + c[1]^2, t))
 
     optimize_infopt!(model)
 
     jump_model = optimizer_model(model)
-
     solution_summary(jump_model; verbose=false)
-    # times = supports(t)
-    # states = hcat(value.(x)...) |> permutedims
-    # controls = hcat(value.(c)...) |> permutedims
 
-    # return (; model, times, states, controls)
     return extract_infopt_results(model)
 end

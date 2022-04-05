@@ -23,7 +23,7 @@
     K_Np=16.89f0
 end
 
-function (S::BioReactor)(u, p, t, controller; input=:state)
+function (S::BioReactor)(du, u, p, t, controller; input=:state)
     @argcheck input in (:state, :time)
 
     (; u_m, u_d, K_N, Y_NX, k_m, k_d, k_s, k_i, k_sq, k_iq, K_Np) = S
@@ -49,10 +49,10 @@ function (S::BioReactor)(u, p, t, controller; input=:state)
     dC_qc = k_m * I_kiq * C_X - k_d * Cqc_KNp
 
     # update in-place
-    # @inbounds begin
-    #     du[1] = dC_X
-    #     du[2] = dC_N
-    #     du[3] = dC_qc
-    # end
-    return [dC_X, dC_N, dC_qc]
+    @inbounds begin
+        du[1] = dC_X
+        du[2] = dC_N
+        du[3] = dC_qc
+    end
+    # return [dC_X, dC_N, dC_qc]
 end
