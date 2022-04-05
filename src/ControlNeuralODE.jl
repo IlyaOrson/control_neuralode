@@ -37,7 +37,8 @@ using InfiniteOpt:
     ∂
 using Ipopt: Ipopt
 using Optim: LBFGS, BFGS
-using ApproxFun: Chebyshev, Fun, Interval
+using NonconvexIpopt: IpoptAlg, IpoptOptions
+using ApproxFun: Chebyshev, Fun, Interval  # https://github.com/stevengj/FastChebInterp.jl
 using ForwardDiff: ForwardDiff
 using ReverseDiff: ReverseDiff
 using Zygote: Zygote
@@ -82,7 +83,7 @@ using PyPlot: plt, matplotlib, ColorMap, plot3D, scatter3D
 
 import CommonSolve: solve
 
-export batch_reactor, reference_tracking, bioreactor, semibatch_reactor
+export batch_reactor, bioreactor, semibatch_reactor
 export van_der_pol, van_der_pol_direct
 
 # TODO: mark the variables that work as constants (avoid constants for Revise.jl)
@@ -122,7 +123,6 @@ include("systems/batch_reactor.jl")
 include("systems/van_der_pol.jl")
 include("systems/bioreactor.jl")
 include("systems/semibatch_reactor.jl")
-# include("systems/reference_tracking.jl")
 
 # classic collocation
 include("collocation/classic/van_der_pol.jl")
@@ -138,6 +138,5 @@ include("scripts/van_der_pol.jl")
 include("scripts/van_der_pol_direct.jl")
 include("scripts/bioreactor.jl")
 include("scripts/semibatch_reactor.jl")
-# include("scripts/reference_tracking.jl")
 
 end # module

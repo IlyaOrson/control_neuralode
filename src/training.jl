@@ -8,7 +8,7 @@ function preconditioner(
     control_range_scaling=nothing,
     plot_progress=false,
     plot_final=true,
-    optimizer=NADAM(), #LBFGS(; linesearch=BackTracking()),
+    optimizer=IpoptAlg(), # NADAM(), #LBFGS(; linesearch=BackTracking()),
     maxiters=50,
     allow_f_increases=true,
     integrator=INTEGRATOR,
@@ -138,7 +138,7 @@ function constrained_training(
     plots_callback=nothing,
     datadir=nothing,
     metadata=Dict(),  # metadata is added to this dict always
-    optimizer=NADAM(),  # LBFGS(; linesearch=BackTracking()), NADAM()
+    optimizer=IpoptAlg(), # LBFGS(; linesearch=BackTracking()), NADAM()
     maxiters=100,
     allow_f_increases=true,
     sensealg=SENSEALG,
