@@ -79,19 +79,21 @@ function van_der_pol(; store_results=false::Bool)
         for i in 1:size(sol, 2)
             s = sol[:, i]
             c = controlODE.controller(s, params)
-            sum_squared += s[1]^2 + s[2]^2 + c[1]^2
+            sum_squared += s[1]^2 + s[2]^2 + c[1]^2  # TODO: use relaxed logarithm
         end
         return sum_squared
     end
     loss(params) = loss(controlODE, params)
 
     @info "Training..."
+    optimizer = LBFGS(; linesearch=BackTracking())
+    # optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 3, "tol" => 1e-2, "max_iter"=>20)
     result = sciml_train(
         loss,
         θ,
-        LBFGS(; linesearch=BackTracking());
+        optimizer;
         # cb=plotting_callback,
-        allow_f_increases=true,
+        # allow_f_increases=true,
     )
     θ = result.minimizer
 
@@ -155,12 +157,14 @@ function van_der_pol(; store_results=false::Bool)
         #     show=penalty_loss_(θ),
         # )
 
+        optimizer = LBFGS(; linesearch=BackTracking());
+        # optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 3, "tol" => 1e-2, "max_iter" => 100)
         result = sciml_train(
             penalty_loss_,
             θ,
-            LBFGS(; linesearch=BackTracking(; iterations=20));
-            iterations=50,
-            allow_f_increases=true,
+            optimizer,
+            # iterations=50,
+            # allow_f_increases=true,
             # cb=plotting_callback,
         )
         θ = result.minimizer

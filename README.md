@@ -19,11 +19,11 @@ julia> Pkg.add(url="https://github.com/IlyaOrson/ControlNeuralODE.jl")
 Run the test cases:
 
 ```julia
-julia> using ControlNeuralODE: van_der_pol, bioreactor  # batch_reactor, bioreactor, semibatch_reactor
+julia> using ControlNeuralODE: van_der_pol, bioreactor, batch_reactor, semibatch_reactor
 julia> van_der_pol(store_results=true)
 ```
 
-These will generate terminal plots while the optimization runs and results data in `data/`.
+This will generate plots while the optimization runs and store result data in `data/`.
 
 ## Methodology
 By substituting the control function of the problem by the output of the policy, the
@@ -38,13 +38,12 @@ literature, where it shares the not so great reputation of indirect methods.
 
 Its modern implementation depends crucially on automatic differentiation to avoid the manual
 derivations; one of the features that made the original versions unattractive.
-
 This is where `DiffEqFlux.jl` and similar software shine.
 
 ## Control Vector Iteration
 We consider optimal control problems in the Bolza form, with a running cost and a terminal cost.
 The objective is to minimize this functional cost given a ODE system with initial condition by
-finding an optimal control function.
+finding an optimal control policy.
 
 Following variational calculus, the Euler-Lagrange system of equations define the optimality
 conditions as a set of boundary value problems:

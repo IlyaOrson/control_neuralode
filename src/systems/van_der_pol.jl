@@ -6,7 +6,7 @@
     μ=1f0
 end
 
-function (S::VanDerPol)(du, u, p, t, controller; input=:state)
+function (S::VanDerPol)(u, p, t, controller; input=:state)
     @argcheck input in (:state, :time)
 
     # neural network outputs the controls taken by the system
@@ -23,9 +23,9 @@ function (S::VanDerPol)(du, u, p, t, controller; input=:state)
     x2_prime = x1
 
     # update in-place
-    @inbounds begin
-        du[1] = x1_prime
-        du[2] = x2_prime
-    end
-    # return [x1_prime, x2_prime]
+    # @inbounds begin
+    #     du[1] = x1_prime
+    #     du[2] = x2_prime
+    # end
+    return [x1_prime, x2_prime]
 end

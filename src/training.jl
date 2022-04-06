@@ -8,9 +8,7 @@ function preconditioner(
     control_range_scaling=nothing,
     plot_progress=false,
     plot_final=true,
-    optimizer=IpoptAlg(), # NADAM(), #LBFGS(; linesearch=BackTracking()),
-    maxiters=50,
-    allow_f_increases=true,
+    optimizer=LBFGS(; linesearch=BackTracking()),  # optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 3, "tol" => 1e-1, "max_iter" => 10)
     integrator=INTEGRATOR,
     sensealg=SENSEALG,
     adtype=GalacticOptim.AutoZygote(),
@@ -115,7 +113,7 @@ function preconditioner(
         end
 
         optimization = sciml_train(
-            precondition_loss, θ, optimizer, adtype; maxiters, allow_f_increases, kwargs...
+            precondition_loss, θ, optimizer, adtype; kwargs...
         )
         θ = optimization.minimizer
         pvar = plot_progress ? :unicode : nothing
@@ -138,9 +136,7 @@ function constrained_training(
     plots_callback=nothing,
     datadir=nothing,
     metadata=Dict(),  # metadata is added to this dict always
-    optimizer=IpoptAlg(), # LBFGS(; linesearch=BackTracking()), NADAM()
-    maxiters=100,
-    allow_f_increases=true,
+    optimizer=LBFGS(; linesearch=BackTracking()), # optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 3, "tol" => 1e-2, "max_iter" =>100),
     sensealg=SENSEALG,
     adtype=GalacticOptim.AutoZygote(),
     kwargs...,
@@ -169,7 +165,7 @@ function constrained_training(
         # end
 
         result = sciml_train(
-            loss, θ, optimizer, adtype; maxiters, allow_f_increases, kwargs...
+            loss, θ, optimizer, adtype; kwargs...
         )
 
         # add some noise to avoid local minima

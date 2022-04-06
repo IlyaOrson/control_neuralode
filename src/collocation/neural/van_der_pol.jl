@@ -20,7 +20,7 @@ function van_der_pol_neural_collocation(
         return vector_fun(collect(z))
     end
 
-    optimizer = optimizer_with_attributes(Ipopt.Optimizer)
+    optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 3, "tol" => 1e-2, "max_iter" =>100)
     model = InfiniteModel(optimizer)
     method = OrthogonalCollocation(nodes_per_element)
 

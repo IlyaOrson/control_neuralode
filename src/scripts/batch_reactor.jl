@@ -58,9 +58,9 @@ function batch_reactor(; store_results=false::Bool)
     result = sciml_train(
         loss,
         θ,
-        LBFGS(; linesearch=BackTracking(; iterations=10));
+        LBFGS(; linesearch=BackTracking());
         # iterations=100,
-        allow_f_increases=true,
+        # allow_f_increases=true,
         # cb=plotting_callback,
     )
 

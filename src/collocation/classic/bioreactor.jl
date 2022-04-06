@@ -6,7 +6,7 @@ function bioreactor_collocation(
     constrain_states::Bool=false,
 )
     t0, tf = tspan
-    optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 0)
+    optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 3)
     model = InfiniteModel(optimizer)
     method = OrthogonalCollocation(nodes_per_element)
     @infinite_parameter(

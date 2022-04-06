@@ -37,7 +37,6 @@ using InfiniteOpt:
     ∂
 using Ipopt: Ipopt
 using Optim: LBFGS, BFGS
-using NonconvexIpopt: IpoptAlg, IpoptOptions
 using ApproxFun: Chebyshev, Fun, Interval  # https://github.com/stevengj/FastChebInterp.jl
 using ForwardDiff: ForwardDiff
 using ReverseDiff: ReverseDiff
@@ -99,8 +98,8 @@ export van_der_pol, van_der_pol_direct
 
 # Continuous sensitivity analysis
 # SENSEALG = ForwardDiffSensitivity()
-SENSEALG = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
-# SENSEALG = QuadratureAdjoint(; autojacvec=ZygoteVJP())
+# SENSEALG = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
+SENSEALG = QuadratureAdjoint(; autojacvec=ZygoteVJP())
 # SENSEALG = QuadratureAdjoint(; autojacvec=TrackerVJP())
 # SENSEALG = QuadratureAdjoint(; autojacvec=EnzymeVJP())
 # SENSEALG = InterpolatingAdjoint(; autojacvec=ReverseDiffVJP(), checkpointing=true)
