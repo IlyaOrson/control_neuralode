@@ -130,11 +130,10 @@ function semibatch_reactor(; store_results=false::Bool)
     plt.show()
 
     reference_controller = interpolant_controller(collocation; plot=true)
-    @infiltrate
+
     θ = preconditioner(
         controlODE,
         reference_controller;
-        # control_range_scaling=[range[end] - range[1] for range in control_ranges],
     )
 
     plot_simulation(controlODE, θ; only=:states)

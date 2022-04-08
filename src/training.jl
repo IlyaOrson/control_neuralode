@@ -5,7 +5,6 @@ function preconditioner(
     reg_coeff=1.0f0,
     saveat=(),
     progressbar=true,
-    control_range_scaling=nothing,
     plot_progress=false,
     plot_final=true,
     optimizer=LBFGS(; linesearch=BackTracking()),  # optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 3, "tol" => 1e-1, "max_iter" => 10)
@@ -48,11 +47,7 @@ function preconditioner(
                 reference = precondition(fixed_sol.t[i], nothing)  # precondition(time, params)
                 control = controlODE.controller(state, params)
                 diff_square = (control - reference) .^ 2
-                if !isnothing(control_range_scaling)
-                    diff_square ./ control_range_scaling
-                end
                 sum_squares += sum(diff_square)
-                # mean_squares += mean(diff_square)
                 Zygote.ignore() do
                     if !isnothing(plot)
                         push!(plot_arrays[:reference], reference)
@@ -153,7 +148,7 @@ function constrained_training(
     for (α, δ) in zip(αs, δs)
 
         # closure to comply with optimization interface
-        loss(params) = reduce(+, losses(controlODE, params; α, δ, sensealg, kwargs...))
+        loss(params) = sum(losses(controlODE, params; α, δ, sensealg, kwargs...))
 
         # if !isnothing(plots_callback)
         #     plots_callback(controlODE, θ)
@@ -168,13 +163,13 @@ function constrained_training(
             loss, θ, optimizer, adtype; kwargs...
         )
 
-        # add some noise to avoid local minima
-        θ = result.minimizer +
-            1.0f-1 * std(result.minimizer) * randn(length(result.minimizer))
+        θ = result.minimizer
 
         objective, state_penalty, control_penalty, regularization = losses(
             controlODE, θ; α, δ, kwargs...
         )
+
+        @infiltrate
 
         local_metadata = Dict(
             :objective => objective,
@@ -191,6 +186,9 @@ function constrained_training(
         )
         metadata = merge(metadata, local_metadata)
         store_simulation("delta_$(round(δ, digits=2))", controlODE, θ; metadata, datadir)
+
+        # add some noise to avoid local minima
+        θ += 1f-1 * std(θ) * randn(length(θ))
         next!(
             prog;
             showvalues=[

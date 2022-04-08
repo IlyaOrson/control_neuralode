@@ -50,7 +50,6 @@ function van_der_pol(; store_results=false::Bool)
     θ = preconditioner(
         controlODE,
         reference_controller;
-        #control_range_scaling=[maximum(collcation_results.controls) - minimum(collcation_results.controls)],
     )
 
     plot_simulation(controlODE, θ; only=:controls)

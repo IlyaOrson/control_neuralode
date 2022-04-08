@@ -8,6 +8,7 @@ struct ControlODE{uType<:Real,tType<:Real}
     sensealg::AbstractSensitivityAlgorithm
     prob::AbstractODEProblem
     inplace::Bool
+
     function ControlODE(
         controller,
         system,
