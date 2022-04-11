@@ -99,6 +99,22 @@ function plot_simulation(
     return false  # if return true, then optimization stops
 end
 
+function histogram_weights_per_layer(controller, params)
+    @argcheck length(initial_params(controller)) == length(params)
+    index = 1
+    for i in 1:length(controller.layers)
+        l = controller.layers[i]
+        if typeof(l) <: FastLayer
+            p = initial_params(l)
+            s = length(p)
+            lp = params[index:index + s - 1]
+            h = histogram(lp; title="layer $(i-1)")
+            display(h)
+            index += s
+        end
+    end
+end
+
 function plot_collocation(controls_collocation, interpol, tsteps)
     plt.figure()
     finer_tsteps = range(tsteps[1], tsteps[end]; length=1000)

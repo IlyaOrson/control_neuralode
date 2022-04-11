@@ -57,10 +57,10 @@ function bioreactor(; store_results=false::Bool)
         controlODE,
         reference_controller;
         ## Optim options
-        optimizer=LBFGS(; linesearch=BackTracking()),
-        iterations=100,
-        x_tol=1f-6,
-        f_tol=1f-6,
+        # optimizer=LBFGS(; linesearch=BackTracking()),
+        # iterations=30,
+        # x_tol=1f-2,
+        # f_tol=1f-2,
         # ## Flux options
         # optimizer=NADAM(),
         # maxiters=50,
@@ -127,7 +127,7 @@ function bioreactor(; store_results=false::Bool)
         # regularization = 0.0f0
 
         objective = -sol[3, end]  # maximize C_qc
-        Zygote.@ignore @infiltrate regularization > 1f-1 * (objective + state_penalty)
+        Zygote.@ignore @infiltrate abs(regularization) > 1f1 * (abs(objective) + abs(state_penalty))
         return objective, state_penalty, control_penalty, regularization
     end
 

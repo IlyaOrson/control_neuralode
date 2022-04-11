@@ -54,5 +54,6 @@ function (S::BioReactor)(du, u, p, t, controller; input=:state)
         du[2] = dC_N
         du[3] = dC_qc
     end
+    return nothing
     # return [dC_X, dC_N, dC_qc]
 end

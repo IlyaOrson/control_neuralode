@@ -7,7 +7,10 @@ function preconditioner(
     progressbar=true,
     plot_progress=false,
     plot_final=true,
-    optimizer=LBFGS(; linesearch=BackTracking()),  # optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 3, "tol" => 1e-1, "max_iter" => 10)
+    # optimizer = LBFGS(; linesearch=BackTracking()),
+    optimizer=optimizer_with_attributes(
+        Ipopt.Optimizer, "print_level" => 3, "tol" => 1e-1, "max_iter" => 20
+    ),
     integrator=INTEGRATOR,
     sensealg=SENSEALG,
     adtype=GalacticOptim.AutoZygote(),
@@ -27,7 +30,9 @@ function preconditioner(
 
         local fixed_prob
         if controlODE.inplace
-            fixed_dudt!(du, u, p, t) = controlODE.system(du, u, p, t, precondition; input=:time)
+            function fixed_dudt!(du, u, p, t)
+                return controlODE.system(du, u, p, t, precondition; input=:time)
+            end
             fixed_prob = ODEProblem(fixed_dudt!, controlODE.u0, partial_tspan)
         else
             fixed_dudt(u, p, t) = controlODE.system(u, p, t, precondition; input=:time)
@@ -107,9 +112,7 @@ function preconditioner(
             # return sum_squares / mean_squares + regularization
         end
 
-        optimization = sciml_train(
-            precondition_loss, θ, optimizer, adtype; kwargs...
-        )
+        optimization = sciml_train(precondition_loss, θ, optimizer, adtype; kwargs...)
         θ = optimization.minimizer
         pvar = plot_progress ? :unicode : nothing
         ploss = precondition_loss(θ; plot=pvar)
@@ -159,13 +162,11 @@ function constrained_training(
         #     return false
         # end
 
-        result = sciml_train(
-            loss, θ, optimizer, adtype; kwargs...
-        )
+        result = sciml_train(loss, θ, optimizer, adtype; kwargs...)
 
         θ = result.minimizer
 
-        objective, state_penalty, control_penalty, regularization = losses(
+        @show objective, state_penalty, control_penalty, regularization = losses(
             controlODE, θ; α, δ, kwargs...
         )
 
@@ -188,7 +189,7 @@ function constrained_training(
         store_simulation("delta_$(round(δ, digits=2))", controlODE, θ; metadata, datadir)
 
         # add some noise to avoid local minima
-        θ += 1f-1 * std(θ) * randn(length(θ))
+        θ += 2.0f-1 * std(θ) * randn(length(θ))
         next!(
             prog;
             showvalues=[

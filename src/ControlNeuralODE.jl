@@ -50,7 +50,8 @@ using SciMLBase:
     AbstractSensitivityAlgorithm,
     AbstractODEProblem
 using DiffEqCallbacks: FunctionCallingCallback
-using OrdinaryDiffEq: solve, AutoTsit5, Rodas4P, Rosenbrock23, Tsit5
+using OrdinaryDiffEq:
+    solve, AutoTsit5, Rodas4P, Rosenbrock23, Tsit5, QNDF, FBDF
 using DiffEqSensitivity:
     # discrete forward
     ForwardDiffSensitivity,
@@ -70,8 +71,8 @@ using DiffEqSensitivity:
     ReverseDiffVJP
 using GalacticOptim: GalacticOptim
 # using GalacticOptim: AutoForwardDiff, AutoZygote  # does not precompile
-using DiffEqFlux: FastChain, FastDense, initial_params, sciml_train
-using UnicodePlots: lineplot, lineplot!
+using DiffEqFlux: FastChain, FastDense, initial_params, sciml_train, FastLayer
+using UnicodePlots: lineplot, lineplot!, histogram
 using Serialization: serialize, deserialize
 using JSON3: JSON3
 using CSV: CSV
@@ -86,7 +87,7 @@ export batch_reactor, bioreactor, semibatch_reactor
 export van_der_pol, van_der_pol_direct
 
 # TODO: mark the variables that work as constants (avoid constants for Revise.jl)
-@show INTEGRATOR = AutoTsit5(Rosenbrock23())
+@show INTEGRATOR = Tsit5()
 
 # https://diffeqflux.sciml.ai/stable/ControllingAdjoints/#Choosing-a-sensealg-in-a-Nutshell
 
@@ -98,11 +99,11 @@ export van_der_pol, van_der_pol_direct
 
 # Continuous sensitivity analysis
 # SENSEALG = ForwardDiffSensitivity()
-SENSEALG = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
+# SENSEALG = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
 # SENSEALG = QuadratureAdjoint(; autojacvec=ZygoteVJP())
 # SENSEALG = QuadratureAdjoint(; autojacvec=TrackerVJP())
 # SENSEALG = QuadratureAdjoint(; autojacvec=EnzymeVJP())
-# SENSEALG = InterpolatingAdjoint(; autojacvec=ReverseDiffVJP(), checkpointing=true)
+SENSEALG = InterpolatingAdjoint(; autojacvec=ReverseDiffVJP(), checkpointing=true)
 # SENSEALG = InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
 # SENSEALG = InterpolatingAdjoint(; autojacvec=TrackerVJP(), checkpointing=true)
 # SENSEALG = InterpolatingAdjoint(; autojacvec=EnzymeVJP(), checkpointing=true)

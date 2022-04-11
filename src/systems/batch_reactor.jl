@@ -29,4 +29,5 @@ function (S::BatchReactor)(du, u, p, t, controller; input=:state)
         du[1] = y1_prime
         du[2] = y2_prime
     end
+    return nothing
 end

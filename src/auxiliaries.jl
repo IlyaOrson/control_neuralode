@@ -39,8 +39,8 @@ function controller_shape(controller)
 
     # Flux Layers have fields (:weight, :bias, :σ)
     # FastLayers have fields (:out, :in, :σ, :initial_params, :bias)
-    dims_input = [l.in for l in controller.layers[1:end] if typeof(l) <: FastDense]
-    dims_output = [l.out for l in controller.layers[1:end] if typeof(l) <: FastDense]
+    dims_input = [l.in for l in controller.layers[1:end] if typeof(l) <: FastLayer]
+    dims_output = [l.out for l in controller.layers[1:end] if typeof(l) <: FastLayer]
     return push!(dims_input, pop!(dims_output))
 end
 

@@ -69,5 +69,6 @@ function (S::SemibatchReactor)(du, u, p, t, controller; input=:state)
         du[4] = dT
         du[5] = dVol
     end
+    return nothing
     # return [dCA, dCB, dCC, dT, dVol]
 end

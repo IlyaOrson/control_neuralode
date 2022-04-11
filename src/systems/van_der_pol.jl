@@ -27,5 +27,6 @@ function (S::VanDerPol)(du, u, p, t, controller; input=:state)
         du[1] = x1_prime
         du[2] = x2_prime
     end
+    return nothing
     # return [x1_prime, x2_prime]
 end
