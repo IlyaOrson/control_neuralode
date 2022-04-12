@@ -695,6 +695,12 @@ git-tree-sha1 = "737ee8acccd94e1b1511e08bb55701d68a44c61a"
 uuid = "a75be94c-b780-496d-a8a9-0878b188d577"
 version = "2.5.0"
 
+[[deps.GarishPrint]]
+deps = ["Configurations", "Preferences"]
+git-tree-sha1 = "41136d24cc02c4d7c2b8c8982823fedac66d0a45"
+uuid = "b0ab02a7-8576-43f7-aa76-eaa7c3897c54"
+version = "0.5.1"
+
 [[deps.GeometryBasics]]
 deps = ["EarCut_jll", "IterTools", "LinearAlgebra", "StaticArrays", "StructArrays", "Tables"]
 git-tree-sha1 = "83ea630384a13fc4f002b77690bc0afeb4255ac9"

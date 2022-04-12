@@ -7,7 +7,7 @@ using Dates: now
 using LazyGrids: ndgrid
 using ArgCheck: @argcheck
 using Formatting: format, sprintf1
-using ProgressMeter: Progress, next!
+using ProgressMeter: ProgressMeter, Progress, ProgressUnknown
 using Infiltrator: @infiltrate
 using StaticArrays: SA
 using Statistics: mean, std
@@ -50,8 +50,7 @@ using SciMLBase:
     AbstractSensitivityAlgorithm,
     AbstractODEProblem
 using DiffEqCallbacks: FunctionCallingCallback
-using OrdinaryDiffEq:
-    solve, AutoTsit5, Rodas4P, Rosenbrock23, Tsit5, QNDF, FBDF
+using OrdinaryDiffEq: solve, AutoTsit5, Rodas4P, Rosenbrock23, Tsit5, QNDF, FBDF
 using DiffEqSensitivity:
     # discrete forward
     ForwardDiffSensitivity,

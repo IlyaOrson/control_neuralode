@@ -1,10 +1,10 @@
 function run_simulation(
     controlODE,
     params;
-    noise::Union{Nothing, Real}=nothing,
-    vars::Union{Nothing, AbstractArray{<:Integer}}=nothing,
-    callback::Union{Nothing, DECallback}=nothing,
-    kwargs...
+    noise::Union{Nothing,Real}=nothing,
+    vars::Union{Nothing,AbstractArray{<:Integer}}=nothing,
+    callback::Union{Nothing,DECallback}=nothing,
+    kwargs...,
 )
     if !isnothing(noise) && !isnothing(vars)
         if !isnothing(callback)
@@ -58,8 +58,12 @@ function store_simulation(
     end
 
     if store_policy
-        policy_path = joinpath(datadir, filename * ".jls")
-        open(io -> serialize(io, controlODE.controller), policy_path, "w")
+        policy_path = joinpath(datadir, filename * "_policy.jls")
+        params_path = joinpath(datadir, filename * "_params.jls")
+        # open(io -> serialize(io, controlODE.controller), policy_path, "w")
+
+        serialize(policy_path, controlODE)
+        serialize(params_path, params)
 
         # weights_path = joinpath(datadir, filename * "_nnweights.csv")
         # CSV.write(weights_path, Tables.table(initial_params(controlODE.controller)), writeheader=false)

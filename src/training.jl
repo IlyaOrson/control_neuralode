@@ -7,10 +7,10 @@ function preconditioner(
     progressbar=true,
     plot_progress=false,
     plot_final=true,
-    # optimizer = LBFGS(; linesearch=BackTracking()),
-    optimizer=optimizer_with_attributes(
-        Ipopt.Optimizer, "print_level" => 3, "tol" => 1e-1, "max_iter" => 20
-    ),
+    optimizer=LBFGS(; linesearch=BackTracking()),
+    # optimizer=optimizer_with_attributes(
+    #     Ipopt.Optimizer, "print_level" => 3, "tol" => 1e-1, "max_iter" => 20
+    # ),
     integrator=INTEGRATOR,
     sensealg=SENSEALG,
     adtype=GalacticOptim.AutoZygote(),
@@ -116,7 +116,7 @@ function preconditioner(
         θ = optimization.minimizer
         pvar = plot_progress ? :unicode : nothing
         ploss = precondition_loss(θ; plot=pvar)
-        next!(prog; showvalues=[(:loss, ploss)])
+        ProgressMeter.next!(prog; showvalues=[(:loss, ploss)])
         if partial_time == controlODE.tsteps[end] && plot_final
             precondition_loss(θ; plot=:pyplot)
         end
@@ -126,10 +126,10 @@ end
 
 function constrained_training(
     controlODE,
-    losses;
-    αs,
-    δs,
-    starting_params=initial_params(controlODE.controller),
+    losses,
+    α0,
+    δ0;
+    θ=initial_params(controlODE.controller),
     show_progressbar=false,
     plots_callback=nothing,
     datadir=nothing,
@@ -137,18 +137,27 @@ function constrained_training(
     optimizer=LBFGS(; linesearch=BackTracking()), # optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 3, "tol" => 1e-2, "max_iter" =>100),
     sensealg=SENSEALG,
     adtype=GalacticOptim.AutoZygote(),
+    max_barrier_iterations=10,
+    δ_final=1.0f-1 * δ,
+    loosen_rule=(δ) -> (1.2f0 * δ),
+    tighten_rule=(δ) -> (0.7f0 * δ),
     kwargs...,
 )
-    @argcheck length(αs) == length(δs)
-
     @info "Training with constraints..."
 
-    prog = Progress(
-        length(αs); desc="Fiacco-McCormick barrier iterations", enabled=show_progressbar
+    prog = ProgressUnknown(
+        "Fiacco-McCormick barrier iterations";
+        enabled=show_progressbar,
+        spinner=true,
+        showspeed=true,
     )
 
-    θ = starting_params
-    for (α, δ) in zip(αs, δs)
+    α = α0
+    δ = δ0
+
+    counter = 1
+    while δ > δ_final || counter <= max_barrier_iterations
+        counter += 1
 
         # closure to comply with optimization interface
         loss(params) = sum(losses(controlODE, params; α, δ, sensealg, kwargs...))
@@ -164,33 +173,10 @@ function constrained_training(
 
         result = sciml_train(loss, θ, optimizer, adtype; kwargs...)
 
-        θ = result.minimizer
+        current_losses = losses(controlODE, result.minimizer; α, δ, kwargs...)
+        objective, state_penalty, control_penalty, regularization = current_losses
 
-        @show objective, state_penalty, control_penalty, regularization = losses(
-            controlODE, θ; α, δ, kwargs...
-        )
-
-        @infiltrate
-
-        local_metadata = Dict(
-            :objective => objective,
-            :state_penalty => state_penalty,
-            :control_penalty => control_penalty,
-            :regularization_cost => regularization,
-            :parameters => θ,
-            :count_params => length(initial_params(controlODE.controller)),
-            :layers => controller_shape(controlODE.controller),
-            :penalty_relaxations => δs,
-            :penalty_coefficients => αs,
-            :tspan => controlODE.tspan,
-            :tsteps => controlODE.tsteps,
-        )
-        metadata = merge(metadata, local_metadata)
-        store_simulation("delta_$(round(δ, digits=2))", controlODE, θ; metadata, datadir)
-
-        # add some noise to avoid local minima
-        θ += 2.0f-1 * std(θ) * randn(length(θ))
-        next!(
+        ProgressMeter.next!(
             prog;
             showvalues=[
                 (:α, α),
@@ -201,6 +187,34 @@ function constrained_training(
                 (:regularization, regularization),
             ],
         )
+
+        if any(isinf, current_losses)
+            δ = loosen_rule(δ)
+            continue
+        end
+        δ = tighten_rule(δ)
+        θ = result.minimizer
+
+        local_metadata = Dict(
+            :parameters => θ,
+            :δ => δ,
+            :α => α,
+            :objective => objective,
+            :state_penalty => state_penalty,
+            :control_penalty => control_penalty,
+            :regularization_cost => regularization,
+            :count_params => length(initial_params(controlODE.controller)),
+            :layers => controller_shape(controlODE.controller),
+            :tspan => controlODE.tspan,
+            :tsteps => controlODE.tsteps,
+        )
+        metadata = merge(metadata, local_metadata)
+        store_simulation(
+            "delta_$(round(δ, digits=2))_iter_$counter", controlODE, θ; metadata, datadir
+        )
+
+        # add some noise to avoid local minima
+        θ += 1.0f-1 * std(θ) * randn(length(θ))
     end
-    return θ
+    return θ, δ
 end

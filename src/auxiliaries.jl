@@ -44,6 +44,26 @@ function controller_shape(controller)
     return push!(dims_input, pop!(dims_output))
 end
 
+function compose_layers(controller::FastChain, params, u0, L)
+    @argcheck 1 <= L <= length(controller.layers)
+    @argcheck length(initial_params(controller)) == length(params)
+    index = 1
+    x = u0
+    for i in 1:L
+        layer = controller.layers[i]
+        if typeof(layer) <: FastLayer
+            ip = initial_params(layer)
+            s = length(ip)
+            p = params[index:(index + s - 1)]
+            index += s
+            x = layer(x, p)
+        else
+            x = layer(x, params)
+        end
+    end
+    return x
+end
+
 function scaled_sigmoids(control_ranges)
     return (x, p) -> [
         (control_ranges[i][2] - control_ranges[i][1]) * sigmoid_fast(x[i]) +
@@ -52,7 +72,6 @@ function scaled_sigmoids(control_ranges)
 end
 
 function optimize_infopt!(infopt_model::InfiniteModel)
-
     optimize!(infopt_model)
 
     # list possible termination status: model |> termination_status |> typeof

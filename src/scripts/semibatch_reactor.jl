@@ -164,15 +164,16 @@ function semibatch_reactor(; store_results=false::Bool)
     # α: penalty coefficient
     # δ: barrier relaxation coefficient
     α0, δ0 = 1.0f-5, 1.0f1
-    barrier_iterations = 0:8
-    αs = [α0 for _ in barrier_iterations]
-    δs = [δ0 * 0.8f0^i for i in barrier_iterations]
-    θ = constrained_training(
+    max_barrier_iterations = 12
+    δ_final = 1.0f-1 * δ0
+    θ, δ = constrained_training(
         controlODE,
-        losses;
-        starting_params=θ,
-        αs,
-        δs,
+        losses,
+        α0,
+        δ0;
+        θ,
+        δ_final,
+        max_barrier_iterations,
         show_progressbar=true,
         # plots_callback,
         datadir,
@@ -187,28 +188,6 @@ function semibatch_reactor(; store_results=false::Bool)
     @info "Final controls"
     plot_simulation(controlODE, θ; only=:controls)#  only=:states, vars=[1,2,3])
 
-    @info "Final loss" losses(controlODE, θ; δ=δs[end])
+    @info "Final loss" losses(controlODE, θ; δ, α=α0)
 
-    final_objective, final_state_penalty, final_control_penalty, final_regularization = losses(
-        controlODE, θ; δ=δs[end]
-    )
-
-    return store_simulation(
-        "constrained",
-        controlODE,
-        θ;
-        datadir,
-        metadata=Dict(
-            :objective => final_objective,
-            :state_penalty => final_state_penalty,
-            :cotrol_penalty => final_control_penalty,
-            :regularization => final_regularization,
-            :count_params => length(θ),
-            :layers => controller_shape(controller),
-            :deltas => δs,
-            :t0 => t0,
-            :tf => tf,
-            :Δt => Δt,
-        ),
-    )
 end  # function wrapper

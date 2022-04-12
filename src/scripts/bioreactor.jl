@@ -49,7 +49,7 @@ function bioreactor(; store_results=false::Bool)
         controlODE.tspan;
         num_supports=length(controlODE.tsteps),
         nodes_per_element=2,
-        constrain_states=false,
+        constrain_states=true,  # required...
     )
     reference_controller = interpolant_controller(collocation; plot=false)
 
@@ -57,10 +57,10 @@ function bioreactor(; store_results=false::Bool)
         controlODE,
         reference_controller;
         ## Optim options
-        # optimizer=LBFGS(; linesearch=BackTracking()),
-        # iterations=30,
-        # x_tol=1f-2,
-        # f_tol=1f-2,
+        optimizer=LBFGS(; linesearch=BackTracking()),
+        iterations=30,
+        x_tol=1.0f-2,
+        f_tol=1.0f-2,
         # ## Flux options
         # optimizer=NADAM(),
         # maxiters=50,
@@ -73,7 +73,6 @@ function bioreactor(; store_results=false::Bool)
     store_simulation("precondition", controlODE, θ; datadir)
 
     function state_penalty_functional(solution_array; δ=1.0f1)
-
         ratio_X_N = 3.0f-2 / 800.0f0
         C_N_over = map(y -> relaxed_log_barrier(800.0f0 - y; δ), solution_array[2, 1:end])
         C_X_over = map(
@@ -105,8 +104,10 @@ function bioreactor(; store_results=false::Bool)
         sol_raw = solve(controlODE, params; kwargs...)
         sol = Array(sol_raw)
 
-        if sol_raw.retcode != :Success
-            Zygote.@ignore @infiltrate
+        # https://diffeqflux.sciml.ai/dev/examples/divergence/
+        # if sol_raw.retcode != :Success  # avoid this with Zygote...
+        if sol_raw.t[end] != tf
+            # Zygote.@ignore @infiltrate
             return Inf
         end
 
@@ -127,7 +128,9 @@ function bioreactor(; store_results=false::Bool)
         # regularization = 0.0f0
 
         objective = -sol[3, end]  # maximize C_qc
-        Zygote.@ignore @infiltrate abs(regularization) > 1f1 * (abs(objective) + abs(state_penalty))
+        Zygote.@ignore @infiltrate abs(regularization) > 1.0f2 &&
+            abs(regularization) >
+                                   1.0f1 * (abs(objective) + abs(state_penalty))
         return objective, state_penalty, control_penalty, regularization
     end
 
@@ -142,30 +145,32 @@ function bioreactor(; store_results=false::Bool)
     # α: penalty coefficient
     # δ: barrier relaxation coefficient
     α0, δ0 = 1.0f-5, 100.0f0
-    barrier_iterations = 0:5
-    αs = [α0 for _ in barrier_iterations]
-    δs = [δ0 * 0.7f0^i for i in barrier_iterations]
-    θ = constrained_training(
+    max_barrier_iterations = 20
+    δ_final = 5.0f-2 * δ0
+
+    θ, δ = constrained_training(
         controlODE,
-        losses;
-        αs,
-        δs,
-        starting_params=θ,
+        losses,
+        α0,
+        δ0;
+        θ,
+        δ_final,
+        max_barrier_iterations,
         show_progressbar=true,
         # plots_callback,
         datadir,
         # Optim options
         optimizer=LBFGS(; linesearch=BackTracking()),
         iterations=50,
-        x_tol=1f-3,
-        f_tol=1f-3,
+        x_tol=1.0f-3,
+        f_tol=1.0f-3,
         # ## Flux options
         # optimizer=NADAM(),
         # maxiters=100,
     )
 
     @show objective, state_penalty, control_penalty, regularization = losses(
-        controlODE, θ; δ=δs[end], α=αs[end], tsteps=controlODE.tsteps
+        controlODE, θ; δ, α=α0, tsteps=controlODE.tsteps
     )
 
     @info "Final states"
@@ -180,7 +185,17 @@ function bioreactor(; store_results=false::Bool)
     plot_simulation(controlODE, θ; only=:controls, vars=[1])
     plot_simulation(controlODE, θ; only=:controls, vars=[2])
 
-    @info "Final losses" losses(controlODE, θ; δ=δs[end], α=αs[end], controlODE.tsteps)
+    @info "Final losses" losses(controlODE, θ; δ, α=α0, controlODE.tsteps)
+
+    @info "Collocation comparison"
+    collocation = bioreactor_collocation(
+        controlODE.u0,
+        controlODE.tspan;
+        num_supports=length(controlODE.tsteps),
+        nodes_per_element=2,
+        constrain_states=true,
+    )
+    return reference_controller = interpolant_controller(collocation; plot=true)
 
     # initial conditions and timepoints
     # t0 = 0f0

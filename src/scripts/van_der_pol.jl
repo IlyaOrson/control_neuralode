@@ -167,7 +167,7 @@ function van_der_pol(; store_results=false::Bool)
             # cb=plotting_callback,
         )
         θ = result.minimizer
-        next!(prog; showvalues=[(:α, α), (:loss, penalty_loss_(θ))])
+        ProgressMeter.next!(prog; showvalues=[(:α, α), (:loss, penalty_loss_(θ))])
     end
     θ = result.minimizer
     optimal = result.minimum
