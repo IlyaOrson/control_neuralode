@@ -25,7 +25,7 @@ function preconditioner(
         showspeed=true,
         enabled=progressbar,
     )
-    for partial_time in controlODE.tsteps[2:end]
+    for partial_time in controlODE.tsteps[2:end-1]  # skip spurious ends from collocation
         partial_tspan = (controlODE.tspan[1], partial_time)
 
         local fixed_prob

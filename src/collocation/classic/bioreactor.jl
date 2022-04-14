@@ -1,8 +1,8 @@
 function bioreactor_collocation(
     u0,
     tspan;
-    num_supports::Integer=20,
-    nodes_per_element::Integer=3,
+    num_supports::Integer=25,
+    nodes_per_element::Integer=2,
     constrain_states::Bool=false,
 )
     t0, tf = tspan

@@ -190,11 +190,13 @@ function bioreactor(; store_results=false::Bool)
     collocation = bioreactor_collocation(
         controlODE.u0,
         controlODE.tspan;
-        num_supports=length(controlODE.tsteps),
-        nodes_per_element=2,
+        # num_supports=length(controlODE.tsteps),
+        # nodes_per_element=2,
         constrain_states=true,
     )
-    return reference_controller = interpolant_controller(collocation; plot=true)
+    interpolant_controller(collocation; plot=true)
+
+    # @infiltrate
 
     # initial conditions and timepoints
     # t0 = 0f0
