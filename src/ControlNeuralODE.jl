@@ -37,6 +37,7 @@ using InfiniteOpt:
     ∂
 using Ipopt: Ipopt
 using Optim: LBFGS, BFGS
+using DataInterpolations: LinearInterpolation
 using ApproxFun: Chebyshev, Fun, Interval  # https://github.com/stevengj/FastChebInterp.jl
 using ForwardDiff: ForwardDiff
 using ReverseDiff: ReverseDiff

@@ -160,7 +160,7 @@ function constrained_training(
         counter += 1
 
         # closure to comply with optimization interface
-        loss(params) = sum(losses(controlODE, params; α, δ, sensealg, kwargs...))
+        loss(params) = sum(losses(controlODE, params; α, δ, sensealg))
 
         # if !isnothing(plots_callback)
         #     plots_callback(controlODE, θ)
@@ -173,7 +173,7 @@ function constrained_training(
 
         result = sciml_train(loss, θ, optimizer, adtype; kwargs...)
 
-        current_losses = losses(controlODE, result.minimizer; α, δ, kwargs...)
+        current_losses = losses(controlODE, result.minimizer; α, δ)
         objective, state_penalty, control_penalty, regularization = current_losses
 
         ProgressMeter.next!(

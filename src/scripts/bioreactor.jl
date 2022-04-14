@@ -47,20 +47,19 @@ function bioreactor(; store_results=false::Bool)
     collocation = bioreactor_collocation(
         controlODE.u0,
         controlODE.tspan;
-        num_supports=length(controlODE.tsteps),
-        nodes_per_element=2,
-        constrain_states=true,  # required...
+        constrain_states=true,
     )
-    reference_controller = interpolant_controller(collocation; plot=false)
+
+    reference_controller = interpolant_controller(collocation; plot=true)
 
     θ = preconditioner(
         controlODE,
         reference_controller;
         ## Optim options
         optimizer=LBFGS(; linesearch=BackTracking()),
-        iterations=30,
-        x_tol=1.0f-2,
-        f_tol=1.0f-2,
+        # iterations=100,
+        # x_tol=1.0f-2,
+        # f_tol=1.0f-2,
         # ## Flux options
         # optimizer=NADAM(),
         # maxiters=50,

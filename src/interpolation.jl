@@ -14,17 +14,17 @@ function chebyshev_interpolation(
 end
 
 function interpolant_controller(collocation; plot=true)
-    @info "Solving through collocation..."
 
     num_controls = size(collocation.controls, 1)
 
-    # interpolations = [
-    #     DataInterpolations.LinearInterpolation(collocation.controls[i, :], collocation.times) for i in 1:num_controls
-    # ]
     interpolations = [
-        chebyshev_interpolation(collocation.times, collocation.controls[i, :]) for
-        i in 1:num_controls
+        LinearInterpolation(collocation.controls[i, :], collocation.times) for i in 1:num_controls
+        # CubicSpline(collocation.controls[i, :], collocation.times) for i in 1:num_controls
     ]
+    # interpolations = [
+    #     chebyshev_interpolation(collocation.times, collocation.controls[i, :]) for
+    #     i in 1:num_controls
+    # ]
 
     function control_profile(t, p)
         Zygote.ignore() do

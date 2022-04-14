@@ -1,8 +1,8 @@
 function bioreactor_collocation(
     u0,
     tspan;
-    num_supports::Integer=10,
-    nodes_per_element::Integer=2,
+    num_supports::Integer=20,
+    nodes_per_element::Integer=3,
     constrain_states::Bool=false,
 )
     t0, tf = tspan
@@ -36,8 +36,8 @@ function bioreactor_collocation(
     @constraints(
         model,
         begin
-            120.0f0 <= c[1] <= 400.0f0
-            0.0f0 <= c[2] <= 40.0f0
+            120 <= c[1] <= 400
+            0 <= c[2] <= 40
         end
     )
 
@@ -45,9 +45,9 @@ function bioreactor_collocation(
         @constraints(
             model,
             begin
-                x[2] <= 150
+                x[2](tf - 1e-2) <= 150
                 x[2] <= 800
-                1.1f-2 * x[1] - x[3] <= 3.0f-2
+                1.1e-2 * x[1] - x[3] <= 3.0e-2
             end
         )
     end
@@ -58,17 +58,17 @@ function bioreactor_collocation(
         begin
             ∂(x[1], t) ==
             u_m *
-            (c[1] / (c[1] + k_s + c[1]^2.0f0 / k_i)) *
+            (c[1] / (c[1] + k_s + c[1]^2.0 / k_i)) *
             x[1] *
             (x[2] / (x[2] + K_N)) - u_d * x[1]
             ∂(x[2], t) ==
             -Y_NX *
             u_m *
-            (c[1] / (c[1] + k_s + c[1]^2.0f0 / k_i)) *
+            (c[1] / (c[1] + k_s + c[1]^2.0 / k_i)) *
             x[1] *
             (x[2] / (x[2] + K_N)) + c[2]
             ∂(x[3], t) ==
-            k_m * (c[1] / (c[1] + k_sq + c[1]^2.0f0 / k_iq)) * x[1] -
+            k_m * (c[1] / (c[1] + k_sq + c[1]^2.0 / k_iq)) * x[1] -
             k_d * (x[3] / (x[2] + K_Np))
         end
     )
