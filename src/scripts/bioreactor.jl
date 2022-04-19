@@ -81,7 +81,8 @@ function bioreactor(; store_results=false::Bool)
         )
         C_N_over_last = relaxed_log_barrier(150.0f0 - solution_array[2, end]; δ)
 
-        return sum(controlODE.tsteps.step * (C_N_over .+ C_X_over)[2:end]) + C_N_over_last
+        Δt = Float32(controlODE.tsteps.step)
+        return Δt * sum((C_N_over .+ C_X_over)[2:end]) + C_N_over_last
     end
 
     # state constraints on control change
@@ -123,7 +124,7 @@ function bioreactor(; store_results=false::Bool)
         #     end
         # end
 
-        regularization = ρ * mean(abs2, params)
+        regularization = ρ * sum(abs2, params)
         # regularization = 0.0f0
 
         objective = -sol[3, end]  # maximize C_qc

@@ -1,8 +1,49 @@
+function custom_train!(loss_fun, p, opt; x_tol::Real, f_tol::Real, show_progressbar=true)
+    @argcheck x_tol > zero(x_tol)
+    @argcheck f_tol > zero(f_tol)
+
+    params = copy(p)
+    params_ref = copy(p)
+
+    prog = ProgressUnknown(
+        "Flux adaptive training"; enabled=show_progressbar, spinner=true, showspeed=true
+    )
+    while true
+        # back is a function that computes the gradient
+        loss, back = Zygote.pullback(loss_fun, params)
+
+        # apply back() to the correct type of 1.0 to get the gradient of the loss.
+        gradient = back(one(loss))[1]
+
+        # references
+        copy!(params_ref, params)
+
+        # optimizer opdate (modifies params)
+        Flux.update!(opt, params, gradient)
+
+        # finish metrics
+        x_diff = sum(abs2, params_ref - params)
+        f_diff = abs2(loss - loss_fun(params))
+
+        # display
+        ProgressMeter.next!(
+            prog; showvalues=[(:loss, loss), (:x_diff, x_diff), (:f_diff, f_diff)]
+        )
+
+        if x_diff < x_tol
+            break
+        elseif f_diff < f_tol
+            break
+        end
+    end
+    return params
+end
+
 function preconditioner(
     controlODE,
     precondition;
     θ=initial_params(controlODE.controller),
-    reg_coeff=1.0f0,
+    ρ=1.0f0,
     saveat=(),
     progressbar=true,
     plot_progress=false,
@@ -25,7 +66,7 @@ function preconditioner(
         showspeed=true,
         enabled=progressbar,
     )
-    for partial_time in controlODE.tsteps[2:end-1]  # skip spurious ends from collocation
+    for partial_time in controlODE.tsteps[2:(end - 1)]  # skip spurious ends from collocation
         partial_tspan = (controlODE.tspan[1], partial_time)
 
         local fixed_prob
@@ -107,7 +148,7 @@ function preconditioner(
                     end
                 end
             end
-            regularization = reg_coeff * mean(abs2, params)
+            regularization = ρ * sum(abs2, params)
             return sum_squares + regularization
             # return sum_squares / mean_squares + regularization
         end
@@ -171,8 +212,9 @@ function constrained_training(
         #     return false
         # end
 
+        Zygote.@ignore @infiltrate
         result = sciml_train(loss, θ, optimizer, adtype; kwargs...)
-
+        Zygote.@ignore @infiltrate eltype(result.minimizer) != Float32
         current_losses = losses(controlODE, result.minimizer; α, δ)
         objective, state_penalty, control_penalty, regularization = current_losses
 

@@ -57,9 +57,9 @@ function semibatch_reactor(; store_results=false::Bool)
 
     # set arquitecture of neural network controller
     controller = FastChain(
-        (x, p) -> [1f2x[1], 1f2x[2], 1f2x[3], x[4], x[5]],
-        FastDense(5, 12, tanh_fast),
-        FastDense(12, 12, tanh_fast),
+        (x, p) -> [x[1], x[2], x[3], x[4] / 1f2, x[5] / 1f2],
+        FastDense(5, 12, tanh),
+        FastDense(12, 12, tanh),
         FastDense(12, 2),
         # (x, p) -> [240f0, 298f0],
         scaled_sigmoids(control_ranges),
@@ -141,10 +141,18 @@ function semibatch_reactor(; store_results=false::Bool)
     store_simulation("precondition", controlODE, θ; datadir)
 
     # objective function splitted componenets to optimize
-    function losses(controlODE, params; α=1.0f-3, δ=1.0f1, ρ=1.0f-2, kwargs...)
+    function losses(controlODE, params; α=1.0f-3, δ=1.0f1, ρ=1.0f0, kwargs...)
 
         # integrate ODE system
-        sol_array = Array(solve(controlODE, params; kwargs...))
+        sol_raw = solve(controlODE, params; kwargs...)
+        sol_array = Array(sol_raw)
+
+        # https://diffeqflux.sciml.ai/dev/examples/divergence/
+        # if sol_raw.retcode != :Success  # avoid this with Zygote...
+        Zygote.@ignore @infiltrate sol_raw.retcode != :Success
+        Zygote.@ignore if sol_raw.t[end] != tf
+            return Inf
+        end
 
         # running cost
         out_temp = map(x -> relaxed_log_barrier(T_up - x; δ), sol_array[4, 1:end])
@@ -155,9 +163,10 @@ function semibatch_reactor(; store_results=false::Bool)
         objective = -sol_array[2, end]
 
         # integral penalty
+        Δt = Float32(controlODE.tsteps.step)
         state_penalty = α * Δt * (sum(out_temp) + sum(out_vols))
         control_penalty = 0.0f0
-        regularization = ρ * mean(abs2, θ)
+        regularization = ρ * sum(abs2, params)
         return objective, state_penalty, control_penalty, regularization
     end
 
@@ -177,6 +186,14 @@ function semibatch_reactor(; store_results=false::Bool)
         show_progressbar=true,
         # plots_callback,
         datadir,
+        # Optim options
+        # optimizer=LBFGS(; linesearch=BackTracking()),
+        # iterations=50,
+        # x_tol=1.0f-3,
+        # f_tol=1.0f-3,
+        # ## Flux options
+        optimizer=NADAM(),
+        maxiters=50,
     )
 
     @info "Final states"

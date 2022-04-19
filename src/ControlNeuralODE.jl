@@ -42,7 +42,7 @@ using ApproxFun: Chebyshev, Fun, Interval  # https://github.com/stevengj/FastChe
 using ForwardDiff: ForwardDiff
 using ReverseDiff: ReverseDiff
 using Zygote: Zygote
-using Flux: glorot_uniform, ADAM, NADAM, sigmoid_fast, tanh_fast
+using Flux: Flux, glorot_uniform, sigmoid_fast, tanh_fast, ADAM, NADAM
 using SciMLBase:
     ODEProblem,
     DECallback,
@@ -99,11 +99,11 @@ export van_der_pol, van_der_pol_direct
 
 # Continuous sensitivity analysis
 # SENSEALG = ForwardDiffSensitivity()
-# SENSEALG = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
+SENSEALG = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
 # SENSEALG = QuadratureAdjoint(; autojacvec=ZygoteVJP())
 # SENSEALG = QuadratureAdjoint(; autojacvec=TrackerVJP())
 # SENSEALG = QuadratureAdjoint(; autojacvec=EnzymeVJP())
-SENSEALG = InterpolatingAdjoint(; autojacvec=ReverseDiffVJP(), checkpointing=true)
+# SENSEALG = InterpolatingAdjoint(; autojacvec=ReverseDiffVJP(), checkpointing=true)
 # SENSEALG = InterpolatingAdjoint(; autojacvec=ZygoteVJP(), checkpointing=true)
 # SENSEALG = InterpolatingAdjoint(; autojacvec=TrackerVJP(), checkpointing=true)
 # SENSEALG = InterpolatingAdjoint(; autojacvec=EnzymeVJP(), checkpointing=true)

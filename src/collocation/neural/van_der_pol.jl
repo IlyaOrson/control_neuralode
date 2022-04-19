@@ -1,5 +1,5 @@
 function van_der_pol_neural_collocation(
-    u0, tspan, layer_sizes, activations; nodes_per_element::Integer=2, time_supports::Integer=10
+    u0, tspan, layer_sizes, activations; nodes_per_element::Integer=2, time_supports::Integer=10,
 )
     @argcheck length(layer_sizes) == length(activations)
 
