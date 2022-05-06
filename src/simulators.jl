@@ -48,9 +48,9 @@ function store_simulation(
     filename::Union{Nothing,String},
     controlODE::ControlODE,
     params::AbstractVector{<:Real};
-    metadata=nothing::Union{Nothing,Dict},
-    datadir=nothing::Union{Nothing,String},
-    store_policy=true::Bool,
+    metadata::Union{Nothing,Dict}=nothing,
+    datadir::Union{Nothing,String}=nothing,
+    store_policy::Bool=true,
 )
     if isnothing(datadir) || isnothing(filename)
         @info "Results not stored due to missing filename/datadir." maxlog = 1

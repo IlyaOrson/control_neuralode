@@ -6,7 +6,7 @@
 # Example 13–5 Multiple Reactions in a Semibatch Reactor
 # p. 658
 
-function semibatch_reactor(; store_results=false::Bool)
+function semibatch_reactor(; store_results::Bool=false)
     datadir = nothing
     if store_results
         datadir = generate_data_subdir(@__FILE__)
@@ -58,9 +58,10 @@ function semibatch_reactor(; store_results=false::Bool)
     # set arquitecture of neural network controller
     controller = FastChain(
         (x, p) -> [x[1], x[2], x[3], x[4] / 1f2, x[5] / 1f2],
-        FastDense(5, 12, tanh),
-        FastDense(12, 12, tanh),
-        FastDense(12, 2),
+        FastDense(5, 32, tanh),
+        FastDense(32, 32, tanh),
+        FastDense(32, 32, tanh),
+        FastDense(32, 2),
         # (x, p) -> [240f0, 298f0],
         scaled_sigmoids(control_ranges),
     )
@@ -73,75 +74,76 @@ function semibatch_reactor(; store_results=false::Bool)
         nodes_per_element=2,
         constrain_states=false,
     )
-    collocation_constrained = semibatch_reactor_collocation(
-        controlODE.u0,
-        controlODE.tspan;
-        num_supports=length(controlODE.tsteps),
-        constrain_states=true,
-        nodes_per_element=2
-    )
+    # collocation_constrained = semibatch_reactor_collocation(
+    #     controlODE.u0,
+    #     controlODE.tspan;
+    #     num_supports=length(controlODE.tsteps),
+    #     constrain_states=true,
+    #     nodes_per_element=2
+    # )
 
+    # plt.figure()
+    # plt.plot(collocation.times, collocation.states[1, :]; label="s1")
+    # plt.plot(collocation.times, collocation.states[2, :]; label="s2")
+    # plt.plot(collocation.times, collocation.states[3, :]; label="s3")
+    # plt.plot(
+    #     collocation.times, collocation_constrained.states[1, :];
+    #     label="s1_constrained", color=plt.gca().lines[1].get_color(), ls="dashdot"
+    # )
+    # plt.plot(
+    #     collocation.times, collocation_constrained.states[2, :];
+    #     label="s2_constrained", color=plt.gca().lines[2].get_color(), ls="dashdot"
+    # )
+    # plt.plot(
+    #     collocation.times, collocation_constrained.states[3, :];
+    #     label="s3_constrained", color=plt.gca().lines[3].get_color(), ls="dashdot"
+    # )
+    # plt.legend()
+    # plt.show()
 
-    plt.figure()
-    plt.plot(collocation.times, collocation.states[1, :]; label="s1")
-    plt.plot(collocation.times, collocation.states[2, :]; label="s2")
-    plt.plot(collocation.times, collocation.states[3, :]; label="s3")
-    plt.plot(
-        collocation.times, collocation_constrained.states[1, :];
-        label="s1_constrained", color=plt.gca().lines[1].get_color(), ls="dashdot"
-    )
-    plt.plot(
-        collocation.times, collocation_constrained.states[2, :];
-        label="s2_constrained", color=plt.gca().lines[2].get_color(), ls="dashdot"
-    )
-    plt.plot(
-        collocation.times, collocation_constrained.states[3, :];
-        label="s3_constrained", color=plt.gca().lines[3].get_color(), ls="dashdot"
-    )
-    plt.legend()
-    plt.show()
+    # plt.figure()
+    # plt.plot(collocation.times, collocation.states[4, :]; label="s4")
+    # plt.plot(collocation.times, collocation.states[5, :]; label="s5")
+    # plt.plot(
+    #     collocation.times, collocation_constrained.states[4, :];
+    #     label="s4_constrained", color=plt.gca().lines[1].get_color(), ls="dashdot"
+    # )
+    # plt.plot(
+    #     collocation.times, collocation_constrained.states[5, :];
+    #     label="s5_constrained", color=plt.gca().lines[2].get_color(), ls="dashdot"
+    # )
+    # plt.legend()
+    # plt.show()
 
-    plt.figure()
-    plt.plot(collocation.times, collocation.states[4, :]; label="s4")
-    plt.plot(collocation.times, collocation.states[5, :]; label="s5")
-    plt.plot(
-        collocation.times, collocation_constrained.states[4, :];
-        label="s4_constrained", color=plt.gca().lines[1].get_color(), ls="dashdot"
-    )
-    plt.plot(
-        collocation.times, collocation_constrained.states[5, :];
-        label="s5_constrained", color=plt.gca().lines[2].get_color(), ls="dashdot"
-    )
-    plt.legend()
-    plt.show()
+    # plt.figure()
+    # plt.plot(collocation.times, collocation.controls[1, :]; label="c1")
+    # plt.plot(collocation.times, collocation.controls[2, :]; label="c2")
+    # plt.plot(
+    #     collocation.times, collocation_constrained.controls[1, :];
+    #     label="c1_constrained", color=plt.gca().lines[1].get_color(), ls="dashdot"
+    # )
+    # plt.plot(
+    #     collocation.times, collocation_constrained.controls[2, :];
+    #     label="c2_constrained", color=plt.gca().lines[2].get_color(), ls="dashdot"
+    # )
+    # plt.legend()
+    # plt.show()
 
-    plt.figure()
-    plt.plot(collocation.times, collocation.controls[1, :]; label="c1")
-    plt.plot(collocation.times, collocation.controls[2, :]; label="c2")
-    plt.plot(
-        collocation.times, collocation_constrained.controls[1, :];
-        label="c1_constrained", color=plt.gca().lines[1].get_color(), ls="dashdot"
-    )
-    plt.plot(
-        collocation.times, collocation_constrained.controls[2, :];
-        label="c2_constrained", color=plt.gca().lines[2].get_color(), ls="dashdot"
-    )
-    plt.legend()
-    plt.show()
-
-    reference_controller = interpolant_controller(collocation; plot=true)
+    reference_controller = interpolant_controller(collocation; plot=false)
 
     θ = preconditioner(
         controlODE,
         reference_controller;
+        x_tol=nothing,
+        f_tol=1.0f-3,
+        maxiters=2_000,
     )
-
     plot_simulation(controlODE, θ; only=:states)
     plot_simulation(controlODE, θ; only=:controls)
     store_simulation("precondition", controlODE, θ; datadir)
 
     # objective function splitted componenets to optimize
-    function losses(controlODE, params; α=1.0f-3, δ=1.0f1, ρ=1.0f0, kwargs...)
+    function losses(controlODE, params; α, δ, ρ, kwargs...)
 
         # integrate ODE system
         sol_raw = solve(controlODE, params; kwargs...)
@@ -167,33 +169,37 @@ function semibatch_reactor(; store_results=false::Bool)
         state_penalty = α * Δt * (sum(out_temp) + sum(out_vols))
         control_penalty = 0.0f0
         regularization = ρ * sum(abs2, params)
-        return objective, state_penalty, control_penalty, regularization
+        return (; objective, state_penalty, control_penalty, regularization)
     end
 
     # α: penalty coefficient
+    # ρ: regularization coefficient
     # δ: barrier relaxation coefficient
-    α0, δ0 = 1.0f-5, 1.0f1
-    max_barrier_iterations = 12
-    δ_final = 1.0f-1 * δ0
+    α = 1f-3
+    ρ = 1f-3
+    δ0 = 1f1
+    max_barrier_iterations = 25
+    δ_final = 5f-2 * δ0
     θ, δ = constrained_training(
         controlODE,
         losses,
-        α0,
         δ0;
         θ,
         δ_final,
         max_barrier_iterations,
+        α,
+        ρ,
         show_progressbar=true,
-        # plots_callback,
         datadir,
+        # plots_callback,
         # Optim options
-        # optimizer=LBFGS(; linesearch=BackTracking()),
+        optimizer=LBFGS(; linesearch=BackTracking()),
         # iterations=50,
-        # x_tol=1.0f-3,
-        # f_tol=1.0f-3,
         # ## Flux options
-        optimizer=NADAM(),
-        maxiters=50,
+        # optimizer=Optimiser(WeightDecay(1f-3), ADAM(1f-1)),
+        # x_tol=1.0f-8,
+        # f_tol=1.0f-5,
+        # maxiters=1_000,
     )
 
     @info "Final states"
@@ -205,6 +211,6 @@ function semibatch_reactor(; store_results=false::Bool)
     @info "Final controls"
     plot_simulation(controlODE, θ; only=:controls)#  only=:states, vars=[1,2,3])
 
-    @info "Final loss" losses(controlODE, θ; δ, α=α0)
+    @info "Final loss" losses(controlODE, θ; δ, α, ρ)
 
 end  # function wrapper

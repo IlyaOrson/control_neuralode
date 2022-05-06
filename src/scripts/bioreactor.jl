@@ -9,7 +9,7 @@
 # C_N(t) − 800 ≤ 0              ∀t
 # 0.011 C_X(t) - C_qc(t) ≤ 3f-2 ∀t
 
-function bioreactor(; store_results=false::Bool)
+function bioreactor(; store_results::Bool=false)
     datadir = nothing
     if store_results
         datadir = generate_data_subdir(@__FILE__)
@@ -28,9 +28,10 @@ function bioreactor(; store_results=false::Bool)
     # weights initializer reference https://pytorch.org/docs/stable/nn.init.html
     controller = FastChain(
         (x, p) -> [x[1], x[2] / 100.0f0, x[3] * 10.0f0],  # input scaling
-        FastDense(3, 12, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
-        FastDense(12, 12, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
-        FastDense(12, 2; initW=(x, y) -> glorot_uniform(x, y)),
+        FastDense(3, 64, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
+        FastDense(64, 64, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
+        # FastDense(64, 64, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
+        FastDense(64, 2; initW=(x, y) -> glorot_uniform(x, y)),
         # I ∈ [120, 400] & F ∈ [0, 40] in Bradford 2020
         # (x, p) -> [280f0 * sigmoid(x[1]) + 120f0, 40f0 * sigmoid(x[2])],
         scaled_sigmoids(control_ranges),
@@ -38,37 +39,41 @@ function bioreactor(; store_results=false::Bool)
 
     system = BioReactor()
     controlODE = ControlODE(controller, system, u0, tspan; Δt)
-    # @infiltrate
-    # sensealg = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
-    # @time Zygote.gradient(p -> solve(controlODE, p; sensealg=sensealg).u[end][3], initial_params(controller))
-    # y, back =  Zygote._pullback(p -> solve(controlODE, p; sensealg=sensealg).u[end][3], initial_params(controller))
-    # grad = back(1f0)
-    # return
+
+    function plot_state_constraints(θ)
+        plot_simulation(controlODE, θ; only=:states, vars=[2], yrefs=[800, 150])
+        plot_simulation(controlODE, θ; only=:states, vars=[3])
+        plot_simulation(
+            controlODE, θ; only=:states, fun=(x, y, z) -> 1.1f-2x - z, yrefs=[3.0f-2]
+        )
+    end
+
     collocation = bioreactor_collocation(
         controlODE.u0,
         controlODE.tspan;
-        constrain_states=true,
+        constrain_states=false,
     )
 
-    reference_controller = interpolant_controller(collocation; plot=true)
+    reference_controller = interpolant_controller(collocation; plot=false)
 
     θ = preconditioner(
         controlODE,
         reference_controller;
         ## Optim options
-        optimizer=LBFGS(; linesearch=BackTracking()),
+        # optimizer=LBFGS(; linesearch=BackTracking()),
         # iterations=100,
         # x_tol=1.0f-2,
         # f_tol=1.0f-2,
         # ## Flux options
-        # optimizer=NADAM(),
+        optimizer=ADAM(),
         # maxiters=50,
     )
 
     # θ = initial_params(controlODE.controller)
 
-    plot_simulation(controlODE, θ; only=:states)
-    plot_simulation(controlODE, θ; only=:controls)
+    plot_state_constraints(θ)
+    plot_simulation(controlODE, θ; only=:controls, vars=[1])
+    plot_simulation(controlODE, θ; only=:controls, vars=[2])
     store_simulation("precondition", controlODE, θ; datadir)
 
     function state_penalty_functional(solution_array; δ=1.0f1)
@@ -92,11 +97,10 @@ function bioreactor(; store_results=false::Bool)
     function losses(
         controlODE,
         params;
-        δ=1.0f2,
-        α=1.0f-5,
+        α,
+        δ,
         # μ=(3.125f-8, 3.125f-6),
-        ρ=1.0f-1,
-        tsteps=(),
+        ρ,
         kwargs...,
     )
 
@@ -144,48 +148,47 @@ function bioreactor(; store_results=false::Bool)
 
     # α: penalty coefficient
     # δ: barrier relaxation coefficient
-    α0, δ0 = 1.0f-5, 100.0f0
-    max_barrier_iterations = 20
-    δ_final = 5.0f-2 * δ0
+    α = 1f-3
+    ρ = 1f-3
+    δ0 = 1f2
+    max_barrier_iterations = 100
+    δ_final = 1f-2 * δ0
 
     θ, δ = constrained_training(
         controlODE,
         losses,
-        α0,
         δ0;
         θ,
         δ_final,
         max_barrier_iterations,
+        α,
+        ρ,
         show_progressbar=true,
-        # plots_callback,
         datadir,
+        # plots_callback,
         # Optim options
         optimizer=LBFGS(; linesearch=BackTracking()),
-        iterations=50,
-        x_tol=1.0f-3,
-        f_tol=1.0f-3,
+        # iterations=50,
         # ## Flux options
-        # optimizer=NADAM(),
+        # optimizer=ADAM(),
+        # x_tol=1.0f-6,
+        # f_tol=1.0f-2,
         # maxiters=100,
     )
 
-    @show objective, state_penalty, control_penalty, regularization = losses(
-        controlODE, θ; δ, α=α0, tsteps=controlODE.tsteps
+    objective, state_penalty, control_penalty, regularization = losses(
+        controlODE, θ; δ, α, ρ, tsteps=controlODE.tsteps
     )
 
     @info "Final states"
     # plot_simulation(controlODE, θ; only=:states, vars=[1], show=final_values)
-    plot_simulation(controlODE, θ; only=:states, vars=[2], yrefs=[800, 150])
-    plot_simulation(controlODE, θ; only=:states, vars=[3])
-    plot_simulation(
-        controlODE, θ; only=:states, fun=(x, y, z) -> 1.1f-2x - z, yrefs=[3.0f-2]
-    )
+    plot_state_constraints(θ)
 
     @info "Final controls"
     plot_simulation(controlODE, θ; only=:controls, vars=[1])
     plot_simulation(controlODE, θ; only=:controls, vars=[2])
 
-    @info "Final losses" losses(controlODE, θ; δ, α=α0, controlODE.tsteps)
+    @info "Final losses" losses(controlODE, θ; δ, α, ρ, controlODE.tsteps)
 
     @info "Collocation comparison"
     collocation = bioreactor_collocation(

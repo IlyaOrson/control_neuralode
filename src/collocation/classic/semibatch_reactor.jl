@@ -6,7 +6,8 @@ function semibatch_reactor_collocation(
     constrain_states::Bool=false,
 )
     optimizer = optimizer_with_attributes(
-        Ipopt.Optimizer, "print_level" => 3,
+        Ipopt.Optimizer,
+        "print_level" => 2,
     )
     model = InfiniteModel(optimizer)
     method = OrthogonalCollocation(nodes_per_element)

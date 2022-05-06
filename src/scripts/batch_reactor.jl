@@ -1,4 +1,4 @@
-function batch_reactor(; store_results=false::Bool)
+function batch_reactor(; store_results::Bool=false)
     datadir = nothing
     if store_results
         datadir = generate_data_subdir(@__FILE__)

@@ -72,7 +72,7 @@ function scaled_sigmoids(control_ranges)
 end
 
 function optimize_infopt!(infopt_model::InfiniteModel)
-    optimize!(infopt_model)
+    InfiniteOpt.optimize!(infopt_model)
 
     # list possible termination status: model |> termination_status |> typeof
     jump_model = optimizer_model(infopt_model)
@@ -87,8 +87,8 @@ function optimize_infopt!(infopt_model::InfiniteModel)
     return infopt_model
 end
 
+# TODO: save explicit model https://jump.dev/JuMP.jl/stable/manual/models/
 function extract_infopt_results(model; time=:t, state=:x, control=:c, param=:p)
-    # TODO: could be more general
     @argcheck has_values(model)
 
     model_keys = keys(model.obj_dict)

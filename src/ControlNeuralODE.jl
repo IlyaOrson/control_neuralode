@@ -13,6 +13,7 @@ using StaticArrays: SA
 using Statistics: mean, std
 using LineSearches: BackTracking
 using InfiniteOpt:
+    InfiniteOpt,
     Infinite,
     InfiniteModel,
     OrthogonalCollocation,
@@ -26,7 +27,6 @@ using InfiniteOpt:
     set_start_value_function,
     optimizer_with_attributes,
     optimizer_model,
-    optimize!,
     solution_summary,
     raw_status,
     termination_status,
@@ -36,13 +36,13 @@ using InfiniteOpt:
     value,
     ∂
 using Ipopt: Ipopt
-using Optim: LBFGS, BFGS
+using Optim: Optim, LBFGS, BFGS
 using DataInterpolations: LinearInterpolation
 using ApproxFun: Chebyshev, Fun, Interval  # https://github.com/stevengj/FastChebInterp.jl
 using ForwardDiff: ForwardDiff
 using ReverseDiff: ReverseDiff
-using Zygote: Zygote
-using Flux: Flux, glorot_uniform, sigmoid_fast, tanh_fast, ADAM, NADAM
+using Zygote: Zygote, pullback
+using Flux: Flux, glorot_uniform, sigmoid_fast, tanh_fast, ADAM, Optimiser, WeightDecay
 using SciMLBase:
     ODEProblem,
     DECallback,

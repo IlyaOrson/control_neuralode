@@ -2,7 +2,7 @@
 # Solution of a Class of Multistage Dynamic Optimization Problems. 2. Problems with Path Constraints.
 # Industrial & Engineering Chemistry Research, 33(9), 2123–2133. https://doi.org/10.1021/ie00033a015
 
-function van_der_pol(; store_results=false::Bool)
+function van_der_pol(; store_results::Bool=false)
     datadir = nothing
     if store_results
         datadir = generate_data_subdir(@__FILE__)

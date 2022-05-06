@@ -99,7 +99,7 @@ function plot_simulation(
     return false  # if return true, then optimization stops
 end
 
-function histogram_weights_per_layer(controller, params)
+function histogram_weights_per_layer(controller::FastChain, params)
     @argcheck length(initial_params(controller)) == length(params)
     index = 1
     for i in 1:length(controller.layers)
@@ -113,6 +113,9 @@ function histogram_weights_per_layer(controller, params)
             index += s
         end
     end
+end
+function histogram_weights_per_layer(controlODE::ControlODE, params)
+    histogram_weights_per_layer(controlODE.controller, params)
 end
 
 function plot_collocation(controls_collocation, interpol, tsteps)
