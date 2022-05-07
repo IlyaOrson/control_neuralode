@@ -17,7 +17,7 @@ function custom_train!(
     params_ref = copy(p)
 
     prog = ProgressUnknown(
-        "Flux adaptive training. (f_tol=$f_tol, x_tol=$x_tol, maxiters=$maxiters)";
+        "Flux adaptive training. (x_tol=$x_tol, f_tol=$f_tol, g_tol=$g_tol, maxiters=$maxiters)";
         enabled=show_progressbar,
         spinner=true,
         showspeed=true,
@@ -48,11 +48,18 @@ function custom_train!(
         # finish metrics
         x_diff = sum(abs2, params_ref - params)
         f_diff = abs2(loss - loss_fun(params))
+        g_diff = sum(abs2, gradient - Zygote.gradient(loss_fun, params_ref)[1])
 
         # display
         ProgressMeter.next!(
             prog;
-            showvalues=[(:iter, iter), (:loss, loss), (:x_diff, x_diff), (:f_diff, f_diff)],
+            showvalues=[
+                (:iter, iter),
+                (:loss, loss),
+                (:x_diff, x_diff),
+                (:f_diff, f_diff),
+                (:g_diff, g_diff),
+            ],
         )
 
         if !isnothing(x_tol) && x_diff < x_tol
@@ -61,7 +68,9 @@ function custom_train!(
         elseif !isnothing(f_tol) && f_diff < f_tol
             @info "Objective threshold reached: $f_diff < $f_tol tolerance"
             return params
-        elseif !isnothing(g_tol)
+        elseif !isnothing(g_tol) && g_diff < g_tol
+            @info "Gradient threshold reached: $g_diff < $g_tol tolerance"
+            return params
         elseif iter > maxiters
             @info "Iteration bound reached: $iter > $maxiters tolerance"
             return params
@@ -80,16 +89,9 @@ function preconditioner(
     plot_progress=false,
     plot_final=true,
     # Flux
-    optimizer=Optimiser(WeightDecay(1f-4), ADAM(1f-2)),
-    # SciML
+    optimizer=Optimiser(WeightDecay(1f-2), ADAM(1f-2)),
+    # Optim
     # optimizer=LBFGS(; linesearch=BackTracking()),
-    # optimizer=optimizer_with_attributes(
-    #     Ipopt.Optimizer,
-    #     "print_level" => 3,
-    #     "tol" => 1e-1,
-    #     "max_iter" => 20,
-    # ),
-    # adtype=GalacticOptim.AutoZygote(),
     integrator=INTEGRATOR,
     sensealg=SENSEALG,
     kwargs...,
@@ -216,12 +218,9 @@ function constrained_training(
     θ=initial_params(controlODE.controller),
     optimizer,
     # Flux
-    # optimizer=Optimiser(WeightDecay(1f-4), ADAM(1f-2)),
+    # optimizer=Optimiser(WeightDecay(1f-2), ADAM(1f-2)),
     # Optim
     # optimizer=LBFGS(; linesearch=BackTracking()),
-    # SciML
-    # optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 3, "tol" => 1e-2, "max_iter" =>100),
-    # adtype=GalacticOptim.AutoZygote(),
     sensealg=SENSEALG,
     max_barrier_iterations=50,
     δ_final=1.0f-1 * δ0,
@@ -256,6 +255,10 @@ function constrained_training(
         grad(params) = Zygote.gradient(loss, params)[1]
         # grad!(G, params) = G .= Zygote.gradient(loss, params)[1]
 
+        # TODO: test well-stablished optimizers
+        # https://github.com/jump-dev/Ipopt.jl/blob/master/test/C_wrapper.jl
+        # https://github.com/Gnimuc/LBFGSB.jl
+
         # Optim
         # https://julianlsolvers.github.io/Optim.jl/stable/#user/config/
         options = Optim.Options(store_trace=true, show_trace=true, extended_trace=false, kwargs...)
@@ -276,10 +279,10 @@ function constrained_training(
             (:δ, δ),
             (:objective, objective),
             (:state_penalty, state_penalty),
-            # (:control_penalty, control_penalty),
+            (:control_penalty, control_penalty),
             (:regularization, regularization),
         ]
-        @info "Fiacco-McCormick barrier iterations" current_values
+        @debug "Fiacco-McCormick barrier iterations" current_values
         ProgressMeter.next!(
             prog;
             showvalues=current_values,
@@ -310,18 +313,18 @@ function constrained_training(
         if any(isinf, current_losses) || state_penalty_ratio > state_penalty_ratio_limit
             δ = loosen_rule(δ)
             push!(δ_progression, δ)
-            Zygote.@ignore @infiltrate
+            # Zygote.@ignore @infiltrate
             continue
         end
         δ = tighten_rule(δ)
         push!(δ_progression, δ)
 
-        Zygote.@ignore @infiltrate counter % 10 == 0
+        # Zygote.@ignore @infiltrate counter % 10 == 0
         θ = minimizer
 
         # add some noise to avoid local minima
         # θ += 1.0f-1 * std(θ) * randn(Float32, length(θ))
     end
-    Zygote.@ignore @infiltrate
+    # Zygote.@ignore @infiltrate
     return θ, δ
 end

@@ -8,8 +8,8 @@ function quadratic_relaxation(z, δ)
 end
 exponential_relaxation(z, δ) = exp(one(typeof(z)) - z / δ) - one(typeof(z)) - log(δ)
 function relaxed_log_barrier(z; δ=0.3f0)
-    return max(z > δ ? -log(z) : exponential_relaxation(z, δ), zero(typeof(z)))
-    # return z > δ ? -log(z) : exponential_relaxation(z, δ)
+    # return max(z > δ ? -log(z) : exponential_relaxation(z, δ), zero(typeof(z)))
+    return z > δ ? -log(z) : exponential_relaxation(z, δ)
 end
 function relaxed_log_barrier(z, lower, upper; δ=(upper - lower) / convert(typeof(z), 2))
     return relaxed_log_barrier(z - lower; δ) + relaxed_log_barrier(upper - z; δ)

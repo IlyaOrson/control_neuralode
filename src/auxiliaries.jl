@@ -81,7 +81,7 @@ function optimize_infopt!(infopt_model::InfiniteModel)
         @error raw_status(jump_model) termination_status(jump_model)
         error("The collocation optimization failed.")
     else
-        @info solution_summary(jump_model; verbose=false)
+        @info "Solver summary" solution_summary(jump_model; verbose=false)
         # @info "Objective value" objective_value(infopt_model)
     end
     return infopt_model

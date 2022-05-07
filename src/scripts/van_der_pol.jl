@@ -50,6 +50,8 @@ function van_der_pol(; store_results::Bool=false)
     θ = preconditioner(
         controlODE,
         reference_controller;
+        x_tol=1f-7,
+        g_tol=1f-5,
     )
 
     plot_simulation(controlODE, θ; only=:controls)
@@ -65,34 +67,26 @@ function van_der_pol(; store_results::Bool=false)
         title="Preconditioned policy",
     )
 
-    # closures to comply with required interface
-    function plotting_callback(params, loss)
-        return plot_simulation(controlODE, params; only=:states, vars=[1], show=loss)
-    end
-
     ### define objective function to optimize
     function loss(controlODE, params; kwargs...)
-        sol = solve(controlODE, params; kwargs...) |> Array
+        sol = solve(controlODE, params) |> Array
         # return Array(sol)[3, end]  # return last value of third variable ...to be minimized
-        sum_squared = 0.0f0
+        objective = 0.0f0
         for i in 1:size(sol, 2)
             s = sol[:, i]
             c = controlODE.controller(s, params)
-            sum_squared += s[1]^2 + s[2]^2 + c[1]^2  # TODO: use relaxed logarithm
+            objective += s[1]^2 + s[2]^2 + c[1]^2
         end
-        return sum_squared
+        return objective
     end
     loss(params) = loss(controlODE, params)
 
     @info "Training..."
     optimizer = LBFGS(; linesearch=BackTracking())
-    # optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 3, "tol" => 1e-2, "max_iter"=>20)
     result = sciml_train(
         loss,
         θ,
         optimizer;
-        # cb=plotting_callback,
-        # allow_f_increases=true,
     )
     θ = result.minimizer
 
@@ -115,74 +109,69 @@ function van_der_pol(; store_results::Bool=false)
     )
 
     ### now add state constraint x1(t) > -0.4 with
-    function penalty_loss(controlODE, params; α=10.0f0, kwargs...)
+    function losses(controlODE, params; α, δ, kwargs...)
         # integrate ODE system
-        sol = solve(controlODE, params; kwargs...) |> Array
-        sum_squared = 0.0f0
+        Δt = Float32(controlODE.tsteps.step)
+        sol = solve(controlODE, params) |> Array
+        objective = 0.0f0
+        control_penalty = 0.0f0
         for i in 1:size(sol, 2)
             s = sol[:, i]
             c = controlODE.controller(s, params)
-            sum_squared += s[1]^2 + s[2]^2 + c[1]^2
+            objective += s[1]^2 + s[2]^2
+            control_penalty += c[1]^2
         end
-        fault = min.(sol[1, 1:end] .+ 0.4f0, 0.0f0)
-        penalty = α * sum(fault .^ 2)  # quadratic penalty
-        return sum_squared + penalty
+        objective *= Δt
+        control_penalty *= Δt
+
+        # fault = min.(sol[1, 1:end] .+ 0.4f0, 0.0f0)
+        state_fault = map(x -> relaxed_log_barrier(x - -0.4f0; δ), sol[1, 1:end-1])
+        # penalty = α * sum(fault .^ 2)  # quadratic penalty
+        state_penalty = Δt * α * sum(state_fault)
+        regularization = 0f0
+        return objective, state_penalty, control_penalty, regularization
     end
 
     @info "Enforcing constraints..."
-    penalty_coefficients = [1.0f1, 1.0f2, 1.0f3, 1.0f4]
-    prog = Progress(
-        length(penalty_coefficients);
-        desc="Fiacco-McCormick iterations",
-        dt=0.5,
-        showspeed=true,
-        enabled=true,
+    # α: penalty coefficient
+    # δ: barrier relaxation coefficient
+    α = 1f-1
+    ρ = 0f0
+    δ0 = 1f-1
+    max_barrier_iterations = 100
+    δ_final = 1f-2 * δ0
+
+    θ, δ = constrained_training(
+        controlODE,
+        losses,
+        δ0;
+        θ,
+        δ_final,
+        max_barrier_iterations,
+        α,
+        ρ,
+        show_progressbar=true,
+        datadir,
+        # Optim options
+        optimizer=LBFGS(; linesearch=BackTracking()),
     )
-    for α in penalty_coefficients
-
-        # function plotting_callback(params, loss)
-        #     return plot_simulation(
-        #         controlODE, params; only=:states, vars=[1], show=loss
-        #     )
-        # end
-
-        # closures to comply with interface
-        penalty_loss_(params) = penalty_loss(controlODE, params; α)
-
-        # plot_simulation(
-        #     controlODE,
-        #     θ;
-        #     only=:controls,
-        #     show=penalty_loss_(θ),
-        # )
-
-        optimizer = LBFGS(; linesearch=BackTracking());
-        # optimizer = optimizer_with_attributes(Ipopt.Optimizer, "print_level" => 3, "tol" => 1e-2, "max_iter" => 100)
-        result = sciml_train(
-            penalty_loss_,
-            θ,
-            optimizer,
-            # iterations=50,
-            # allow_f_increases=true,
-            # cb=plotting_callback,
-        )
-        θ = result.minimizer
-        ProgressMeter.next!(prog; showvalues=[(:α, α), (:loss, penalty_loss_(θ))])
-    end
-    θ = result.minimizer
-    optimal = result.minimum
 
     # penalty_loss(result.minimizer, constrained_prob, tsteps; α=penalty_coefficients[end])
     plot_simulation(controlODE, θ; only=:controls)
 
+    objective, state_penalty, control_penalty, regularization = losses(controlODE, θ; α, δ)
     store_simulation(
         "constrained",
         controlODE,
         θ;
         datadir,
         metadata=Dict(
-            :loss => penalty_loss(controlODE, θ; α=penalty_coefficients[end]),
-            :constraint => "quadratic x2(t) > -0.4",
+            # :loss => penalty_loss(controlODE, θ; α=α0, δ),
+            # :constraint => "quadratic x2(t) > -0.4",
+            :objective => objective,
+            :state_penalty => state_penalty,
+            :control_penalty => control_penalty,
+            :regularization => regularization,
         ),
     )
 
@@ -205,12 +194,12 @@ function van_der_pol(; store_results::Bool=false)
     )
 
     # u0 = [0f0, 1f0]
-    perturbation_specs = [
-        (variable=1, type=:positive, scale=1.0f0, samples=3, percentage=1.0f-1)
-        (variable=2, type=:negative, scale=1.0f0, samples=3, percentage=1.0f-1)
-        # (variable=3, type=:positive, scale=20.0f0, samples=8, percentage=2.0f-2)
-    ]
-    constraint_spec = ConstRef(; val=-0.4, direction=:horizontal, class=:state, var=1)
+    # perturbation_specs = [
+    #     (variable=1, type=:positive, scale=1.0f0, samples=3, percentage=1.0f-1)
+    #     (variable=2, type=:negative, scale=1.0f0, samples=3, percentage=1.0f-1)
+    #     # (variable=3, type=:positive, scale=20.0f0, samples=8, percentage=2.0f-2)
+    # ]
+    # constraint_spec = ConstRef(; val=-0.4, direction=:horizontal, class=:state, var=1)
 
     # plot_initial_perturbations_collocation(
     #     controlODE,
@@ -220,5 +209,5 @@ function van_der_pol(; store_results::Bool=false)
     #     refs=[constraint_spec],
     #     storedir=datadir,
     # )
-    return optimal
-end  # wrap
+    return
+end
