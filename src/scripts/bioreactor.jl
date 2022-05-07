@@ -138,17 +138,9 @@ function bioreactor(; store_results::Bool=false)
         return objective, state_penalty, control_penalty, regularization
     end
 
-    function plots_callback(controlODE, θ)
-        plot_simulation(controlODE, θ; only=:states, vars=[2], yrefs=[800, 150])
-        plot_simulation(
-            controlODE, θ; only=:states, fun=(x, y, z) -> 1.1f-2x - z, yrefs=[3.0f-2]
-        )
-        return plot_simulation(controlODE, θ; only=:controls)
-    end
-
     # α: penalty coefficient
     # δ: barrier relaxation coefficient
-    α = 1f-3
+    α = 1f-1
     ρ = 1f-3
     δ0 = 1f2
     max_barrier_iterations = 100
@@ -165,7 +157,6 @@ function bioreactor(; store_results::Bool=false)
         ρ,
         show_progressbar=true,
         datadir,
-        # plots_callback,
         # Optim options
         optimizer=LBFGS(; linesearch=BackTracking()),
         # iterations=50,
