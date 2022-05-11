@@ -39,8 +39,8 @@ function bioreactor_collocation(
     @constraints(
         model,
         begin
-            120 <= c[1] <= 400
-            0 <= c[2] <= 40
+            80 <= c[1] <= 180
+            0 <= c[2] <= 20
         end
     )
 
@@ -48,9 +48,9 @@ function bioreactor_collocation(
         @constraints(
             model,
             begin
-                x[2](tf - 1e-2) <= 150
-                x[2] <= 800
-                1.1e-2 * x[1] - x[3] <= 3.0e-2
+                x[2](tf - 1e-2) >= 250
+                x[2] <= 400
+                # 1.1e-2 * x[1] - x[3] <= 1.0e-2
             end
         )
     end

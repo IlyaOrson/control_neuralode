@@ -343,7 +343,7 @@ function phase_portrait(
     ax.set_ylabel("y")
     !isnothing(title) && ax.set_title(title)
 
-    fig.colorbar(strm.lines)
+    # fig.colorbar(strm.lines)
     ax.legend()
 
     # remove frame

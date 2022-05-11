@@ -129,11 +129,12 @@ function semibatch_reactor(; store_results::Bool=false)
     # plt.legend()
     # plt.show()
 
-    reference_controller = interpolant_controller(collocation; plot=false)
+    reference_controller = interpolant_controller(collocation; plot=nothing)
 
     θ = preconditioner(
         controlODE,
         reference_controller;
+        θ=initial_params(controller),
         x_tol=nothing,
         f_tol=1.0f-3,
         maxiters=2_000,
@@ -143,10 +144,10 @@ function semibatch_reactor(; store_results::Bool=false)
     store_simulation("precondition", controlODE, θ; datadir)
 
     # objective function splitted componenets to optimize
-    function losses(controlODE, params; α, δ, ρ, kwargs...)
+    function losses(controlODE, params; α, δ, ρ)
 
         # integrate ODE system
-        sol_raw = solve(controlODE, params; kwargs...)
+        sol_raw = solve(controlODE, params)
         sol_array = Array(sol_raw)
 
         # https://diffeqflux.sciml.ai/dev/examples/divergence/

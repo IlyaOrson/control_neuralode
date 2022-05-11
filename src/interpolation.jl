@@ -13,7 +13,7 @@ function chebyshev_interpolation(
     return Fun(space, V \ vec(values))  # chebyshev_interpolation as one-variable function
 end
 
-function interpolant_controller(collocation; plot=true)
+function interpolant_controller(collocation; plot=nothing)
 
     num_controls = size(collocation.controls, 1)
 
@@ -32,19 +32,23 @@ function interpolant_controller(collocation; plot=true)
         end
     end
 
-    if plot
+    if !isnothing(plot)
+        @argcheck plot in [:unicode, :pyplot]
         for c in 1:num_controls
-            display(
-                lineplot(
-                    t -> control_profile(t, nothing)[c],
-                    collocation.times[begin],
-                    collocation.times[end];
-                    xlim=(collocation.times[begin], collocation.times[end]),
-                ),
-            )
-            plot_collocation(
-                collocation.controls[c, :], interpolations[c], collocation.times
-            )
+            if plot == :unicode
+                display(
+                    lineplot(
+                        t -> control_profile(t, nothing)[c],
+                        collocation.times[begin+1],
+                        collocation.times[end-1];
+                        xlim=(collocation.times[begin], collocation.times[end]),
+                    ),
+                )
+            else
+                plot_collocation(
+                    collocation.controls[c, begin+1:end-1], interpolations[c], collocation.times
+                )
+            end
         end
     end
     return control_profile

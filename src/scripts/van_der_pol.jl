@@ -45,13 +45,14 @@ function van_der_pol(; store_results::Bool=false)
         nodes_per_element=2,
         constrain_states=false,
     )
-    reference_controller = interpolant_controller(collocation; plot=false)
+    reference_controller = interpolant_controller(collocation; plot=nothing)
 
     θ = preconditioner(
         controlODE,
         reference_controller;
+        θ,
         x_tol=1f-7,
-        g_tol=1f-5,
+        g_tol=1f-1,
     )
 
     plot_simulation(controlODE, θ; only=:controls)
@@ -109,7 +110,7 @@ function van_der_pol(; store_results::Bool=false)
     )
 
     ### now add state constraint x1(t) > -0.4 with
-    function losses(controlODE, params; α, δ, kwargs...)
+    function losses(controlODE, params; α, δ)
         # integrate ODE system
         Δt = Float32(controlODE.tsteps.step)
         sol = solve(controlODE, params) |> Array

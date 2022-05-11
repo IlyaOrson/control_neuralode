@@ -19,7 +19,7 @@ struct ControlODE{uType<:Real,tType<:Real}
         Δt::Union{Nothing,Real}=nothing,
         npoints::Union{Nothing,Real}=nothing,
         input::Symbol=:state,
-        integrator=INTEGRATOR,  # Tsit5()
+        integrator=INTEGRATOR,
         sensealg=SENSEALG,
     )
         # check tsteps construction
