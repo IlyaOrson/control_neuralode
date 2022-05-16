@@ -50,24 +50,17 @@ function store_simulation(
     params::AbstractVector{<:Real};
     metadata::Union{Nothing,Dict}=nothing,
     datadir::Union{Nothing,String}=nothing,
-    store_policy::Bool=true,
 )
     if isnothing(datadir) || isnothing(filename)
         @info "Results not stored due to missing filename/datadir." maxlog = 1
         return nothing
     end
 
-    if store_policy
-        policy_path = joinpath(datadir, filename * "_policy.jls")
-        params_path = joinpath(datadir, filename * "_params.jls")
-        # open(io -> serialize(io, controlODE.controller), policy_path, "w")
+    params_path = joinpath(datadir, filename * "_params.jls")
+    serialize(params_path, params)
 
-        serialize(policy_path, controlODE)
-        serialize(params_path, params)
-
-        # weights_path = joinpath(datadir, filename * "_nnweights.csv")
-        # CSV.write(weights_path, Tables.table(initial_params(controlODE.controller)), writeheader=false)
-    end
+    # weights_path = joinpath(datadir, filename * "_nnweights.csv")
+    # CSV.write(weights_path, Tables.table(params), writeheader=false)
 
     times, states, controls = run_simulation(controlODE, params)
 

@@ -305,7 +305,7 @@ function constrained_training(
         Ipopt.AddIpoptStrOption(ipopt, "print_info_string", "yes")
         Ipopt.AddIpoptStrOption(ipopt, "hessian_approximation", "limited-memory")
         Ipopt.AddIpoptStrOption(ipopt, "mu_strategy", "adaptive")
-        Ipopt.AddIpoptNumOption(ipopt, "tol", 1e-3)
+        Ipopt.AddIpoptNumOption(ipopt, "tol", 1e-2)
 
         # https://github.com/jump-dev/Ipopt.jl/blob/d9e9176620a9b527a08991a3d41062fa948867f7/src/Ipopt.jl#L113
         solve_status = Ipopt.IpoptSolve(ipopt)
@@ -344,14 +344,14 @@ function constrained_training(
         ProgressMeter.next!(prog; showvalues=current_values)
 
         local_metadata = Dict(
-            :parameters => θ,
             :δ => δ,
             :α => α,
+            :ρ => ρ,
             :objective => objective,
             :state_penalty => state_penalty,
             :control_penalty => control_penalty,
             :regularization_cost => regularization,
-            :count_params => length(initial_params(controlODE.controller)),
+            :num_params => length(initial_params(controlODE.controller)),
             :layers => controller_shape(controlODE.controller),
             :tspan => controlODE.tspan,
             :tsteps => controlODE.tsteps,
