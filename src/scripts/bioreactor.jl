@@ -7,7 +7,6 @@
 # state constraints
 # C_N(t) - 150 ≤ 0              t = T
 # C_N(t) − 400 ≤ 0              ∀t
-# 0.011 C_X(t) - C_qc(t) ≤ 3f-2 ∀t
 
 function bioreactor(; store_results::Bool=false)
     datadir = nothing
@@ -15,29 +14,8 @@ function bioreactor(; store_results::Bool=false)
         datadir = generate_data_subdir(@__FILE__)
     end
 
-    # initial conditions and timepoints
-    t0 = 0.0
-    tf = 240.0
-    Δt = 10.0
-    tspan = (t0, tf)
-    C_X₀, C_N₀, C_qc₀ = 1.0, 150.0, 0.0
-    u0 = [C_X₀, C_N₀, C_qc₀]
-    control_ranges = [(80.0, 180.0), (0.0, 20.0)]
-
-    # set arquitecture of neural network controller
-    # weights initializer reference https://pytorch.org/docs/stable/nn.init.html
-    controller = FastChain(
-        (x, p) -> [x[1], x[2] / 100.0, x[3] * 10.0],  # input scaling
-        FastDense(3, 16, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
-        FastDense(16, 16, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
-        FastDense(16, 2; initW=(x, y) -> glorot_uniform(x, y)),
-        # I ∈ [120, 400] & F ∈ [0, 40] in Bradford 2020
-        # (x, p) -> [280f0 * sigmoid(x[1]) + 120f0, 40f0 * sigmoid(x[2])],
-        scaled_sigmoids(control_ranges),
-    )
-
     system = BioReactor()
-    controlODE = ControlODE(controller, system, u0, tspan; Δt)
+    controlODE = ControlODE(system)
 
     function plot_state_constraints(θ)
         plot_simulation(controlODE, θ; only=:states, vars=[2], yrefs=[400, 250])
@@ -78,8 +56,9 @@ function bioreactor(; store_results::Bool=false)
         C_N_over_running = map(y -> relaxed_log_barrier(400.0 - y; δ), solution_array[2, 1:end-1])
         C_N_over_last = relaxed_log_barrier(solution_array[2, end] - 250.0; δ)
 
-        Δt = Float32(controlODE.tsteps.step)
-        return Δt * sum(C_N_over_running) + C_N_over_last
+        # Δt = Float32(controlODE.tsteps.step)
+        # return Δt * sum(C_N_over_running) + C_N_over_last
+        return mean(C_N_over_running) + C_N_over_last
     end
 
     # state constraints on control change
@@ -93,7 +72,7 @@ function bioreactor(; store_results::Bool=false)
         # https://diffeqflux.sciml.ai/dev/examples/divergence/
         # Zygote.@ignore @infiltrate sol_raw.retcode != :Success
         # if sol_raw.retcode != :Success  # avoid this with Zygote...
-        if sol_raw.t[end] != tf
+        if sol_raw.t[end] != controlODE.tspan[end]
             # Zygote.@ignore @infiltrate
             return Inf
         end
@@ -125,8 +104,8 @@ function bioreactor(; store_results::Bool=false)
     # δ: barrier relaxation coefficient
     α = 1f-4
     ρ = 1f-2
-    δ0 = 2f0
-    δ_final = 1f-1 * δ0
+    δ0 = 1f0
+    δ_final = 5f-2 * δ0
     max_barrier_iterations = 100
     # Zygote.@ignore @infiltrate
     # return
@@ -141,15 +120,6 @@ function bioreactor(; store_results::Bool=false)
         ρ,
         show_progressbar=true,
         datadir,
-        # Optim options
-        # optimizer=LBFGS(; linesearch=BackTracking()),
-        # iterations=50,
-        # ## Flux options
-        # optimizer=ADAM(1f-1),
-        # x_tol=1.0f-5,
-        # f_tol=1.0f-2,
-        # g_tol=1f-1,
-        # maxiters=100,
     )
 
     objective, state_penalty, control_penalty, regularization = losses(

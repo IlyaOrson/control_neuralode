@@ -71,7 +71,7 @@ function solve(code::ControlODE, params; kwargs...)
         code.prob,
         code.integrator;
         p=params,
-        saveat=code.tsteps,
+        saveat=code.tsteps,  # this should not be necessary
         sensealg=code.sensealg,
         kwargs...,
     )

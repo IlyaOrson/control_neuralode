@@ -23,8 +23,8 @@ function batch_reactor(; store_results::Bool=false)
         (x, p) -> 5 * sigmoid_fast.(x),  # controllers ∈ (0, 5)
     )
 
-    system! = BatchReactor()
-    controlODE = ControlODE(controller, system!, u0, tspan; Δt)
+    system = BatchReactor()
+    controlODE = ControlODE(controller, system, u0, tspan; Δt)
 
     θ = initial_params(controller)
 

@@ -30,3 +30,22 @@ function (S::VanDerPol)(du, u, p, t, controller; input=:state)
     return nothing
     # return [x1_prime, x2_prime]
 end
+
+function ControlODE(system::VanDerPol)
+    # initial conditions and timepoints
+    t0 = 0.0f0
+    tf = 5.0f0
+    u0 = [0.0f0, 1.0f0]
+    tspan = (t0, tf)
+    Δt = 0.1f0
+
+    # set arquitecture of neural network controller
+    controller = FastChain(
+        FastDense(2, 12, tanh_fast),
+        FastDense(12, 12, tanh_fast),
+        FastDense(12, 1),
+        (x, p) -> (1.3f0 .* sigmoid_fast.(x)) .- 0.3f0,
+    )
+
+    return ControlODE(controller, system, u0, tspan; Δt)
+end

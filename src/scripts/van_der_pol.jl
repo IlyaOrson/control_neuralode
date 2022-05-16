@@ -8,23 +8,8 @@ function van_der_pol(; store_results::Bool=false)
         datadir = generate_data_subdir(@__FILE__)
     end
 
-    # initial conditions and timepoints
-    t0 = 0.0f0
-    tf = 5.0f0
-    u0 = [0.0f0, 1.0f0]
-    tspan = (t0, tf)
-    Δt = 0.1f0
-
-    # set arquitecture of neural network controller
-    controller = FastChain(
-        FastDense(2, 12, tanh_fast),
-        FastDense(12, 12, tanh_fast),
-        FastDense(12, 1),
-        (x, p) -> (1.3f0 .* sigmoid_fast.(x)) .- 0.3f0,
-    )
-
     system = VanDerPol()
-    controlODE = ControlODE(controller, system, u0, tspan; Δt)
+    controlODE = ControlODE(system)
 
     θ = initial_params(controlODE.controller)
 
@@ -153,8 +138,6 @@ function van_der_pol(; store_results::Bool=false)
         ρ,
         show_progressbar=true,
         datadir,
-        # Optim options
-        optimizer=LBFGS(; linesearch=BackTracking()),
     )
 
     # penalty_loss(result.minimizer, constrained_prob, tsteps; α=penalty_coefficients[end])

@@ -12,35 +12,20 @@ function semibatch_reactor(; store_results::Bool=false)
         datadir = generate_data_subdir(@__FILE__)
     end
 
-    # initial conditions and timepoints
-    t0 = 0.0f0
-    tf = 0.4f0  # Bradfoard uses 0.4
-    Δt = 0.01f0
-    tspan = (t0, tf)
-
-    # state: CA, CB, CC, T, Vol
-    u0 = [1.0f0, 0.0f0, 0.0f0, 290.0f0, 100.0f0]
-
-    # control constraints
-    # F = volumetric flow rate
-    # V = exchanger temperature
-    # F = 240 & V = 298 in Fogler's book
-    # F ∈ (0, 250) & V ∈ (200, 500) in Bradford 2017
-    control_ranges = [(100.0f0, 700.0f0), (0.0f0, 400.0f0)]
-
     # state constraints
     # T ∈ (0, 420]
     # Vol ∈ (0, 200]
     T_up = 380.0f0
     V_up = 100.0f0
 
-    system! = SemibatchReactor()
+    system = SemibatchReactor()
+    controlODE = ControlODE(system)
 
     # simulate the system with constant controls as in Fogler's
     # to reproduce his results and verify correctness
     fogler_ref = [240.0f0, 298.0f0]  # reference values in Fogler
     fogler_timespan = (0.0f0, 1.5f0)
-    fixed_controlODE = ControlODE((u, p) -> fogler_ref, system!, u0, fogler_timespan; Δt)
+    fixed_controlODE = ControlODE((u, p) -> fogler_ref, system, u0, fogler_timespan; Δt=1.5f-1)
     @info "Fogler's case: final time state" solve(fixed_controlODE, nothing).u[end]
     plot_simulation(
         fixed_controlODE,
@@ -54,18 +39,6 @@ function semibatch_reactor(; store_results::Bool=false)
         only=:states,
         vars=[4, 5],
     )
-
-    # set arquitecture of neural network controller
-    controller = FastChain(
-        (x, p) -> [x[1], x[2], x[3], x[4] / 1f2, x[5] / 1f2],
-        FastDense(5, 32, tanh),
-        FastDense(32, 32, tanh),
-        FastDense(32, 32, tanh),
-        FastDense(32, 2),
-        # (x, p) -> [240f0, 298f0],
-        scaled_sigmoids(control_ranges),
-    )
-    controlODE = ControlODE(controller, system!, u0, tspan; Δt)
 
     collocation = semibatch_reactor_collocation(
         controlODE.u0,
@@ -152,8 +125,7 @@ function semibatch_reactor(; store_results::Bool=false)
 
         # https://diffeqflux.sciml.ai/dev/examples/divergence/
         # if sol_raw.retcode != :Success  # avoid this with Zygote...
-        Zygote.@ignore @infiltrate sol_raw.retcode != :Success
-        Zygote.@ignore if sol_raw.t[end] != tf
+        Zygote.@ignore if sol_raw.t[end] != controlODE.tspan[end]
             return Inf
         end
 
@@ -192,15 +164,6 @@ function semibatch_reactor(; store_results::Bool=false)
         ρ,
         show_progressbar=true,
         datadir,
-        # plots_callback,
-        # Optim options
-        optimizer=LBFGS(; linesearch=BackTracking()),
-        # iterations=50,
-        # ## Flux options
-        # optimizer=Optimiser(WeightDecay(1f-3), ADAM(1f-1)),
-        # x_tol=1.0f-8,
-        # f_tol=1.0f-5,
-        # maxiters=1_000,
     )
 
     @info "Final states"

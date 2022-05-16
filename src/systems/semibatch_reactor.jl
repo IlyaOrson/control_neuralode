@@ -72,3 +72,32 @@ function (S::SemibatchReactor)(du, u, p, t, controller; input=:state)
     return nothing
     # return [dCA, dCB, dCC, dT, dVol]
 end
+
+function ControlODE(system::SemibatchReactor)
+    # initial conditions and timepoints
+    t0 = 0.0f0
+    tf = 0.4f0  # Bradfoard uses 0.4
+    Δt = 0.01f0
+    tspan = (t0, tf)
+
+    # state: CA, CB, CC, T, Vol
+    u0 = [1.0f0, 0.0f0, 0.0f0, 290.0f0, 100.0f0]
+
+    # control constraints
+    # F = volumetric flow rate
+    # V = exchanger temperature
+    # F = 240 & V = 298 in Fogler's book
+    # F ∈ (0, 250) & V ∈ (200, 500) in Bradford 2017
+    control_ranges = [(100.0f0, 700.0f0), (0.0f0, 400.0f0)]
+
+    controller = FastChain(
+        (x, p) -> [x[1], x[2], x[3], x[4] / 1f2, x[5] / 1f2],
+        FastDense(5, 32, tanh),
+        FastDense(32, 32, tanh),
+        FastDense(32, 32, tanh),
+        FastDense(32, 2),
+        # (x, p) -> [240f0, 298f0],
+        scaled_sigmoids(control_ranges),
+    )
+    return ControlODE(controller, system, u0, tspan; Δt)
+end

@@ -2,13 +2,6 @@
 # Stochastic data-driven model predictive control using Gaussian processes.
 # Computers & Chemical Engineering, 139, 106844.
 
-# objective: maximize C_qc
-
-# state constraints
-# C_N(t) - 150 ≤ 0              t = T
-# C_N(t) − 800 ≤ 0              ∀t
-# 0.011 C_X(t) - C_qc(t) ≤ 3f-2 ∀t
-
 @kwdef struct BioReactor
     u_m=0.0572f0
     u_d=0.0f0
@@ -56,4 +49,26 @@ function (S::BioReactor)(du, u, p, t, controller; input=:state)
     end
     return nothing
     # return [dC_X, dC_N, dC_qc]
+end
+
+function ControlODE(system::BioReactor)
+    # initial conditions and timepoints
+    t0 = 0.0
+    tf = 240.0
+    Δt = 2.0
+    tspan = (t0, tf)
+    u0 = [1.0, 150.0, 0.0]  # C_X₀, C_N₀, C_qc₀
+    control_constraints = [(80.0, 180.0), (0.0, 20.0)]
+
+    # weights initializer reference https://pytorch.org/docs/stable/nn.init.html
+    controller = FastChain(
+        (x, p) -> [x[1], x[2] / 100.0, x[3] * 10.0],  # input scaling
+        FastDense(3, 16, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
+        FastDense(16, 16, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
+        FastDense(16, 2; initW=(x, y) -> glorot_uniform(x, y)),
+        # I ∈ [120, 400] & F ∈ [0, 40] in Bradford 2020
+        # (x, p) -> [280f0 * sigmoid(x[1]) + 120f0, 40f0 * sigmoid(x[2])],
+        scaled_sigmoids(control_constraints),
+    )
+    return ControlODE(controller, system, u0, tspan; Δt)
 end
