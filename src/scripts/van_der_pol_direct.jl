@@ -20,7 +20,7 @@ function van_der_pol_direct_phase_plot()
 
     system = VanDerPol()
     controller = (x, p) -> chain(x, p, layer_sizes, activations)
-    controlODE = ControlODE(controller, system, u0, tspan; Δt, params=infopt_result.params)
+    controlODE = ControlODE(controller, system, u0, tspan; Δt)
 
     phase_portrait(
         controlODE,

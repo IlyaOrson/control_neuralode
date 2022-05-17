@@ -14,7 +14,6 @@ struct ControlODE{uType<:Real,tType<:Real}
         system,
         u0,
         tspan;
-        params=initial_params(controller),
         tsteps::Union{Nothing,AbstractVector{<:Real}}=nothing,
         Δt::Union{Nothing,Real}=nothing,
         npoints::Union{Nothing,Real}=nothing,
@@ -43,7 +42,7 @@ struct ControlODE{uType<:Real,tType<:Real}
         # check domain types
         time_type = find_array_param(tsteps)
         space_type = find_array_param(u0)
-        control_type = find_array_param(controller(u0, params))
+        control_type = find_array_param(controller(u0, initial_params(controller)))
         @argcheck space_type == control_type
 
         # construct ODE problem

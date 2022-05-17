@@ -2,8 +2,10 @@ module ControlNeuralODE
 
 using Base: @kwdef, ifelse
 using Base.Filesystem: mkpath
+using DelimitedFiles: readdlm, writedlm
 
 using Dates: now
+using DataStructures: SortedDict
 using LazyGrids: ndgrid
 using ArgCheck: @argcheck
 using Formatting: format, sprintf1
@@ -36,7 +38,7 @@ using InfiniteOpt:
     value,
     ∂
 using Ipopt: Ipopt
-using LBFGSB: LBFGSB
+# using LBFGSB: LBFGSB
 using Optim: Optim, LBFGS, BFGS
 using DataInterpolations: LinearInterpolation
 using ApproxFun: Chebyshev, Fun, Interval  # https://github.com/stevengj/FastChebInterp.jl
@@ -76,8 +78,8 @@ using DiffEqFlux: FastChain, FastDense, initial_params, sciml_train, FastLayer
 using UnicodePlots: lineplot, lineplot!, histogram
 using Serialization: serialize, deserialize
 using JSON3: JSON3
-using CSV: CSV
-using Tables: table
+# using CSV: CSV
+# using Tables: table
 
 # using PyCall: PyObject
 using PyPlot: plt, matplotlib, ColorMap, plot3D, scatter3D
@@ -118,6 +120,7 @@ include("interpolation.jl")
 include("simulators.jl")
 include("training.jl")
 include("plotting.jl")
+include("loading.jl")
 
 # case studies
 include("systems/batch_reactor.jl")
@@ -133,7 +136,7 @@ include("collocation/classic/semibatch_reactor.jl")
 # neural collocation
 include("collocation/neural/van_der_pol.jl")
 
-# scripts with analysis
+# training
 include("scripts/batch_reactor.jl")
 include("scripts/van_der_pol.jl")
 include("scripts/van_der_pol_direct.jl")

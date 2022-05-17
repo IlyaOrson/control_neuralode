@@ -67,11 +67,15 @@ function store_simulation(
     state_headers = ["x$i" for i in 1:size(states, 1)]
     control_headers = ["c$i" for i in 1:size(controls, 1)]
 
-    full_data = table(
-        hcat(times, states', controls'); header=vcat(["t"], state_headers, control_headers)
-    )
+    header = hcat(["t"], state_headers, control_headers)
+    data = hcat(times, states', controls')
+    filepath_csv = joinpath(datadir, filename * ".csv")
+    # data_table = table(data; header)
+    # CSV.write(filepath_csv, data_table)
 
-    CSV.write(joinpath(datadir, filename * ".csv"), full_data)
+    open(filepath_csv, "w") do io
+        writedlm(io, vcat(header, data, ','))
+    end
 
     if !isnothing(metadata)
         open(joinpath(datadir, filename * "_meta.json"), "w") do f

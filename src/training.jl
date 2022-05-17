@@ -335,6 +335,7 @@ function constrained_training(
             (:iter, counter),
             (:α, α),
             (:δ, δ),
+            (:ρ, ρ),
             (:objective, objective),
             (:state_penalty, state_penalty),
             (:control_penalty, control_penalty),
@@ -357,9 +358,8 @@ function constrained_training(
             :tsteps => controlODE.tsteps,
         )
         metadata = merge(metadata, local_metadata)
-        store_simulation(
-            "delta_$(round(δ, digits=2))_iter_$counter", controlODE, θ; metadata, datadir
-        )
+        name = name_interpolation(δ, counter)
+        store_simulation(name, controlODE, θ; metadata, datadir)
 
         state_penalty_size = abs(state_penalty)
         other_penalties_size = abs(objective)
@@ -374,7 +374,6 @@ function constrained_training(
         δ = tighten_rule(δ)
         push!(δ_progression, δ)
 
-        # Zygote.@ignore @infiltrate counter % 10 == 0
         θ = minimizer
 
         # add some noise to avoid local minima
