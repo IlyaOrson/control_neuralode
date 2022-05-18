@@ -30,8 +30,7 @@ function filter_matching_filepath(filepaths, re; extension=nothing)
 end
 
 function extract_all_name_values(dirpath)
-
-    iter_delta_dict = SortedDict{Int, Float64}()
+    iter_delta_dict = SortedDict{Int,Float64}()
     filepaths = readdir(dirpath; join=true, sort=true)
 
     for filepath in filepaths
@@ -43,14 +42,7 @@ function extract_all_name_values(dirpath)
     return iter_delta_dict
 end
 
-function load_penalization_round(
-    dirpath,
-    system;
-    iter,
-    delta,
-    timesteps=100
-)  # system = BioReactor(), VanDerPol() ...
-
+function load_penalization_round(dirpath, system; iter, delta, timesteps=100)  # system = BioReactor(), VanDerPol() ...
     filepaths = readdir(dirpath; join=true, sort=true)
 
     name = name_interpolation(delta, iter)
@@ -63,4 +55,84 @@ function load_penalization_round(
 
     times, states, controls = run_simulation(controlODE, weights; saveat=dt)
     return times, states, controls
+end
+
+function plot_penalization_rounds(
+    dirpath,
+    system;
+    state_var=nothing,
+    control_var=nothing,
+    timesteps=100,
+    palette="Blues",  # Purples, Blues, Greens, Oranges, Reds
+    running_ref=nothing,
+    final_ref=nothing,
+    ref_color="orange",
+    transparency=0.7,
+    saveto=nothing,
+)
+    @argcheck !all(map(x -> isnothing(x), (state_var, control_var)))
+    @argcheck !all(map(x -> !isnothing(x), (state_var, control_var)))
+
+    @show iter_delta_dict = extract_all_name_values(dirpath)
+    @show deltas = collect(values(iter_delta_dict))
+    color_range = range(0.2, 1, length(iter_delta_dict))
+    cmap = ColorMap(palette)
+    cmap_range = ColorMap(palette)(color_range)
+    fig, ax = plt.subplots()
+    local times
+    for (i, (iter, delta)) in enumerate(iter_delta_dict)
+        times_local, states, controls = load_penalization_round(
+            dirpath, system; iter, delta, timesteps
+        )
+        if !isnothing(state_var)
+            ax.plot(
+                times_local,
+                states[state_var,:];
+                color=cmap_range[i, :],
+                label="δ=$delta",
+                alpha=transparency,
+            )
+            plt.title("x_$state_var")
+        elseif !isnothing(control_var)
+            ax.plot(
+                times_local,
+                controls[control_var,:];
+                color=cmap_range[i, :],
+                label="δ=$delta",
+                alpha=transparency,
+            )
+            plt.title("c_$control_var")
+        end
+        times = times_local
+    end
+    final_time_gap = (times[end] - times[begin]) / 10
+    !isnothing(running_ref) && plt.plot(
+        (times[begin], times[end] - final_time_gap),
+        (running_ref, running_ref);
+        zorder=110,
+        color=ref_color,
+        alpha=transparency,
+        ls="--",
+    )
+    !isnothing(final_ref) && plt.plot(
+        (times[end] - final_time_gap, times[end]),
+        (running_ref, running_ref);
+        zorder=110,
+        color=ref_color,
+        alpha=transparency,
+        ls="--",
+    )
+    # plt.legend(; fontsize="x-small", loc="center left", bbox_to_anchor=(1.02, 0.5))
+    # @infiltrate
+    norm = matplotlib.colors.Normalize(; vmin=deltas[begin], vmax=deltas[end])
+    fig.colorbar(
+        matplotlib.cm.ScalarMappable(; norm=norm, cmap=cmap);
+        # cax=ax,
+        orientation="vertical",
+        label=L"\delta",
+    )
+    plt.xlabel("time")
+
+    !isnothing(saveto) && plt.savefig(saveto)
+    return plt.show()
 end

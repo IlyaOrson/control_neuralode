@@ -83,6 +83,7 @@ using JSON3: JSON3
 
 # using PyCall: PyObject
 using PyPlot: plt, matplotlib, ColorMap, plot3D, scatter3D
+using LaTeXStrings: @L_str
 
 import CommonSolve: solve
 

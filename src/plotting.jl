@@ -1,5 +1,3 @@
-const mpl = matplotlib
-
 # const Line2D = matplotlib.lines.Line2D
 # const Patch = matplotlib.patches.Patch
 
@@ -12,15 +10,15 @@ font = Dict(:family => "STIXGeneral", :size => 16)
 savefig = Dict(:dpi => 600, :bbox => "tight")
 lines = Dict(:linewidth => 4)
 figure = Dict(:figsize => (8, 5))
-axes = Dict(:prop_cycle => mpl.cycler(; color=palette))
+axes = Dict(:prop_cycle => matplotlib.cycler(; color=palette))
 legend = Dict(:fontsize => "x-large")  # medium for presentations, x-large for papers
 
-mpl.rc("font"; font...)
-mpl.rc("savefig"; savefig...)
-mpl.rc("lines"; lines...)
-mpl.rc("figure"; figure...)
-mpl.rc("axes"; axes...)
-mpl.rc("legend"; legend...)
+matplotlib.rc("font"; font...)
+matplotlib.rc("savefig"; savefig...)
+matplotlib.rc("lines"; lines...)
+matplotlib.rc("figure"; figure...)
+matplotlib.rc("axes"; axes...)
+matplotlib.rc("legend"; legend...)
 
 function fun_plotter(fun, array; xlim=(0, 0))
     output = map(fun, eachrow(array)...)
@@ -344,7 +342,7 @@ function phase_portrait(
     !isnothing(title) && ax.set_title(title)
 
     # fig.colorbar(strm.lines)
-    ax.legend()
+    ax.legend(labelspacing=1.2)
 
     # remove frame
     ax.spines["top"].set_visible(false)
