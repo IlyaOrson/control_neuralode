@@ -104,7 +104,7 @@ function bioreactor(; store_results::Bool=false)
     # δ: barrier relaxation coefficient
     α = 1f-4
     ρ = 1f-2
-    δ0 = 1f0
+    δ0 = 2.5f0
     δ_final = 5f-2 * δ0
     max_barrier_iterations = 100
     # Zygote.@ignore @infiltrate

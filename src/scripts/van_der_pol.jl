@@ -17,7 +17,7 @@ function van_der_pol(; store_results::Bool=false)
     phase_portrait(
         controlODE,
         θ,
-        square_bounds(u0, 7);
+        square_bounds(controlODE.u0, 7);
         projection=[1, 2],
         markers=states_markers(states_raw),
         title="Initial policy",
@@ -37,7 +37,7 @@ function van_der_pol(; store_results::Bool=false)
         reference_controller;
         θ,
         x_tol=1f-7,
-        g_tol=1f-1,
+        g_tol=1f-2,
     )
 
     plot_simulation(controlODE, θ; only=:controls)
@@ -47,7 +47,7 @@ function van_der_pol(; store_results::Bool=false)
     phase_portrait(
         controlODE,
         θ,
-        square_bounds(u0, 3);
+        square_bounds(controlODE.u0, 3);
         projection=[1, 2],
         markers=states_markers(states_raw),
         title="Preconditioned policy",
@@ -80,7 +80,7 @@ function van_der_pol(; store_results::Bool=false)
     phase_portrait(
         controlODE,
         θ,
-        square_bounds(u0, 3);
+        square_bounds(controlODE.u0, 3);
         projection=[1, 2],
         markers=states_markers(states_raw),
         title="Optimized policy",
@@ -95,7 +95,7 @@ function van_der_pol(; store_results::Bool=false)
     )
 
     ### now add state constraint x1(t) > -0.4 with
-    function losses(controlODE, params; α, δ)
+    function losses(controlODE, params; α, δ, ρ)
         # integrate ODE system
         Δt = Float32(controlODE.tsteps.step)
         sol = solve(controlODE, params) |> Array
@@ -114,7 +114,7 @@ function van_der_pol(; store_results::Bool=false)
         state_fault = map(x -> relaxed_log_barrier(x - -0.4f0; δ), sol[1, 1:end-1])
         # penalty = α * sum(fault .^ 2)  # quadratic penalty
         state_penalty = Δt * α * sum(state_fault)
-        regularization = 0f0
+        regularization = ρ * sum(abs2, params)
         return objective, state_penalty, control_penalty, regularization
     end
 
@@ -143,7 +143,7 @@ function van_der_pol(; store_results::Bool=false)
     # penalty_loss(result.minimizer, constrained_prob, tsteps; α=penalty_coefficients[end])
     plot_simulation(controlODE, θ; only=:controls)
 
-    objective, state_penalty, control_penalty, regularization = losses(controlODE, θ; α, δ)
+    objective, state_penalty, control_penalty, regularization = losses(controlODE, θ; α, δ, ρ)
     store_simulation(
         "constrained",
         controlODE,
@@ -170,7 +170,7 @@ function van_der_pol(; store_results::Bool=false)
     phase_portrait(
         controlODE,
         θ,
-        square_bounds(u0, 3);
+        square_bounds(controlODE.u0, 3);
         shader,
         projection=[1, 2],
         markers=states_markers(states_opt),
