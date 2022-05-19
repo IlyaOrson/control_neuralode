@@ -67,14 +67,16 @@ function store_simulation(
     state_headers = ["x$i" for i in 1:size(states, 1)]
     control_headers = ["c$i" for i in 1:size(controls, 1)]
 
-    header = hcat(["t"], state_headers, control_headers)
-    data = hcat(times, states', controls')
+    header = vcat(["t"], state_headers, control_headers)
+    data = hcat(times, permutedims(states), permutedims(controls))
+
     filepath_csv = joinpath(datadir, filename * ".csv")
+
     # data_table = table(data; header)
     # CSV.write(filepath_csv, data_table)
 
     open(filepath_csv, "w") do io
-        writedlm(io, vcat(header, data, ','))
+        writedlm(io, vcat(permutedims(header), data), ',')
     end
 
     if !isnothing(metadata)
