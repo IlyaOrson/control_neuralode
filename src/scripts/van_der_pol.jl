@@ -68,12 +68,13 @@ function van_der_pol(; store_results::Bool=false)
     loss(params) = loss(controlODE, params)
 
     @info "Training..."
+    grad!(g, params) = g .= Zygote.gradient(loss, params)[1]
     optimizer = LBFGS(; linesearch=BackTracking())
-    result = sciml_train(
-        loss,
-        θ,
-        optimizer;
+    optim_options = Optim.Options(;
+        store_trace=true, show_trace=true, extended_trace=false
     )
+    result = Optim.optimize(loss, grad!, θ, optimizer, optim_options)
+
     θ = result.minimizer
 
     _, states_raw, _ = run_simulation(controlODE, θ)

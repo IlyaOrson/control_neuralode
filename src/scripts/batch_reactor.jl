@@ -44,7 +44,7 @@ function batch_reactor(; store_results::Bool=false)
         coord_lims;
         markers=states_markers(states_raw),
         # start_points_x, start_points_y,
-        start_points=reshape(u0 .+ (-1e-4, 0), 1, 2),
+        # start_points=reshape(u0 .+ (-1e-4, 0), 1, 2),
         title="Initial policy",
     )
 
@@ -55,14 +55,12 @@ function batch_reactor(; store_results::Bool=false)
     end
 
     @info "Training..."
-    result = sciml_train(
-        loss,
-        θ,
-        LBFGS(; linesearch=BackTracking());
-        # iterations=100,
-        # allow_f_increases=true,
-        # cb=plotting_callback,
+    grad!(g, params) = g .= Zygote.gradient(loss, params)[1]
+    optimizer = LBFGS(; linesearch=BackTracking())
+    optim_options = Optim.Options(;
+        store_trace=true, show_trace=true, extended_trace=false
     )
+    result = Optim.optimize(loss, grad!, θ, optimizer, optim_options)
 
     store_simulation(
         "optimized",
@@ -82,7 +80,7 @@ function batch_reactor(; store_results::Bool=false)
         coord_lims;
         markers=states_markers(states_raw),
         # start_points_x, start_points_y,
-        start_points=reshape(u0 .+ (-1e-4, 0), 1, 2),
+        # start_points=reshape(u0 .+ (-1e-4, 0), 1, 2),
         title="Optimized policy",
     )
 end  # script wrapper

@@ -6,7 +6,7 @@ using DelimitedFiles: readdlm, writedlm
 
 using Dates: now
 using DataStructures: SortedDict
-using LazyGrids: ndgrid
+using GarishPrint: pprint
 using ArgCheck: @argcheck
 using Formatting: format, sprintf1
 using ProgressMeter: ProgressMeter, Progress, ProgressUnknown
@@ -72,16 +72,12 @@ using DiffEqSensitivity:
     ZygoteVJP,
     EnzymeVJP,
     ReverseDiffVJP
-using GalacticOptim: GalacticOptim
-# using GalacticOptim: AutoForwardDiff, AutoZygote  # does not precompile
-using DiffEqFlux: FastChain, FastDense, initial_params, sciml_train, FastLayer
+using DiffEqFlux: FastChain, FastDense, initial_params, FastLayer  # sciml_train
 using UnicodePlots: lineplot, lineplot!, histogram
 using Serialization: serialize, deserialize
 using JSON3: JSON3
-# using CSV: CSV
-# using Tables: table
 
-# using PyCall: PyObject
+using LazyGrids: ndgrid
 using PyPlot: plt, matplotlib, ColorMap, plot3D, scatter3D
 using LaTeXStrings: @L_str
 
