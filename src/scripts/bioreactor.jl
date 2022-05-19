@@ -30,10 +30,11 @@ function bioreactor(; store_results::Bool=false)
 
     reference_controller = interpolant_controller(collocation; plot=:unicode)
 
+    θ = initial_params(controlODE.controller)
     θ = preconditioner(
         controlODE,
         reference_controller;
-        θ=Float64.(initial_params(controller)),
+        θ=Float64.(θ),
         ## Flux options
         # optimizer=ADAM(),
         x_tol=1e-5,
@@ -43,8 +44,6 @@ function bioreactor(; store_results::Bool=false)
         # x_tol=1.0f-2,
         # f_tol=1.0f-2,
     )
-
-    # θ = initial_params(controlODE.controller)
 
     plot_state_constraints(θ)
     plot_simulation(controlODE, θ; only=:controls, vars=[1])

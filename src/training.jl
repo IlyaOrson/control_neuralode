@@ -234,7 +234,7 @@ function constrained_training(
 
     δ = δ0
     δ_progression = []
-    counter = 1
+    counter = 0
     while δ > δ_final && counter <= max_barrier_iterations
         counter += 1
 
