@@ -35,7 +35,6 @@ function flux_train!(
             gradient = back(one(current_loss))[1]
         catch
             @warn "Unstable parameter region. Adding some noise to parameters."
-            # Zygote.@ignore @infiltrate
             params += noise_factor * std(params) * randn(eltype(params), length(params))
             iter += 1
             continue
@@ -65,16 +64,16 @@ function flux_train!(
         )
 
         if !isnothing(x_tol) && x_diff < x_tol
-            @info "Space rate threshold reached: $x_diff < $x_tol tolerance"
+            @debug "Space rate threshold reached: $x_diff < $x_tol tolerance"
             return params
         elseif !isnothing(f_tol) && f_diff < f_tol
-            @info "Objective rate threshold reached: $f_diff < $f_tol tolerance"
+            @debug "Objective rate threshold reached: $f_diff < $f_tol tolerance"
             return params
         elseif !isnothing(g_tol) && g_norm < g_tol
-            @info "Gradient norm threshold reached: $g_norm < $g_tol tolerance"
+            @debug "Gradient norm threshold reached: $g_norm < $g_tol tolerance"
             return params
         elseif iter > maxiters
-            @info "Iteration bound reached: $iter > $maxiters tolerance"
+            @debug "Iteration bound reached: $iter > $maxiters tolerance"
             return params
         end
         iter += 1
@@ -106,7 +105,8 @@ function preconditioner(
         showspeed=true,
         enabled=progressbar,
     )
-    for partial_time in controlODE.tsteps[2:(end - 1)]  # skip spurious ends from collocation
+    # skip spurious ends from collocation
+    for partial_time in controlODE.tsteps[2:(end - 1)]
         partial_tspan = (controlODE.tspan[1], partial_time)
 
         local fixed_prob
@@ -207,18 +207,83 @@ function preconditioner(
     return θ
 end
 
-function constrained_training(
-    controlODE,
+function increase_by_percentage(x, per)
+    @argcheck 0 < per < 100
+    return (1f0 + 1f-2 * per) * x
+end
+
+function decrease_by_percentage(x, per)
+    @argcheck 0 < per < 100
+    return (1f0 - 1f-2 * per) * x
+end
+
+function evaluate_barrier(
     losses,
-    δ0;
+    controlODE,
+    θ;
+    α,
+    δ,
+    ρ,
+    penalty_ratio_upper_bound=1f1,
+    penalty_ratio_lower_bound=1f-1,
+    )
+    objective, state_penalty, control_penalty, regularization = losses(controlODE, θ; α, δ, ρ)
+    if isinf(state_penalty)
+        return :inf
+    end
+    state_penalty_size = abs(state_penalty)
+    other_penalties_size = abs(objective)
+    # other_penalties_size = max(abs(objective), abs(control_penalty), abs(regularization))
+    state_penalty_ratio = state_penalty_size / other_penalties_size
+    if state_penalty_ratio > penalty_ratio_upper_bound
+        return :overtight
+    elseif state_penalty_ratio < penalty_ratio_lower_bound
+        return :overlax
+    else
+        return :reasonable
+    end
+end
+
+function tune_barrier(
+    losses,
+    controlODE,
+    θ;
     α,
     ρ,
-    θ,
-    max_barrier_iterations=50,
-    δ_final=1.0f-1 * δ0,
-    loosen_rule=(δ) -> (1.025f0 * δ),
-    tighten_rule=(δ) -> (0.95f0 * δ),
-    state_penalty_ratio_limit=1.0f3,
+    δ,
+    percentage_step=10f0,
+    max_iters=10000,
+    kwargs...
+)
+    counter=0
+    while true
+        counter+=1
+        if counter > max_iters
+            return δ
+        end
+        evaluation = evaluate_barrier(losses, controlODE, θ; α, δ, ρ, kwargs...)
+        if evaluation == :reasonable
+            return decrease_by_percentage(δ, percentage_step)
+        elseif evaluation == :inf
+            δ = increase_by_percentage(δ, percentage_step)
+        elseif evaluation == :overtight
+            δ = increase_by_percentage(δ, percentage_step)
+        elseif evaluation == :overlax
+            δ = decrease_by_percentage(δ, percentage_step)
+        else
+            @check evaluation in [:inf, :overtight, :overlax, :reasonable]
+        end
+    end
+end
+
+function constrained_training(
+    losses,
+    controlODE,
+    θ;
+    α,
+    ρ,
+    δ0=1f1,
+    max_barrier_iterations=20,
     show_progressbar=false,
     datadir=nothing,
     metadata=Dict(),  # metadata is added to this dict always
@@ -232,20 +297,29 @@ function constrained_training(
         showspeed=true,
     )
 
-    δ = δ0
-    δ_progression = []
+    δ = tune_barrier(
+        losses,
+        controlODE,
+        θ;
+        α,
+        ρ,
+        δ = δ0,
+        percentage_step=10f0,
+    )
+
+    δ_progression = [δ]
     counter = 0
-    while δ > δ_final && counter <= max_barrier_iterations
+    while counter < max_barrier_iterations
         counter += 1
 
         # for debugging convenience
         lost(params) = losses(controlODE, params; α, δ, ρ)
-        objective_grad = sum(abs2, Zygote.gradient(x -> lost(x)[1], θ)[1])
-        state_penalty_grad = sum(abs2, Zygote.gradient(x -> lost(x)[2], θ)[1])
-        regularization_grad = sum(abs2, Zygote.gradient(x -> lost(x)[4], θ)[1])
-        @info "Objective grad" objective_grad
-        @info "State penalty grad" state_penalty_grad
-        @info "Regularization grad" regularization_grad
+        # objective_grad = sum(abs2, Zygote.gradient(x -> lost(x)[1], θ)[1])
+        # state_penalty_grad = sum(abs2, Zygote.gradient(x -> lost(x)[2], θ)[1])
+        # regularization_grad = sum(abs2, Zygote.gradient(x -> lost(x)[4], θ)[1])
+        # @info "Objective grad" objective_grad
+        # @info "State penalty grad" state_penalty_grad
+        # @info "Regularization grad" regularization_grad
 
         # closures to comply with optimization interface
         params_size = length(θ)
@@ -299,13 +373,15 @@ function constrained_training(
             nothing,
         )
         ipopt.x = Float64.(θ)
-        Ipopt.AddIpoptIntOption(ipopt, "print_level", 5)
-        Ipopt.AddIpoptIntOption(ipopt, "max_iter", 200)
+        Ipopt.AddIpoptIntOption(ipopt, "print_level", 5)  # default is 5
+        Ipopt.AddIpoptNumOption(ipopt, "tol", 1e-2)
+        Ipopt.AddIpoptIntOption(ipopt, "max_iter", 20)  # FIXME
+        Ipopt.AddIpoptNumOption(ipopt, "acceptable_tol", 1e-1)  # default is 1e-6
+        Ipopt.AddIpoptIntOption(ipopt, "acceptable_iter", 5)  # default is 15
         Ipopt.AddIpoptStrOption(ipopt, "check_derivatives_for_naninf", "yes")
         Ipopt.AddIpoptStrOption(ipopt, "print_info_string", "yes")
         Ipopt.AddIpoptStrOption(ipopt, "hessian_approximation", "limited-memory")
         Ipopt.AddIpoptStrOption(ipopt, "mu_strategy", "adaptive")
-        Ipopt.AddIpoptNumOption(ipopt, "tol", 1e-2)
 
         # https://github.com/jump-dev/Ipopt.jl/blob/d9e9176620a9b527a08991a3d41062fa948867f7/src/Ipopt.jl#L113
         solve_status = Ipopt.IpoptSolve(ipopt)
@@ -313,22 +389,21 @@ function constrained_training(
 
         # Optim
         # https://julianlsolvers.github.io/Optim.jl/stable/#user/config/
-        optim_options = Optim.Options(;
-            store_trace=true, show_trace=true, extended_trace=false
-            )
+        # optim_options = Optim.Options(;
+        #     store_trace=true, show_trace=false, extended_trace=false
+        # )
         # optim_result = Optim.optimize(loss, grad!, θ, BFGS(), optim_options)
-        optim_result = Optim.optimize(loss, grad!, θ, LBFGS(; linesearch=BackTracking()), optim_options)
+        # optim_result = Optim.optimize(loss, grad!, θ, LBFGS(; linesearch=BackTracking()), optim_options)
 
         # Flux
         # flux_minimizer = flux_train!(loss, θ, ADAM())
 
         # @info "LBFGSB" lost(xout)
-        @info "IPOPT" lost(ipopt_minimizer)
-        @info "Optim" lost(optim_result.minimizer)
+        # @info "IPOPT" lost(ipopt_minimizer)
+        # @info "Optim" lost(optim_result.minimizer)
         # @info "Flux" lost(flux_minimizer)
-        # Zygote.@ignore @infiltrate
 
-        minimizer = ipopt.x
+        minimizer = ipopt_minimizer
         objective, state_penalty, control_penalty, regularization = lost(minimizer)
 
         current_values = [
@@ -355,30 +430,29 @@ function constrained_training(
             :num_params => length(initial_params(controlODE.controller)),
             :layers => controller_shape(controlODE.controller),
             :tspan => controlODE.tspan,
-            :tsteps => controlODE.tsteps,
         )
         metadata = merge(metadata, local_metadata)
         name = name_interpolation(δ, counter)
         store_simulation(name, controlODE, θ; metadata, datadir)
+        # @infiltrate
 
-        state_penalty_size = abs(state_penalty)
-        other_penalties_size = abs(objective)
-        # other_penalties_size = max(abs(objective), abs(control_penalty), abs(regularization))
-        state_penalty_ratio = state_penalty_size / other_penalties_size
-        if any(isinf, lost(minimizer)) || state_penalty_ratio > state_penalty_ratio_limit
-            δ = loosen_rule(δ)
-            push!(δ_progression, δ)
-            # Zygote.@ignore @infiltrate
-            continue
+        new_δ = tune_barrier(
+            losses,
+            controlODE,
+            minimizer;
+            α,
+            ρ,
+            δ,
+            percentage_step=5f0,
+        )
+        if new_δ > δ
+            return θ, δ_progression
         end
-        δ = tighten_rule(δ)
-        push!(δ_progression, δ)
-
-        θ = minimizer
-
         # add some noise to avoid local minima
         # θ += 1.0f-1 * std(θ) * randn(Float32, length(θ))
+        θ = minimizer
+        δ = new_δ
+        push!(δ_progression, δ)
     end
-    # Zygote.@ignore @infiltrate
-    return θ, δ
+    return θ, δ_progression
 end

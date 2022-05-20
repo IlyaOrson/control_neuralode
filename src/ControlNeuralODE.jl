@@ -7,7 +7,7 @@ using DelimitedFiles: readdlm, writedlm
 using Dates: now
 using DataStructures: SortedDict
 using GarishPrint: pprint
-using ArgCheck: @argcheck
+using ArgCheck: @argcheck, @check
 using Formatting: format, sprintf1
 using ProgressMeter: ProgressMeter, Progress, ProgressUnknown
 using Infiltrator: @infiltrate

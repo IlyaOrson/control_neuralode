@@ -5,10 +5,11 @@
 # objective: maximize C_qc
 
 # state constraints
-# C_N(t) - 150 ≤ 0              t = T
+# C_N(t) - 250 ≥ 0              t = T
 # C_N(t) − 400 ≤ 0              ∀t
 
 function bioreactor(; store_results::Bool=false)
+
     datadir = nothing
     if store_results
         datadir = generate_data_subdir(@__FILE__)
@@ -51,7 +52,9 @@ function bioreactor(; store_results::Bool=false)
     store_simulation("precondition", controlODE, θ; datadir)
 
     function state_penalty_functional(solution_array; δ)
-
+        # state constraints
+        # C_N(t) - 250 ≥ 0              t = T
+        # C_N(t) − 400 ≤ 0              ∀t
         C_N_over_running = map(y -> relaxed_log_barrier(400.0 - y; δ), solution_array[2, 1:end-1])
         C_N_over_last = relaxed_log_barrier(solution_array[2, end] - 250.0; δ)
 
@@ -60,9 +63,6 @@ function bioreactor(; store_results::Bool=false)
         return mean(C_N_over_running) + C_N_over_last
     end
 
-    # state constraints on control change
-    # C_N(t) - 250 ≥ 0              t = T
-    # C_N(t) − 400 ≤ 0              ∀t
     function losses(controlODE, params; α, δ, ρ)
         # integrate ODE system
         sol_raw = solve(controlODE, params)
@@ -70,7 +70,6 @@ function bioreactor(; store_results::Bool=false)
 
         # https://diffeqflux.sciml.ai/dev/examples/divergence/
         # Zygote.@ignore @infiltrate sol_raw.retcode != :Success
-        # if sol_raw.retcode != :Success  # avoid this with Zygote...
         if sol_raw.t[end] != controlODE.tspan[end]
             # Zygote.@ignore @infiltrate
             return Inf
@@ -91,7 +90,6 @@ function bioreactor(; store_results::Bool=false)
         # end
 
         regularization = ρ * sum(abs2, params)
-        # regularization = 0.0
 
         # Zygote.@ignore @infiltrate abs(regularization) > 1.0f2 &&
         #     abs(regularization) >
@@ -101,39 +99,36 @@ function bioreactor(; store_results::Bool=false)
 
     # α: penalty coefficient
     # δ: barrier relaxation coefficient
-    α = 1f-4
+    α = 1f-3
     ρ = 1f-2
-    δ0 = 2.5f0
-    δ_final = 5f-2 * δ0
-    max_barrier_iterations = 100
-    # Zygote.@ignore @infiltrate
-    # return
-    θ, δ = constrained_training(
-        controlODE,
+    δ0 = 10f0
+    max_barrier_iterations = 20
+
+    θ, δ_progression = constrained_training(
         losses,
-        δ0;
-        θ,
-        δ_final,
-        max_barrier_iterations,
+        controlODE,
+        θ;
         α,
         ρ,
+        δ0,
+        max_barrier_iterations,
         show_progressbar=true,
         datadir,
     )
 
+    δ_final = δ_progression[end]
     objective, state_penalty, control_penalty, regularization = losses(
-        controlODE, θ; δ, α, ρ
+        controlODE, θ; δ = δ_final, α, ρ
     )
 
     @info "Final states"
-    # plot_simulation(controlODE, θ; only=:states, vars=[1], show=final_values)
     plot_state_constraints(θ)
 
     @info "Final controls"
     plot_simulation(controlODE, θ; only=:controls, vars=[1])
     plot_simulation(controlODE, θ; only=:controls, vars=[2])
 
-    @info "Final losses" losses(controlODE, θ; δ, α, ρ)
+    @info "Final losses" losses(controlODE, θ; δ = δ_final, α, ρ)
 
     @info "Collocation comparison"
     collocation = bioreactor_collocation(

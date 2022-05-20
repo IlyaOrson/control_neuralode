@@ -22,3 +22,6 @@ __pycache__/
 
 # work-in-progress
 temp/
+
+# plots
+plots/

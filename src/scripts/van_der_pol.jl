@@ -128,7 +128,7 @@ function van_der_pol(; store_results::Bool=false)
     max_barrier_iterations = 100
     δ_final = 1f-2 * δ0
 
-    θ, δ = constrained_training(
+    θ, δ_progression = constrained_training(
         controlODE,
         losses,
         δ0;
@@ -140,11 +140,11 @@ function van_der_pol(; store_results::Bool=false)
         show_progressbar=true,
         datadir,
     )
-
+    δ_final = δ_progression[end]
     # penalty_loss(result.minimizer, constrained_prob, tsteps; α=penalty_coefficients[end])
     plot_simulation(controlODE, θ; only=:controls)
 
-    objective, state_penalty, control_penalty, regularization = losses(controlODE, θ; α, δ, ρ)
+    objective, state_penalty, control_penalty, regularization = losses(controlODE, θ; α, δ = δ_final, ρ)
     store_simulation(
         "constrained",
         controlODE,

@@ -1,7 +1,7 @@
 RESULTS_REGEX = r"delta_(\d+\.\d+)_iter_(\d+)"
 
 function name_interpolation(delta, iter)
-    return "delta_$(round(delta, digits=2))_iter_$iter"
+    return "delta_$(round(delta, digits=3))_iter_$iter"
 end
 
 function extract_name_values(filename; re=RESULTS_REGEX)
@@ -69,12 +69,16 @@ function plot_penalization_rounds(
     ref_color="orange",
     transparency=0.7,
     saveto=nothing,
+    colorant="delta",
 )
-    @argcheck !all(map(x -> isnothing(x), (state_var, control_var)))
-    @argcheck !all(map(x -> !isnothing(x), (state_var, control_var)))
+    @argcheck colorant in ["delta", "iter"]
+    @argcheck !all(map(x -> isnothing(x), (state_var, control_var)))  "Please specify either state_var or control_var."
+    @argcheck !all(map(x -> !isnothing(x), (state_var, control_var)))  "Please specify just one of state_var or control_var."
 
-    @show iter_delta_dict = extract_all_name_values(dirpath)
-    @show deltas = collect(values(iter_delta_dict))
+    iter_delta_dict = extract_all_name_values(dirpath)
+    pprint(iter_delta_dict)
+    iters = collect(keys(iter_delta_dict))
+    deltas = collect(values(iter_delta_dict)) |> sort
     color_range = range(0.2, 1, length(iter_delta_dict))
     cmap = ColorMap(palette)
     cmap_range = ColorMap(palette)(color_range)
@@ -92,7 +96,7 @@ function plot_penalization_rounds(
                 label="δ=$delta",
                 alpha=transparency,
             )
-            plt.title("x_$state_var")
+            plt.ylabel("x_$state_var")
         elseif !isnothing(control_var)
             ax.plot(
                 times_local,
@@ -101,7 +105,7 @@ function plot_penalization_rounds(
                 label="δ=$delta",
                 alpha=transparency,
             )
-            plt.title("c_$control_var")
+            plt.ylabel("c_$control_var")
         end
         times = times_local
     end
@@ -124,14 +128,21 @@ function plot_penalization_rounds(
     )
     # plt.legend(; fontsize="x-small", loc="center left", bbox_to_anchor=(1.02, 0.5))
     # @infiltrate
-    norm = matplotlib.colors.Normalize(; vmin=deltas[begin], vmax=deltas[end])
+    local norm
+    if colorant == "iter"
+        norm = matplotlib.colors.Normalize(; vmin=iters[begin], vmax=iters[end])
+    elseif colorant == "delta"
+        norm = matplotlib.colors.Normalize(; vmin=deltas[end], vmax=deltas[begin])
+    end
     fig.colorbar(
         matplotlib.cm.ScalarMappable(; norm=norm, cmap=cmap);
         # cax=ax,
         orientation="vertical",
-        label=L"\delta",
+        # label=L"\delta",
+        label="iteration",
     )
     plt.xlabel("time")
+    plt.title("Constraint enforcement with Fiacco-McCormick iterations")
 
     !isnothing(saveto) && plt.savefig(saveto)
     return plt.show()

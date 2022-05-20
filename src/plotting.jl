@@ -549,20 +549,13 @@ function plot_initial_perturbations_collocation(
                 sensealg=controlODE.sensealg,
             )
 
-            @info "Simulation"
-            @time times, states, controls = run_simulation(controlODE, θ)
-            @info "Collocation"
-            @time collocation = infopt_collocation(
+            times, states, controls = run_simulation(controlODE, θ)
+            collocation = infopt_collocation(
                 perturbed_u0,
                 controlODE.tspan;
                 num_supports=length(controlODE.tsteps),
                 constrain_states=true,
             )
-            @info "Interpolation"
-            @time interpol = chebyshev_interpolation(
-                controlODE.tsteps, collocation.controls
-            )
-            # infopt_model, times_collocation, states_collocation, controls_collocation
             for s in 1:state_size
                 axs_states[s].plot(
                     times,

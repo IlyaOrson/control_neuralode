@@ -153,7 +153,7 @@ function semibatch_reactor(; store_results::Bool=false)
     δ0 = 1f1
     max_barrier_iterations = 25
     δ_final = 5f-2 * δ0
-    θ, δ = constrained_training(
+    θ, δ_progression = constrained_training(
         controlODE,
         losses,
         δ0;
@@ -165,7 +165,7 @@ function semibatch_reactor(; store_results::Bool=false)
         show_progressbar=true,
         datadir,
     )
-
+    δ_final = δ_progression[end]
     @info "Final states"
     plot_simulation(controlODE, θ; only=:states, vars=[1, 2, 3])
     plot_simulation(
@@ -175,6 +175,6 @@ function semibatch_reactor(; store_results::Bool=false)
     @info "Final controls"
     plot_simulation(controlODE, θ; only=:controls)#  only=:states, vars=[1,2,3])
 
-    @info "Final loss" losses(controlODE, θ; δ, α, ρ)
+    @info "Final loss" losses(controlODE, θ; δ = δ_final, α, ρ)
 
 end  # function wrapper
