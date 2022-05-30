@@ -9,6 +9,7 @@ using DataStructures: SortedDict
 using GarishPrint: pprint
 using ArgCheck: @argcheck, @check
 using Formatting: format, sprintf1
+using Suppressor: @capture_out
 using ProgressMeter: ProgressMeter, Progress, ProgressUnknown
 using Infiltrator: @infiltrate
 using StaticArrays: SA
@@ -38,14 +39,14 @@ using InfiniteOpt:
     value,
     ∂
 using Ipopt: Ipopt
-# using LBFGSB: LBFGSB
+using LBFGSB: LBFGSB
 using Optim: Optim, LBFGS, BFGS
 using DataInterpolations: LinearInterpolation
 using ApproxFun: Chebyshev, Fun, Interval  # https://github.com/stevengj/FastChebInterp.jl
 using ForwardDiff: ForwardDiff
 using ReverseDiff: ReverseDiff
 using Zygote: Zygote, pullback
-using Flux: Flux, glorot_uniform, sigmoid_fast, tanh_fast, ADAM, Optimiser, WeightDecay
+using Flux: Flux, glorot_uniform, sigmoid_fast, tanh_fast, ADAMW
 using SciMLBase:
     ODEProblem,
     DECallback,

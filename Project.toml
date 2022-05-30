@@ -43,6 +43,8 @@ SciMLBase = "0bca4576-84f4-4d90-8ffe-ffa030f20462"
 Serialization = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+Suppressor = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
+TerminalLoggers = "5d786b92-1e48-4d6f-9151-6b4477ca9bed"
 UnicodePlots = "b8865327-cd53-5732-bb35-84acbb429228"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 

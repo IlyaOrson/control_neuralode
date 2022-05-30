@@ -1,7 +1,7 @@
-function flux_train!(
-    loss,
-    p,
-    opt::Flux.Optimise.AbstractOptimiser;
+function optimize_flux(
+    θ,
+    loss;
+    opt::Flux.Optimise.AbstractOptimiser=ADAMW(0.01, (0.9, 0.999), 1.0f-2),
     maxiters::Integer=1_000,
     x_tol::Union{Nothing,Real}=nothing,
     f_tol::Union{Nothing,Real}=nothing,
@@ -14,14 +14,15 @@ function flux_train!(
     @argcheck isnothing(f_tol) || f_tol > zero(f_tol)
     @argcheck isnothing(g_tol) || g_tol > zero(g_tol)
 
-    params = copy(p)
-    params_ref = copy(p)
+    params = copy(θ)
+    params_ref = copy(θ)
 
-    prog = ProgressUnknown(
-        "Flux adaptive training. (x_tol=$x_tol, f_tol=$f_tol, g_tol=$g_tol, maxiters=$maxiters)";
+    prog = Progress(maxiters;
+        desc="Flux adaptive training. (x_tol=$x_tol, f_tol=$f_tol, g_tol=$g_tol, maxiters=$maxiters)",
+        dt=0.2,
         enabled=show_progressbar,
-        spinner=true,
         showspeed=true,
+        offset=1,
     )
     iter = 1
     while true
@@ -52,32 +53,113 @@ function flux_train!(
         g_norm = sum(abs2, gradient)
 
         # display
-        ProgressMeter.next!(
-            prog;
-            showvalues=[
-                (:iter, iter),
-                (:loss, current_loss),
-                (:x_diff, x_diff),
-                (:f_diff, f_diff),
-                (:g_norm, g_norm),
-            ],
-        )
+        current_values = [
+            (:iter, iter),
+            (:loss, current_loss),
+            (:x_diff, x_diff),
+            (:f_diff, f_diff),
+            (:g_norm, g_norm),
+        ]
+        ProgressMeter.next!(prog; showvalues=current_values)
 
         if !isnothing(x_tol) && x_diff < x_tol
-            @debug "Space rate threshold reached: $x_diff < $x_tol tolerance"
+            desc = "Space rate threshold reached: $x_diff < $x_tol tolerance"
+            ProgressMeter.finish!(prog; desc)
             return params
         elseif !isnothing(f_tol) && f_diff < f_tol
-            @debug "Objective rate threshold reached: $f_diff < $f_tol tolerance"
+            desc = "Objective rate threshold reached: $f_diff < $f_tol tolerance"
+            ProgressMeter.finish!(prog; desc)
             return params
         elseif !isnothing(g_tol) && g_norm < g_tol
-            @debug "Gradient norm threshold reached: $g_norm < $g_tol tolerance"
+            desc = "Gradient norm threshold reached: $g_norm < $g_tol tolerance"
+            ProgressMeter.finish!(prog; desc)
             return params
         elseif iter > maxiters
-            @debug "Iteration bound reached: $iter > $maxiters tolerance"
+            desc = "Iteration bound reached: $iter > $maxiters tolerance"
+            ProgressMeter.finish!(prog; desc)
             return params
         end
         iter += 1
     end
+end
+
+function optimize_lbfgsb(θ, loss, grad!)
+    # LBFGSB
+    # https://github.com/Gnimuc/LBFGSB.jl/blob/master/test/wrapper.jl
+    param_size = length(θ)
+    lbfgsb = LBFGSB.L_BFGS_B(params_size, 10)
+    bounds = zeros(3, params_size)
+    for i in 1:params_size
+        bounds[1, i] = 2  # 0->unbounded, 1->only lower bound, 2-> both lower and upper bounds, 3->only upper bound
+        bounds[2, i] = -1e1
+        bounds[3, i] = 1e1
+    end
+    fout, xout = lbfgsb(
+        loss,
+        grad!,
+        Float64.(θ),
+        bounds;
+        m=5,
+        factr=1e7,
+        pgtol=1e-5,
+        iprint=-1,
+        maxfun=1000,
+        maxiter=100,
+    )
+    return xout
+end
+
+function optimize_optim(θ, loss, grad!)
+    # Optim
+    # https://julianlsolvers.github.io/Optim.jl/stable/#user/config/
+    optim_options = Optim.Options(;
+        store_trace=true, show_trace=false, extended_trace=false
+    )
+    # optim_result = Optim.optimize(loss, grad!, θ, BFGS(), optim_options)
+    optim_result = Optim.optimize(loss, grad!, θ, LBFGS(; linesearch=BackTracking()), optim_options)
+    return optim_result.minimizer
+end
+
+function optimize_ipopt(θ, loss, grad!)
+    # IPOPT
+    # https://github.com/jump-dev/Ipopt.jl/blob/master/test/C_wrapper.jl
+    eval_g(x, g) = g[:] = zero(x)
+    eval_grad_f(x, g) = grad!(g, x)
+    eval_jac_g(x, rows, cols, values) = return nothing
+    # eval_h(x, rows, cols, obj_factor, lambda, values) = return nothing
+    params_size=length(θ)
+    x_lb = fill(-1e1, params_size)
+    x_ub = fill(1e1, params_size)
+    ipopt = Ipopt.CreateIpoptProblem(
+        params_size,
+        x_lb,
+        x_ub,
+        0,
+        Float64[],
+        Float64[],
+        0,
+        0,
+        loss,
+        eval_g,
+        eval_grad_f,
+        eval_jac_g,
+        nothing,
+    )
+    ipopt.x = Float64.(θ)
+    Ipopt.AddIpoptIntOption(ipopt, "print_level", 3)  # default is 5
+    Ipopt.AddIpoptNumOption(ipopt, "tol", 1e-2)
+    Ipopt.AddIpoptIntOption(ipopt, "max_iter", 100)  # FIXME
+    Ipopt.AddIpoptNumOption(ipopt, "acceptable_tol", 1e-1)  # default is 1e-6
+    Ipopt.AddIpoptIntOption(ipopt, "acceptable_iter", 5)  # default is 15
+    Ipopt.AddIpoptStrOption(ipopt, "check_derivatives_for_naninf", "yes")
+    Ipopt.AddIpoptStrOption(ipopt, "print_info_string", "yes")
+    Ipopt.AddIpoptStrOption(ipopt, "hessian_approximation", "limited-memory")
+    Ipopt.AddIpoptStrOption(ipopt, "mu_strategy", "adaptive")
+
+    # https://github.com/jump-dev/Ipopt.jl/blob/d9e9176620a9b527a08991a3d41062fa948867f7/src/Ipopt.jl#L113
+    solve_status = Ipopt.IpoptSolve(ipopt)
+    ipopt_minimizer = ipopt.x
+    return ipopt_minimizer
 end
 
 function preconditioner(
@@ -87,12 +169,7 @@ function preconditioner(
     ρ=nothing,
     saveat=(),
     progressbar=true,
-    plot_progress=false,
     plot_final=true,
-    # Flux
-    optimizer=Optimiser(WeightDecay(1.0f-2), ADAM(1.0f-2)),
-    # Optim
-    # optimizer=LBFGS(; linesearch=BackTracking()),
     integrator=INTEGRATOR,
     kwargs...,
 )
@@ -100,8 +177,8 @@ function preconditioner(
 
     prog = Progress(
         length(controlODE.tsteps[2:end]);
-        desc="Pretraining in subintervals...",
-        dt=0.5,
+        desc="Pretraining in subintervals t ∈ $(controlODE.tspan)",
+        dt=0.2,
         showspeed=true,
         enabled=progressbar,
     )
@@ -147,7 +224,7 @@ function preconditioner(
                     control = reduce(hcat, plot_arrays[:control])
 
                     if plot == :unicode
-                        for r in 1:size(reference, 1)
+                        for r in axes(reference, 1)
                             p = lineplot(reference[r, :]; name="fixed")
                             lineplot!(p, control[r, :]; name="neural")
                             display(p)
@@ -195,11 +272,11 @@ function preconditioner(
             end
         end
 
-        θ = flux_train!(precondition_loss, θ, optimizer; kwargs...)
+        grad!(g, params) = g .= Zygote.gradient(precondition_loss, params)[1]
+        θ = optimize_flux(θ, precondition_loss; kwargs...)
+        # θ = optimize_ipopt(θ, precondition_loss, grad!)
 
-        pvar = plot_progress ? :unicode : nothing
-        ploss = precondition_loss(θ; plot=pvar)
-        ProgressMeter.next!(prog; showvalues=[(:loss, ploss)])
+        ProgressMeter.next!(prog)
         if partial_time == controlODE.tsteps[end] && plot_final
             precondition_loss(θ; plot=:pyplot)
         end
@@ -283,19 +360,21 @@ function constrained_training(
     α,
     ρ,
     δ0=1f1,
-    max_barrier_iterations=20,
+    max_barrier_iterations=50,
     show_progressbar=false,
     datadir=nothing,
     metadata=Dict(),  # metadata is added to this dict always
 )
     @info "Training with constraints..."
 
-    prog = ProgressUnknown(
-        "Fiacco-McCormick barrier iterations";
+    prog = Progress(max_barrier_iterations;
+        desc="Fiacco-McCormick barrier iterations",
+        dt=0.2,
         enabled=show_progressbar,
-        spinner=true,
         showspeed=true,
     )
+
+    percentage_step=10f0
 
     δ = tune_barrier(
         losses,
@@ -304,13 +383,15 @@ function constrained_training(
         α,
         ρ,
         δ = δ0,
-        percentage_step=10f0,
+        percentage_step,
     )
 
     δ_progression = [δ]
-    counter = 0
-    while counter < max_barrier_iterations
-        counter += 1
+    barrier_iteration = 0
+    max_delta_reductions = 5
+    reduction_counter = 0
+    while barrier_iteration < max_barrier_iterations
+        barrier_iteration += 1
 
         # for debugging convenience
         lost(params) = losses(controlODE, params; α, δ, ρ)
@@ -322,92 +403,22 @@ function constrained_training(
         # @info "Regularization grad" regularization_grad
 
         # closures to comply with optimization interface
-        params_size = length(θ)
         loss(params) = sum(losses(controlODE, params; α, δ, ρ))
         grad(params) = Zygote.gradient(loss, params)[1]
         grad!(g, params) = g .= Zygote.gradient(loss, params)[1]
 
-        # LBFGSB
-        # https://github.com/Gnimuc/LBFGSB.jl/blob/master/test/wrapper.jl
-        # lbfgsb = LBFGSB.L_BFGS_B(params_size, 10)
-        # bounds = zeros(3, params_size)
-        # for i in 1:params_size
-        #     bounds[1, i] = 2  # 0->unbounded, 1->only lower bound, 2-> both lower and upper bounds, 3->only upper bound
-        #     bounds[2, i] = -1e1
-        #     bounds[3, i] = 1e1
-        # end
-        # fout, xout = lbfgsb(
-        #     loss,
-        #     grad!,
-        #     Float64.(θ),
-        #     bounds;
-        #     m=5,
-        #     factr=1e7,
-        #     pgtol=1e-5,
-        #     iprint=-1,
-        #     maxfun=1000,
-        #     maxiter=100,
-        # )
+        local minimizer
+        optimizer_output = @capture_out begin
+            # minimizer = optimize_flux(θ, loss)
+            minimizer = optimize_ipopt(θ, loss, grad!)
+            # minimizer = optimize_optim(θ, loss, grad!)
+        end
+        @info optimizer_output
 
-        # IPOPT
-        # https://github.com/jump-dev/Ipopt.jl/blob/master/test/C_wrapper.jl
-        eval_g(x, g) = g[:] = zero(x)
-        eval_grad_f(x, g) = grad!(g, x)
-        eval_jac_g(x, rows, cols, values) = return nothing
-        # eval_h(x, rows, cols, obj_factor, lambda, values) = return nothing
-        x_lb = fill(-1e1, params_size)
-        x_ub = fill(1e1, params_size)
-        ipopt = Ipopt.CreateIpoptProblem(
-            params_size,
-            x_lb,
-            x_ub,
-            0,
-            Float64[],
-            Float64[],
-            0,
-            0,
-            loss,
-            eval_g,
-            eval_grad_f,
-            eval_jac_g,
-            nothing,
-        )
-        ipopt.x = Float64.(θ)
-        Ipopt.AddIpoptIntOption(ipopt, "print_level", 5)  # default is 5
-        Ipopt.AddIpoptNumOption(ipopt, "tol", 1e-2)
-        Ipopt.AddIpoptIntOption(ipopt, "max_iter", 20)  # FIXME
-        Ipopt.AddIpoptNumOption(ipopt, "acceptable_tol", 1e-1)  # default is 1e-6
-        Ipopt.AddIpoptIntOption(ipopt, "acceptable_iter", 5)  # default is 15
-        Ipopt.AddIpoptStrOption(ipopt, "check_derivatives_for_naninf", "yes")
-        Ipopt.AddIpoptStrOption(ipopt, "print_info_string", "yes")
-        Ipopt.AddIpoptStrOption(ipopt, "hessian_approximation", "limited-memory")
-        Ipopt.AddIpoptStrOption(ipopt, "mu_strategy", "adaptive")
-
-        # https://github.com/jump-dev/Ipopt.jl/blob/d9e9176620a9b527a08991a3d41062fa948867f7/src/Ipopt.jl#L113
-        solve_status = Ipopt.IpoptSolve(ipopt)
-        ipopt_minimizer = ipopt.x
-
-        # Optim
-        # https://julianlsolvers.github.io/Optim.jl/stable/#user/config/
-        # optim_options = Optim.Options(;
-        #     store_trace=true, show_trace=false, extended_trace=false
-        # )
-        # optim_result = Optim.optimize(loss, grad!, θ, BFGS(), optim_options)
-        # optim_result = Optim.optimize(loss, grad!, θ, LBFGS(; linesearch=BackTracking()), optim_options)
-
-        # Flux
-        # flux_minimizer = flux_train!(loss, θ, ADAM())
-
-        # @info "LBFGSB" lost(xout)
-        # @info "IPOPT" lost(ipopt_minimizer)
-        # @info "Optim" lost(optim_result.minimizer)
-        # @info "Flux" lost(flux_minimizer)
-
-        minimizer = ipopt_minimizer
         objective, state_penalty, control_penalty, regularization = lost(minimizer)
 
         current_values = [
-            (:iter, counter),
+            (:iter, barrier_iteration),
             (:α, α),
             (:δ, δ),
             (:ρ, ρ),
@@ -416,7 +427,7 @@ function constrained_training(
             (:control_penalty, control_penalty),
             (:regularization, regularization),
         ]
-        # @info "Fiacco-McCormick barrier iterations" current_values
+        # @info "Barrier iterations" current_values
         ProgressMeter.next!(prog; showvalues=current_values)
 
         local_metadata = Dict(
@@ -432,27 +443,39 @@ function constrained_training(
             :tspan => controlODE.tspan,
         )
         metadata = merge(metadata, local_metadata)
-        name = name_interpolation(δ, counter)
+        name = name_interpolation(δ, barrier_iteration)
         store_simulation(name, controlODE, θ; metadata, datadir)
-        # @infiltrate
 
-        new_δ = tune_barrier(
-            losses,
-            controlODE,
-            minimizer;
-            α,
-            ρ,
-            δ,
-            percentage_step=5f0,
-        )
+        local new_δ
+        for tuning_percentage in [percentage_step * (1/2^i) for i in 1:4]
+            new_δ = tune_barrier(
+                losses,
+                controlODE,
+                minimizer;
+                α,
+                ρ,
+                δ,
+                percentage_step=tuning_percentage,
+            )
+            if new_δ < δ
+                break
+            else
+                continue
+            end
+        end
+
         if new_δ > δ
+            ProgressMeter.finish!(prog)
             return θ, δ_progression
         end
+
         # add some noise to avoid local minima
         # θ += 1.0f-1 * std(θ) * randn(Float32, length(θ))
+
         θ = minimizer
         δ = new_δ
         push!(δ_progression, δ)
     end
+    ProgressMeter.finish!(prog)
     return θ, δ_progression
 end

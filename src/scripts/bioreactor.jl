@@ -36,14 +36,7 @@ function bioreactor(; store_results::Bool=false)
         controlODE,
         reference_controller;
         θ=Float64.(θ),
-        ## Flux options
-        # optimizer=ADAM(),
-        x_tol=1e-5,
-        ## Optim options
-        # optimizer=LBFGS(; linesearch=BackTracking()),
-        # iterations=100,
-        # x_tol=1.0f-2,
-        # f_tol=1.0f-2,
+        x_tol=1e-4,
     )
 
     plot_state_constraints(θ)
@@ -101,8 +94,7 @@ function bioreactor(; store_results::Bool=false)
     # δ: barrier relaxation coefficient
     α = 1f-3
     ρ = 1f-2
-    δ0 = 10f0
-    max_barrier_iterations = 20
+    max_barrier_iterations = 80
 
     θ, δ_progression = constrained_training(
         losses,
@@ -110,11 +102,12 @@ function bioreactor(; store_results::Bool=false)
         θ;
         α,
         ρ,
-        δ0,
         max_barrier_iterations,
         show_progressbar=true,
         datadir,
     )
+
+    @info "Delta progression" δ_progression
 
     δ_final = δ_progression[end]
     objective, state_penalty, control_penalty, regularization = losses(
