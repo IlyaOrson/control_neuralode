@@ -58,7 +58,7 @@ function van_der_pol(; store_results::Bool=false)
         sol = solve(controlODE, params) |> Array
         # return Array(sol)[3, end]  # return last value of third variable ...to be minimized
         objective = 0.0f0
-        for i in 1:size(sol, 2)
+        for i in axes(sol, 2)
             s = sol[:, i]
             c = controlODE.controller(s, params)
             objective += s[1]^2 + s[2]^2 + c[1]^2
@@ -69,13 +69,9 @@ function van_der_pol(; store_results::Bool=false)
 
     @info "Training..."
     grad!(g, params) = g .= Zygote.gradient(loss, params)[1]
-    optimizer = LBFGS(; linesearch=BackTracking())
-    optim_options = Optim.Options(;
-        store_trace=true, show_trace=true, extended_trace=false
-    )
-    result = Optim.optimize(loss, grad!, θ, optimizer, optim_options)
-
-    θ = result.minimizer
+    # θ = optimize_optim(θ, loss, grad!)
+    @infiltrate
+    θ = optimize_ipopt(θ, loss, grad!)
 
     _, states_raw, _ = run_simulation(controlODE, θ)
     phase_portrait(
@@ -102,7 +98,7 @@ function van_der_pol(; store_results::Bool=false)
         sol = solve(controlODE, params) |> Array
         objective = 0.0f0
         control_penalty = 0.0f0
-        for i in 1:size(sol, 2)
+        for i in axes(sol, 2)
             s = sol[:, i]
             c = controlODE.controller(s, params)
             objective += s[1]^2 + s[2]^2
@@ -124,22 +120,17 @@ function van_der_pol(; store_results::Bool=false)
     # δ: barrier relaxation coefficient
     α = 1f-1
     ρ = 0f0
-    δ0 = 1f-1
-    max_barrier_iterations = 100
-    δ_final = 1f-2 * δ0
-
     θ, δ_progression = constrained_training(
-        controlODE,
         losses,
-        δ0;
-        θ,
-        δ_final,
-        max_barrier_iterations,
+        controlODE,
+        θ;
         α,
         ρ,
         show_progressbar=true,
         datadir,
     )
+
+    @info "Delta progression" δ_progression
     δ_final = δ_progression[end]
     # penalty_loss(result.minimizer, constrained_prob, tsteps; α=penalty_coefficients[end])
     plot_simulation(controlODE, θ; only=:controls)

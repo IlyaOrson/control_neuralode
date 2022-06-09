@@ -56,22 +56,15 @@ function batch_reactor(; store_results::Bool=false)
 
     @info "Training..."
     grad!(g, params) = g .= Zygote.gradient(loss, params)[1]
-    optimizer = LBFGS(; linesearch=BackTracking())
-    optim_options = Optim.Options(;
-        store_trace=true, show_trace=true, extended_trace=false
-    )
-    result = Optim.optimize(loss, grad!, θ, optimizer, optim_options)
+    θ = optimize_optim(θ, loss, grad!)
 
     store_simulation(
         "optimized",
         controlODE,
-        result.minimizer;
-        metadata=Dict(:loss => loss(result.minimizer)),
+        θ;
         datadir,
     )
-    plot_simulation(controlODE, result.minimizer; only=:controls)
-
-    θ = result.minimizer
+    plot_simulation(controlODE, θ; only=:controls)
 
     _, states_raw, _ = run_simulation(controlODE, θ)
     return phase_portrait(

@@ -203,7 +203,7 @@ function preconditioner(
             plot_arrays = Dict(:reference => [], :control => [])
 
             sum_squares = 0.0f0
-
+            datapoints = length(fixed_sol.t)
             # for (time, state) in zip(fixed_sol.t, fixed_sol.u)  # Zygote error
             for (i, state) in enumerate(eachcol(Array(fixed_sol)))
                 reference = precondition(fixed_sol.t[i], nothing)  # precondition(time, params)
@@ -264,11 +264,12 @@ function preconditioner(
                     end
                 end
             end
+            mse = sum_squares/datapoints
             if isnothing(ρ)
-                return sum_squares
+                return mse
             else
                 regularization = ρ * sum(abs2, params)
-                return sum_squares + regularization
+                return mse + regularization
             end
         end
 
@@ -328,7 +329,7 @@ function tune_barrier(
     α,
     ρ,
     δ,
-    percentage_step=10f0,
+    δ_percentage_reduction=20f0,
     max_iters=10000,
     kwargs...
 )
@@ -340,13 +341,13 @@ function tune_barrier(
         end
         evaluation = evaluate_barrier(losses, controlODE, θ; α, δ, ρ, kwargs...)
         if evaluation == :reasonable
-            return decrease_by_percentage(δ, percentage_step)
+            return decrease_by_percentage(δ, δ_percentage_reduction)
         elseif evaluation == :inf
-            δ = increase_by_percentage(δ, percentage_step)
+            δ = increase_by_percentage(δ, δ_percentage_reduction)
         elseif evaluation == :overtight
-            δ = increase_by_percentage(δ, percentage_step)
+            δ = increase_by_percentage(δ, δ_percentage_reduction)
         elseif evaluation == :overlax
-            δ = decrease_by_percentage(δ, percentage_step)
+            δ = decrease_by_percentage(δ, δ_percentage_reduction)
         else
             @check evaluation in [:inf, :overtight, :overlax, :reasonable]
         end
@@ -360,6 +361,7 @@ function constrained_training(
     α,
     ρ,
     δ0=1f1,
+    δ_percentage_reduction=10f0,
     max_barrier_iterations=50,
     show_progressbar=false,
     datadir=nothing,
@@ -374,8 +376,6 @@ function constrained_training(
         showspeed=true,
     )
 
-    percentage_step=10f0
-
     δ = tune_barrier(
         losses,
         controlODE,
@@ -383,13 +383,11 @@ function constrained_training(
         α,
         ρ,
         δ = δ0,
-        percentage_step,
+        δ_percentage_reduction,
     )
 
     δ_progression = [δ]
     barrier_iteration = 0
-    max_delta_reductions = 5
-    reduction_counter = 0
     while barrier_iteration < max_barrier_iterations
         barrier_iteration += 1
 
@@ -413,7 +411,7 @@ function constrained_training(
             minimizer = optimize_ipopt(θ, loss, grad!)
             # minimizer = optimize_optim(θ, loss, grad!)
         end
-        @info optimizer_output
+        @info string("Optimizer output", "\n", optimizer_output)
 
         objective, state_penalty, control_penalty, regularization = lost(minimizer)
 
@@ -447,7 +445,7 @@ function constrained_training(
         store_simulation(name, controlODE, θ; metadata, datadir)
 
         local new_δ
-        for tuning_percentage in [percentage_step * (1/2^i) for i in 1:4]
+        for tuning_percentage in [δ_percentage_reduction * (1/2^i) for i in 0:4]
             new_δ = tune_barrier(
                 losses,
                 controlODE,
@@ -455,16 +453,14 @@ function constrained_training(
                 α,
                 ρ,
                 δ,
-                percentage_step=tuning_percentage,
+                δ_percentage_reduction=tuning_percentage,
             )
             if new_δ < δ
                 break
-            else
-                continue
             end
         end
 
-        if new_δ > δ
+        if new_δ >= δ || new_δ < 1f-2 * δ_progression[begin]
             ProgressMeter.finish!(prog)
             return θ, δ_progression
         end

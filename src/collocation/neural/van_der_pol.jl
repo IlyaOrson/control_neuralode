@@ -49,6 +49,9 @@ function van_der_pol_neural_collocation(
 
     @constraint(model, [i = 1:2], x[i](0) == u0[i])
 
+    # TODO: register also derivative function (use reverse mode for neural network)
+    # https://jump.dev/JuMP.jl/stable/reference/nlp/#JuMP.register
+    # https://jump.dev/JuMP.jl/stable/manual/nlp/#Register-a-function-and-gradient
     scalar_fun(vcat(x, p)...)
     # @register scalar_fun(vcat(x, p)...)
 

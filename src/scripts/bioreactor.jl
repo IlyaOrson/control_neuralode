@@ -35,7 +35,7 @@ function bioreactor(; store_results::Bool=false)
     θ = preconditioner(
         controlODE,
         reference_controller;
-        θ=Float64.(θ),
+        θ,
         x_tol=1e-4,
     )
 
@@ -94,15 +94,12 @@ function bioreactor(; store_results::Bool=false)
     # δ: barrier relaxation coefficient
     α = 1f-3
     ρ = 1f-2
-    max_barrier_iterations = 80
-
     θ, δ_progression = constrained_training(
         losses,
         controlODE,
         θ;
         α,
         ρ,
-        max_barrier_iterations,
         show_progressbar=true,
         datadir,
     )

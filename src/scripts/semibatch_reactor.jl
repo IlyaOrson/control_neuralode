@@ -25,7 +25,7 @@ function semibatch_reactor(; store_results::Bool=false)
     # to reproduce his results and verify correctness
     fogler_ref = [240.0f0, 298.0f0]  # reference values in Fogler
     fogler_timespan = (0.0f0, 1.5f0)
-    fixed_controlODE = ControlODE((u, p) -> fogler_ref, system, u0, fogler_timespan; Δt=1.5f-1)
+    fixed_controlODE = ControlODE((u, p) -> fogler_ref, system, controlODE.u0, fogler_timespan; Δt=1.5f-1)
     @info "Fogler's case: final time state" solve(fixed_controlODE, nothing).u[end]
     plot_simulation(
         fixed_controlODE,
@@ -104,10 +104,11 @@ function semibatch_reactor(; store_results::Bool=false)
 
     reference_controller = interpolant_controller(collocation; plot=nothing)
 
+    θ = initial_params(controlODE.controller)
     θ = preconditioner(
         controlODE,
         reference_controller;
-        θ=initial_params(controller),
+        θ,
         x_tol=nothing,
         f_tol=1.0f-3,
         maxiters=2_000,
@@ -150,21 +151,16 @@ function semibatch_reactor(; store_results::Bool=false)
     # δ: barrier relaxation coefficient
     α = 1f-3
     ρ = 1f-3
-    δ0 = 1f1
-    max_barrier_iterations = 25
-    δ_final = 5f-2 * δ0
     θ, δ_progression = constrained_training(
-        controlODE,
         losses,
-        δ0;
-        θ,
-        δ_final,
-        max_barrier_iterations,
+        controlODE,
+        θ;
         α,
         ρ,
         show_progressbar=true,
         datadir,
     )
+    @info "Delta progression" δ_progression
     δ_final = δ_progression[end]
     @info "Final states"
     plot_simulation(controlODE, θ; only=:states, vars=[1, 2, 3])
