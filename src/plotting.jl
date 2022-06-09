@@ -1,24 +1,21 @@
-# const Line2D = matplotlib.lines.Line2D
-# const Patch = matplotlib.patches.Patch
+let  # avoid namespace pollution
+    plt.style.use("seaborn-colorblind")  # "ggplot"
+    palette = plt.cm.Dark2.colors
 
-# const GridSpec = mpl.gridspec.GridSpec
+    font = Dict(:family => "STIXGeneral", :size => 16)
+    savefig = Dict(:dpi => 600, :bbox => "tight")
+    lines = Dict(:linewidth => 4)
+    figure = Dict(:figsize => (8, 5))
+    axes = Dict(:prop_cycle => matplotlib.cycler(; color=palette))
+    legend = Dict(:fontsize => "x-large")  # medium for presentations, x-large for papers
 
-plt.style.use("seaborn-colorblind")  # "ggplot"
-palette = plt.cm.Dark2.colors
-
-font = Dict(:family => "STIXGeneral", :size => 16)
-savefig = Dict(:dpi => 600, :bbox => "tight")
-lines = Dict(:linewidth => 4)
-figure = Dict(:figsize => (8, 5))
-axes = Dict(:prop_cycle => matplotlib.cycler(; color=palette))
-legend = Dict(:fontsize => "x-large")  # medium for presentations, x-large for papers
-
-matplotlib.rc("font"; font...)
-matplotlib.rc("savefig"; savefig...)
-matplotlib.rc("lines"; lines...)
-matplotlib.rc("figure"; figure...)
-matplotlib.rc("axes"; axes...)
-matplotlib.rc("legend"; legend...)
+    matplotlib.rc("font"; font...)
+    matplotlib.rc("savefig"; savefig...)
+    matplotlib.rc("lines"; lines...)
+    matplotlib.rc("figure"; figure...)
+    matplotlib.rc("axes"; axes...)
+    matplotlib.rc("legend"; legend...)
+end
 
 function fun_plotter(fun, array; xlim=(0, 0))
     output = map(fun, eachrow(array)...)
