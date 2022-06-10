@@ -94,12 +94,13 @@ function plot_simulation(
     return false  # if return true, then optimization stops
 end
 
-function histogram_weights_per_layer(controller::FastChain, params)
-    @argcheck length(initial_params(controller)) == length(params)
+# FIXME simplify with lux
+function histogram_weights_per_layer(controller::Chain, params)
+    # @argcheck length(initial_params(controller)) == length(params)
     index = 1
     for i in 1:length(controller.layers)
         l = controller.layers[i]
-        if typeof(l) <: FastLayer
+        if typeof(l) <: Dense
             p = initial_params(l)
             s = length(p)
             lp = params[index:index + s - 1]

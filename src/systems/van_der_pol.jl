@@ -12,10 +12,10 @@ function (S::VanDerPol)(du, u, p, t, controller; input=:state)
     # neural network outputs the controls taken by the system
     x1, x2 = u
 
-    if input == :state
-        c1 = controller(u, p)[1]  # control based on state and parameters
-    elseif input == :time
-        c1 = controller(t, p)[1]  # control based on time and parameters
+    if input == :state  # control based on state and parameters
+        c1 = controller(u, p)[1]
+    elseif input == :time  # control based on time and parameters
+        c1 = controller(t, p)[1]
     end
 
     # dynamics of the controlled system
@@ -40,11 +40,11 @@ function ControlODE(system::VanDerPol)
     Δt = 0.1f0
 
     # set arquitecture of neural network controller
-    controller = FastChain(
-        FastDense(2, 12, tanh_fast),
-        FastDense(12, 12, tanh_fast),
-        FastDense(12, 1),
-        (x, p) -> (1.3f0 .* sigmoid_fast.(x)) .- 0.3f0,
+    controller = Chain(
+        Dense(2, 12, tanh_fast),
+        Dense(12, 12, tanh_fast),
+        Dense(12, 1),
+        x -> (1.3f0 .* sigmoid_fast.(x)) .- 0.3f0,
     )
 
     return ControlODE(controller, system, u0, tspan; Δt)

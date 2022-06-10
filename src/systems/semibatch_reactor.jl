@@ -90,12 +90,12 @@ function ControlODE(system::SemibatchReactor)
     # F ∈ (0, 250) & V ∈ (200, 500) in Bradford 2017
     control_ranges = [(100.0f0, 700.0f0), (0.0f0, 400.0f0)]
 
-    controller = FastChain(
+    controller = Chain(
         (x, p) -> [x[1], x[2], x[3], x[4] / 1f2, x[5] / 1f2],
-        FastDense(5, 32, tanh),
-        FastDense(32, 32, tanh),
-        FastDense(32, 32, tanh),
-        FastDense(32, 2),
+        Dense(5, 32, tanh),
+        Dense(32, 32, tanh),
+        Dense(32, 32, tanh),
+        Dense(32, 2),
         # (x, p) -> [240f0, 298f0],
         scaled_sigmoids(control_ranges),
     )

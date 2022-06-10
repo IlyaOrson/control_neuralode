@@ -8,6 +8,8 @@ struct ControlODE{uType<:Real,tType<:Real}
     sensealg::AbstractSensitivityAlgorithm
     prob::AbstractODEProblem
     inplace::Bool
+    init_params::ComponentArray
+    init_states::NamedTuple
 
     function ControlODE(
         controller,
@@ -38,11 +40,15 @@ struct ControlODE{uType<:Real,tType<:Real}
                 ),
             )
         end
+        # Lux is explicit with the states of a chain but we do not use them
+        init_params, init_states = Lux.setup(default_rng(), controller)
+        lux_controller(u, params) = controller(u, params, init_states)[1]
 
         # check domain types
         time_type = find_array_param(tsteps)
         space_type = find_array_param(u0)
-        control_type = find_array_param(controller(u0, initial_params(controller)))
+        init_out = lux_controller(u0, init_params)
+        control_type = find_array_param(init_out)
         @argcheck space_type == control_type
 
         # construct ODE problem
@@ -51,15 +57,25 @@ struct ControlODE{uType<:Real,tType<:Real}
         local prob, inplace
         if methods(system)[1].nargs < 6
             inplace = false
-            dudt(u, p, t) = system(u, p, t, controller; input)
+            dudt(u, p, t) = system(u, p, t, lux_controller; input)
             prob = ODEProblem(dudt, u0, tspan)
         else
             inplace = true
-            dudt!(du, u, p, t) = system(du, u, p, t, controller; input)
+            dudt!(du, u, p, t) = system(du, u, p, t, lux_controller; input)
             prob = ODEProblem(dudt!, u0, tspan)
         end
         return new{space_type,time_type}(
-            controller, system, u0, tspan, tsteps, integrator, sensealg, prob, inplace
+            lux_controller,
+            system,
+            u0,
+            tspan,
+            tsteps,
+            integrator,
+            sensealg,
+            prob,
+            inplace,
+            ComponentArray(init_params),
+            init_states,
         )
     end
 end

@@ -34,17 +34,13 @@ function square_bounds(u0, arista)
 end
 
 function controller_shape(controller)
-    # this method is brittle as any function inside the Chain
-    # will not be identified, could be a problem if those change dimensions
-
-    # Flux Layers have fields (:weight, :bias, :σ)
-    # FastLayers have fields (:out, :in, :σ, :initial_params, :bias)
-    dims_input = [l.in for l in controller.layers[1:end] if typeof(l) <: FastLayer]
-    dims_output = [l.out for l in controller.layers[1:end] if typeof(l) <: FastLayer]
+    @argcheck all(x -> isa(x, Union{Dense, WrappedFunction}), controller.layers)
+    dims_input = [l.in_dims for l in controller.layers if l isa Dense]
+    dims_output = [l.out_dims for l in controller.layers if l isa Dense]
     return push!(dims_input, pop!(dims_output))
 end
 
-function compose_layers(controller::FastChain, params, u0, L)
+function compose_layers(controller::Chain, params, u0, L)
     @argcheck 1 <= L <= length(controller.layers)
     @argcheck length(initial_params(controller)) == length(params)
     index = 1

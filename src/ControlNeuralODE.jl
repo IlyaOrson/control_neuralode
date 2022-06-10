@@ -73,6 +73,9 @@ using DiffEqSensitivity:
     ZygoteVJP,
     EnzymeVJP,
     ReverseDiffVJP
+using Random: default_rng
+using ComponentArrays: ComponentArray
+using Lux: Lux, Chain, Dense, AbstractExplicitLayer, initialparameters, initialstates
 using DiffEqFlux: FastChain, FastDense, initial_params, FastLayer  # sciml_train
 using UnicodePlots: lineplot, lineplot!, histogram
 using Serialization: serialize, deserialize

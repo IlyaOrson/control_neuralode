@@ -11,7 +11,7 @@ function van_der_pol(; store_results::Bool=false)
     system = VanDerPol()
     controlODE = ControlODE(system)
 
-    θ = initial_params(controlODE.controller)
+    θ = controlODE.init_params
 
     _, states_raw, _ = run_simulation(controlODE, θ)
     phase_portrait(
