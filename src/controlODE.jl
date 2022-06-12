@@ -43,6 +43,15 @@ struct ControlODE{uType<:Real,tType<:Real}
         # Lux is explicit with the states of a chain but we do not use them
         init_params, init_states = Lux.setup(default_rng(), controller)
         lux_controller(u, params) = controller(u, params, init_states)[1]
+        function lux_controller(u, params::Vector)
+            local comp_params
+            Zygote.@ignore begin  # mutation problems with Zygote
+                comp_params = ComponentArray(init_params)
+                # comp_params .= params
+                comp_params = ComponentArray(params, getaxes(comp_params))
+            end
+            lux_controller(u, comp_params)
+        end
 
         # check domain types
         time_type = find_array_param(tsteps)

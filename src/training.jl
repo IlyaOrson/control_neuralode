@@ -86,7 +86,7 @@ end
 function optimize_lbfgsb(θ, loss, grad!)
     # LBFGSB
     # https://github.com/Gnimuc/LBFGSB.jl/blob/master/test/wrapper.jl
-    param_size = length(θ)
+    params_size = length(θ)
     lbfgsb = LBFGSB.L_BFGS_B(params_size, 10)
     bounds = zeros(3, params_size)
     for i in 1:params_size
@@ -97,7 +97,7 @@ function optimize_lbfgsb(θ, loss, grad!)
     fout, xout = lbfgsb(
         loss,
         grad!,
-        Float64.(θ),
+        Vector{Float64}(θ),
         bounds;
         m=5,
         factr=1e7,
@@ -145,7 +145,7 @@ function optimize_ipopt(θ, loss, grad!)
         eval_jac_g,
         nothing,
     )
-    ipopt.x = Float64.(θ)
+    ipopt.x = Vector{Float64}(θ)
     Ipopt.AddIpoptIntOption(ipopt, "print_level", 3)  # default is 5
     Ipopt.AddIpoptNumOption(ipopt, "tol", 1e-2)
     Ipopt.AddIpoptIntOption(ipopt, "max_iter", 100)  # FIXME
