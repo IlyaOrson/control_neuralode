@@ -46,7 +46,8 @@ using ApproxFun: Chebyshev, Fun, Interval  # https://github.com/stevengj/FastChe
 using ForwardDiff: ForwardDiff
 using ReverseDiff: ReverseDiff
 using Zygote: Zygote, pullback
-using Flux: Flux, glorot_uniform, sigmoid_fast, tanh_fast, ADAMW
+# using Flux: Flux
+using Optimisers: Optimisers, ADAMW
 using SciMLBase:
     ODEProblem,
     DECallback,
@@ -56,7 +57,7 @@ using SciMLBase:
     AbstractODEProblem
 using DiffEqCallbacks: FunctionCallingCallback
 using OrdinaryDiffEq: solve, AutoTsit5, Rodas4P, Rosenbrock23, Tsit5, QNDF, FBDF
-using DiffEqSensitivity:
+using SciMLSensitivity:
     # discrete forward
     ForwardDiffSensitivity,
     # discrete adjoint
@@ -75,8 +76,17 @@ using DiffEqSensitivity:
     ReverseDiffVJP
 using Random: default_rng
 using ComponentArrays: ComponentArray, getaxes
-using Lux: Lux, Chain, Dense, AbstractExplicitLayer, initialparameters, initialstates
-using DiffEqFlux: FastChain, FastDense, initial_params, FastLayer  # sciml_train
+using Lux:
+    Lux,
+    Chain,
+    Dense,
+    AbstractExplicitLayer,
+    initialparameters,
+    initialstates,
+    tanh_fast,
+    sigmoid_fast,
+    glorot_uniform
+using DiffEqFlux: FastChain, FastDense, initial_params, FastLayer
 using UnicodePlots: lineplot, lineplot!, histogram
 using Serialization: serialize, deserialize
 using JSON3: JSON3
@@ -103,7 +113,7 @@ export van_der_pol, van_der_pol_direct
 
 # Continuous sensitivity analysis
 # SENSEALG = ForwardDiffSensitivity()
-SENSEALG = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
+SENSEALG = QuadratureAdjoint(; autojacvec = ReverseDiffVJP())
 # SENSEALG = QuadratureAdjoint(; autojacvec=ZygoteVJP())
 # SENSEALG = QuadratureAdjoint(; autojacvec=TrackerVJP())
 # SENSEALG = QuadratureAdjoint(; autojacvec=EnzymeVJP())

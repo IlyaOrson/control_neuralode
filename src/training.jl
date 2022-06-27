@@ -1,7 +1,6 @@
 function optimize_flux(
     θ,
     loss;
-    opt::Flux.Optimise.AbstractOptimiser=ADAMW(0.01, (0.9, 0.999), 1.0f-2),
     maxiters::Integer=1_000,
     x_tol::Union{Nothing,Real}=nothing,
     f_tol::Union{Nothing,Real}=nothing,
@@ -17,8 +16,10 @@ function optimize_flux(
     params = copy(θ)
     params_ref = copy(θ)
 
+    opt_state = Optimisers.setup(ADAMW(0.01, (0.9, 0.999), 1.0f-2), θ)
+
     prog = Progress(maxiters;
-        desc="Flux adaptive training. (x_tol=$x_tol, f_tol=$f_tol, g_tol=$g_tol, maxiters=$maxiters)",
+        desc="Adaptive first-order training. (x_tol=$x_tol, f_tol=$f_tol, g_tol=$g_tol, maxiters=$maxiters)",
         dt=0.2,
         enabled=show_progressbar,
         showspeed=true,
@@ -45,7 +46,9 @@ function optimize_flux(
         copy!(params_ref, params)
 
         # optimizer opdate (modifies params)
-        Flux.update!(opt, params, gradient)
+        # Flux.update!(opt, params, gradient)
+        # inplace version fails with ComponentArrays
+        opt_state, params = Optimisers.update(opt_state, params, gradient)
 
         # finish metrics
         x_diff = sum(abs2, params_ref - params)

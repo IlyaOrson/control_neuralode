@@ -70,7 +70,6 @@ function van_der_pol(; store_results::Bool=false)
     @info "Training..."
     grad!(g, params) = g .= Zygote.gradient(loss, params)[1]
     # θ = optimize_optim(θ, loss, grad!)
-    @infiltrate
     θ = optimize_ipopt(θ, loss, grad!)
 
     _, states_raw, _ = run_simulation(controlODE, θ)
