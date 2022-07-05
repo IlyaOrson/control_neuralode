@@ -3,7 +3,7 @@
 
 function van_der_pol_direct_phase_plot()
     u0 = [0.0, 1.0]
-    tspan = (0, 1)
+    tspan = (0, 5)
     Δt = 1f-1
 
     nodes_per_element = 2
@@ -24,9 +24,9 @@ function van_der_pol_direct_phase_plot()
 
     phase_portrait(
         controlODE,
-        result.params,
+        infopt_result.params,
         square_bounds(u0, 7);
-        markers=states_markers(result.states),
+        markers=states_markers(infopt_result.states),
     )
     return nothing
 end

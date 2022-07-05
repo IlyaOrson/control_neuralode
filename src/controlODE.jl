@@ -42,8 +42,8 @@ struct ControlODE{uType<:Real,tType<:Real}
         # check domain types
         time_type = find_array_param(tsteps)
         space_type = find_array_param(u0)
-        control_type = find_array_param(controller(u0, initial_params(controller)))
-        @argcheck space_type == control_type
+        # control_type = find_array_param(controller(u0, initial_params(controller)))
+        # @argcheck space_type == control_type
 
         # construct ODE problem
         @assert length(methods(system)) == 1

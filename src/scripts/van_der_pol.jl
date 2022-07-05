@@ -47,7 +47,7 @@ function van_der_pol(; store_results::Bool=false)
     phase_portrait(
         controlODE,
         θ,
-        square_bounds(controlODE.u0, 3);
+        square_bounds(controlODE.u0, 4);
         projection=[1, 2],
         markers=states_markers(states_raw),
         title="Preconditioned policy",
@@ -77,7 +77,7 @@ function van_der_pol(; store_results::Bool=false)
     phase_portrait(
         controlODE,
         θ,
-        square_bounds(controlODE.u0, 3);
+        square_bounds(controlODE.u0, 4);
         projection=[1, 2],
         markers=states_markers(states_raw),
         title="Optimized policy",
@@ -162,7 +162,7 @@ function van_der_pol(; store_results::Bool=false)
     phase_portrait(
         controlODE,
         θ,
-        square_bounds(controlODE.u0, 3);
+        square_bounds(controlODE.u0, 4);
         shader,
         projection=[1, 2],
         markers=states_markers(states_opt),

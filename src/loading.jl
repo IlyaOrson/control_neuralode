@@ -42,7 +42,7 @@ function extract_all_name_values(dirpath)
     return iter_delta_dict
 end
 
-function load_penalization_round(dirpath, system; iter, delta, timesteps=100)  # system = BioReactor(), VanDerPol() ...
+function load_penalization_round(dirpath, system; iter, delta)  # system = BioReactor(), VanDerPol() ...
     filepaths = readdir(dirpath; join=true, sort=true)
 
     name = name_interpolation(delta, iter)
@@ -50,11 +50,8 @@ function load_penalization_round(dirpath, system; iter, delta, timesteps=100)  #
 
     controlODE = ControlODE(system)
     weights = deserialize(filepath)
-    span = controlODE.tspan[end] - controlODE.tspan[begin]
-    dt = span / timesteps
 
-    times, states, controls = run_simulation(controlODE, weights; saveat=dt)
-    return times, states, controls
+    return controlODE, weights
 end
 
 function plot_penalization_rounds(
@@ -70,7 +67,7 @@ function plot_penalization_rounds(
     transparency=0.7,
     saveto=nothing,
     colorant="delta",
-)
+    )
     @argcheck colorant in ["delta", "iter"]
     @argcheck !all(map(x -> isnothing(x), (state_var, control_var)))  "Please specify either state_var or control_var."
     @argcheck !all(map(x -> !isnothing(x), (state_var, control_var)))  "Please specify just one of state_var or control_var."
@@ -85,21 +82,24 @@ function plot_penalization_rounds(
     fig, ax = plt.subplots()
     local times
     for (i, (iter, delta)) in enumerate(iter_delta_dict)
-        times_local, states, controls = load_penalization_round(
-            dirpath, system; iter, delta, timesteps
+        controlODE, weights = load_penalization_round(
+            dirpath, system; iter, delta
         )
+        span = controlODE.tspan[end] - controlODE.tspan[begin]
+        times, states, controls = run_simulation(controlODE, weights; saveat=span / timesteps)
+
         if !isnothing(state_var)
             ax.plot(
-                times_local,
+                times,
                 states[state_var,:];
                 color=cmap_range[i, :],
                 label="δ=$delta",
-                alpha=transparency,
+            alpha=transparency,
             )
             plt.ylabel("x_$state_var")
         elseif !isnothing(control_var)
             ax.plot(
-                times_local,
+                times,
                 controls[control_var,:];
                 color=cmap_range[i, :],
                 label="δ=$delta",
@@ -107,7 +107,6 @@ function plot_penalization_rounds(
             )
             plt.ylabel("c_$control_var")
         end
-        times = times_local
     end
     final_time_gap = (times[end] - times[begin]) / 10
     !isnothing(running_ref) && plt.plot(

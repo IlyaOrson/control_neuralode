@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.18.1
+# v0.19.9
 
 using Markdown
 using InteractiveUtils
@@ -15,23 +15,26 @@ end
 
 # ╔═╡ 07b1f884-6179-483a-8a0b-1771da59799f
 begin
-	using InfiniteOpt, ArgCheck, Ipopt
+	using InfiniteOpt, Ipopt
+	using ReverseDiff, ForwardDiff, Enzyme
+	using QuadGK
+	using BenchmarkTools
+	using UnicodePlots
 	import ControlNeuralODE as cn
+	cn.plt.style.use("fast")
 	cn.plt.ion()
 end
 
 # ╔═╡ 253458ec-12d1-4228-b57a-73c02b3b2c49
 begin
 	u0 = [0.0, 1.0]
-    tspan = (0, 1)
+    tspan = (0, 5)
 
-    nodes_per_element = 2
-    time_supports = 10
+    nodes_per_element = 5
+    time_supports = 100
 
-    # layer_sizes = (1,)
-    # activations = (tanh,)
     layer_sizes = (8, 8, 1)
-    activations = (tanh, tanh, identity)
+    activations = (tanh, tanh, identity)# x -> (tanh.(x) * 1.3 / 2) .+ 0.3)
 end
 
 # ╔═╡ 89f5b7e3-caec-4706-b818-fa49626084b4
@@ -56,9 +59,37 @@ function scalar_fun(z...)
 	return vector_fun(collect(z))
 end
 
+# ╔═╡ 639d5e58-c08a-435f-ad8e-805d10948713
+cat_params = vcat(u0 , xavier_weights)
+
+# ╔═╡ 5e130e82-8d90-4ab5-a546-5fd47f9c667c
+# @benchmark ForwardDiff.gradient($(x -> vector_fun(x)[1]), $cat_params)
+
+# ╔═╡ ceef04c1-7c0b-4e6f-ad2c-3679e6ed0055
+begin
+	grad_container =  similar(cat_params)
+	tape =  ReverseDiff.GradientTape(x -> vector_fun(x)[1], cat_params)
+	ctape = ReverseDiff.compile(tape)
+	# @benchmark ReverseDiff.gradient!($grad_container, $ctape, $cat_params)
+end
+
+# ╔═╡ 52ff1192-571d-43a6-875e-7374f7316dda
+# does not work
+# Enzyme.gradient(Enzyme.Reverse, x -> vector_fun(x)[1], cat_params)
+
+# ╔═╡ 09ef9cc4-2564-44fe-be1e-ce75ad189875
+grad!(grad_container, params) = ReverseDiff.gradient!(grad_container, ctape, params)
+
 # ╔═╡ d8888d92-71df-4c0e-bdc1-1249e3da23d0
-function infopt_direct()
-	optimizer = optimizer_with_attributes(Ipopt.Optimizer)
+function build_model()
+	optimizer = optimizer_with_attributes(
+		Ipopt.Optimizer,
+		"print_level" => 4,
+		"tol" => 1e-3,
+        "max_iter" => 1_000,
+		"hessian_approximation" => "limited-memory",
+		"mu_strategy" => "adaptive",
+	)
 	model = InfiniteModel(optimizer)
 	method = OrthogonalCollocation(nodes_per_element)
 
@@ -83,8 +114,9 @@ function infopt_direct()
 
 	@constraint(model, [i = 1:2], x[i](0) == u0[i])
 
-	scalar_fun(vcat(x, p)...)
-	# @register scalar_fun(vcat(x, p)...)
+	# https://github.com/jump-dev/MathOptInterface.jl/pull/1819
+	# JuMP.register(optimizer_model(model), :scalar_fun, length(cat_params), scalar_fun; autodiff=true)  # forward mode
+	JuMP.register(optimizer_model(model), :scalar_fun, length(cat_params), scalar_fun, grad!)  # reverse mode
 
 	@constraints(
 		model,
@@ -97,33 +129,74 @@ function infopt_direct()
 	@objective(
 		model, Min, integral(x[1]^2 + x[2]^2 + scalar_fun(vcat(x, p)...)[1]^2, t)
 	)
-
-	cn.optimize_infopt!(model)
-
-	jump_model = optimizer_model(model)
-
-	solution_summary(jump_model; verbose=false)
 	return model
 end
 
-# ╔═╡ 96486402-9868-48d3-abcf-c5a3c242ac16
-model_opt = infopt_direct()
+# ╔═╡ ebf28370-a122-46bd-84b9-e1bc6cd4ff98
+infopt_model = build_model();
+
+# ╔═╡ 732b8e45-fb51-454b-81d2-2d084c12df73
+InfiniteOpt.optimize!(infopt_model)
+
+# ╔═╡ 91058b27-c98d-4ed0-8697-8c2812aebc01
+begin
+	jump_model = optimizer_model(infopt_model)
+	solution_summary(jump_model; verbose=false)
+end
 
 # ╔═╡ edd395e2-58b7-41af-85ae-6af612154df5
-result = cn.extract_infopt_results(model_opt);
+result = cn.extract_infopt_results(infopt_model);
 
 # ╔═╡ 1772d71a-1f7f-43cd-a4ad-0f7f54c960d0
 begin
 	system = cn.VanDerPol()
 	controller = (x, p) -> cn.chain(x, p, layer_sizes, activations)
-	controlODE = cn.ControlODE(controller, system, u0, tspan; Δt = 0.1f0, params=result.params)
+	controlODE = cn.ControlODE(controller, system, u0, tspan; Δt = 0.01f0)
+end;
+
+# ╔═╡ 52afbd53-5128-4482-b929-2c71398be122
+function loss_discrete(controlODE, params; kwargs...)
+    objective = zero(eltype(params))
+    sol = cn.solve(controlODE, params; kwargs...)
+	sol_arr = Array(sol)
+    for i in axes(sol, 2)
+        s = sol_arr[:, i]
+        c = controlODE.controller(s, params)
+        objective += s[1]^2 + s[2]^2 + c[1]^2
+    end
+    return objective * controlODE.tsteps.step
+end
+
+# ╔═╡ 6704374c-70de-4e4d-9523-e516c1072348
+loss_discrete(controlODE, result.params)
+
+# ╔═╡ d964e018-1e22-44a0-baef-a18ed5979a4c
+function loss_continuous(controlODE, params; kwargs...)
+    objective = zero(eltype(params))
+    sol = cn.solve(controlODE, params; kwargs...)
+	integral, error = quadgk(
+		(t)-> sum(abs2, vcat(sol(t), controlODE.controller(sol(t), params))), controlODE.tspan...
+	)
+end
+
+# ╔═╡ 42f26a4c-ac76-4212-80f9-82858ce2959c
+loss_continuous(controlODE, result.params)
+
+# ╔═╡ 5f43bf8f-5f85-4604-8cc3-2d5e8e4f9c56
+cn.histogram(result.params)
+
+# ╔═╡ a5496bf2-adb3-4036-9d02-c0fdcec95ea1
+begin
+	times, states, controls = cn.run_simulation(controlODE, result.params)
+	plt = cn.unicode_plotter(states, controls; only=:controls)
 end
 
 # ╔═╡ ab404ab0-1f0c-48f1-97c8-c3d1e7ec68df
 function with_pyplot(f::Function)
-    f()
-    fig = cn.plt.gcf()
-    close(fig)
+    fig = f()
+    #fig = cn.plt.gcf()
+    #close(fig)
+	cn.plt.clf()
     return fig
 end
 
@@ -132,14 +205,43 @@ with_pyplot() do
 	cn.phase_portrait(
 		controlODE,
 		result.params,
+		# randn(length(result.params)),
 		cn.square_bounds(u0, 7);
-		markers=[
-			cn.InitialMarkers(; points=result.states[:, 1]),
-			cn.IntegrationPath(; points=result.states),
-			cn.FinalMarkers(; points=result.states[:, end]),
-		],
+		markers=cn.states_markers(result.states),
 	)
 end
+
+# ╔═╡ 0206e98e-14be-4250-a9d1-fa08158088d1
+#=
+begin
+	collocation = cn.van_der_pol_collocation(
+        controlODE.u0,
+        controlODE.tspan;
+        num_supports=100,
+        nodes_per_element=10,
+        constrain_states=false,
+	)
+	times_c, states_c, controls_c = collocation
+	# cn.unicode_plotter(states_c, controls_c)
+	reference_controller = cn.interpolant_controller(collocation)
+	θ = cn.preconditioner(
+	    controlODE,
+	    reference_controller;
+	    θ = xavier_weights,
+	    x_tol=1f-7,
+	    g_tol=1f-2,
+	)
+	_, states_raw, _ = cn.run_simulation(controlODE, θ)
+	cn.phase_portrait(
+		controlODE,
+		θ,
+		cn.square_bounds(controlODE.u0, 7);
+		projection=[1, 2],
+		markers=cn.states_markers(states_raw),
+		title="Preconditioned policy",
+	)
+end
+=#
 
 # ╔═╡ Cell order:
 # ╠═31b5c73e-9641-11ec-2b0b-cbd62716cc97
@@ -148,9 +250,23 @@ end
 # ╠═89f5b7e3-caec-4706-b818-fa49626084b4
 # ╠═02377f26-039d-4685-ba94-1574b3b18aa6
 # ╠═aa575018-f57d-4180-9663-44da68d6c77c
+# ╠═639d5e58-c08a-435f-ad8e-805d10948713
+# ╠═5e130e82-8d90-4ab5-a546-5fd47f9c667c
+# ╠═ceef04c1-7c0b-4e6f-ad2c-3679e6ed0055
+# ╠═52ff1192-571d-43a6-875e-7374f7316dda
+# ╠═09ef9cc4-2564-44fe-be1e-ce75ad189875
 # ╠═d8888d92-71df-4c0e-bdc1-1249e3da23d0
-# ╠═96486402-9868-48d3-abcf-c5a3c242ac16
+# ╠═ebf28370-a122-46bd-84b9-e1bc6cd4ff98
+# ╠═732b8e45-fb51-454b-81d2-2d084c12df73
+# ╠═91058b27-c98d-4ed0-8697-8c2812aebc01
 # ╠═edd395e2-58b7-41af-85ae-6af612154df5
 # ╠═1772d71a-1f7f-43cd-a4ad-0f7f54c960d0
+# ╠═52afbd53-5128-4482-b929-2c71398be122
+# ╠═6704374c-70de-4e4d-9523-e516c1072348
+# ╠═d964e018-1e22-44a0-baef-a18ed5979a4c
+# ╠═42f26a4c-ac76-4212-80f9-82858ce2959c
+# ╠═5f43bf8f-5f85-4604-8cc3-2d5e8e4f9c56
+# ╠═a5496bf2-adb3-4036-9d02-c0fdcec95ea1
 # ╠═ab404ab0-1f0c-48f1-97c8-c3d1e7ec68df
 # ╠═92fe3d1d-9c83-4350-ae87-5e1140ec3efa
+# ╠═0206e98e-14be-4250-a9d1-fa08158088d1
