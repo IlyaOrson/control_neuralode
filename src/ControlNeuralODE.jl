@@ -12,7 +12,6 @@ using Formatting: format, sprintf1
 using Suppressor: @capture_out
 using ProgressMeter: ProgressMeter, Progress, ProgressUnknown
 using Infiltrator: @infiltrate
-using StaticArrays: SA
 using Statistics: mean, std
 using LineSearches: BackTracking
 using InfiniteOpt:
@@ -56,7 +55,7 @@ using SciMLBase:
     AbstractODEProblem
 using DiffEqCallbacks: FunctionCallingCallback
 using OrdinaryDiffEq: solve, AutoTsit5, Rodas4P, Rosenbrock23, Tsit5, QNDF, FBDF
-using DiffEqSensitivity:
+using SciMLSensitivity:
     # discrete forward
     ForwardDiffSensitivity,
     # discrete adjoint
@@ -90,7 +89,7 @@ export van_der_pol, van_der_pol_direct_phase_plot
 # TODO: mark the variables that work as constants (avoid constants for Revise.jl)
 @show INTEGRATOR = Tsit5()
 
-# https://diffeqflux.sciml.ai/stable/ControllingAdjoints/#Choosing-a-sensealg-in-a-Nutshell
+# https://diffeq.sciml.ai/stable/analysis/sensitivity/#Choosing-a-Sensitivity-Algorithm
 
 # Discrete sensitivity analysis
 # SENSEALG = ForwardSensitivity()
