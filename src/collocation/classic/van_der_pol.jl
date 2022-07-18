@@ -51,5 +51,5 @@ function van_der_pol_collocation(
     jump_model = optimizer_model(model)
     solution_summary(jump_model; verbose=false)
 
-    return extract_infopt_results(model)
+    return model
 end

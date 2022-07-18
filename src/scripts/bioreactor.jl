@@ -23,12 +23,12 @@ function bioreactor(; store_results::Bool=false)
         plot_simulation(controlODE, θ; only=:states, vars=[3])
     end
 
-    collocation = bioreactor_collocation(
+    collocation_model = bioreactor_collocation(
         controlODE.u0,
         controlODE.tspan;
         constrain_states=true,
     )
-
+    collocation_results = extract_infopt_results(model)
     reference_controller = interpolant_controller(collocation; plot=:unicode)
 
     θ = initial_params(controlODE.controller)
@@ -121,14 +121,15 @@ function bioreactor(; store_results::Bool=false)
     @info "Final losses" losses(controlODE, θ; δ = δ_final, α, ρ)
 
     @info "Collocation comparison"
-    collocation = bioreactor_collocation(
+    collocation_model = bioreactor_collocation(
         controlODE.u0,
         controlODE.tspan;
         # num_supports=length(controlODE.tsteps),
         # nodes_per_element=2,
         constrain_states=true,
     )
-    interpolant_controller(collocation; plot=:unicode)
+    collocation_results = extract_infopt_results(collocation_model)
+    interpolant_controller(collocation_results; plot=:unicode)
 
     # perturbation_specs = [
     #     (variable=1, type=:centered, scale=1.0f0, samples=3, percentage=5.0f-2)

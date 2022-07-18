@@ -40,69 +40,16 @@ function semibatch_reactor(; store_results::Bool=false)
         vars=[4, 5],
     )
 
-    collocation = semibatch_reactor_collocation(
+    collocation_model = semibatch_reactor_collocation(
         controlODE.u0,
         controlODE.tspan;
         num_supports=length(controlODE.tsteps),
         nodes_per_element=2,
         constrain_states=false,
     )
-    # collocation_constrained = semibatch_reactor_collocation(
-    #     controlODE.u0,
-    #     controlODE.tspan;
-    #     num_supports=length(controlODE.tsteps),
-    #     constrain_states=true,
-    #     nodes_per_element=2
-    # )
+    collocation_results = extract_infopt_results(collocation_model)
 
-    # plt.figure()
-    # plt.plot(collocation.times, collocation.states[1, :]; label="s1")
-    # plt.plot(collocation.times, collocation.states[2, :]; label="s2")
-    # plt.plot(collocation.times, collocation.states[3, :]; label="s3")
-    # plt.plot(
-    #     collocation.times, collocation_constrained.states[1, :];
-    #     label="s1_constrained", color=plt.gca().lines[1].get_color(), ls="dashdot"
-    # )
-    # plt.plot(
-    #     collocation.times, collocation_constrained.states[2, :];
-    #     label="s2_constrained", color=plt.gca().lines[2].get_color(), ls="dashdot"
-    # )
-    # plt.plot(
-    #     collocation.times, collocation_constrained.states[3, :];
-    #     label="s3_constrained", color=plt.gca().lines[3].get_color(), ls="dashdot"
-    # )
-    # plt.legend()
-    # plt.show()
-
-    # plt.figure()
-    # plt.plot(collocation.times, collocation.states[4, :]; label="s4")
-    # plt.plot(collocation.times, collocation.states[5, :]; label="s5")
-    # plt.plot(
-    #     collocation.times, collocation_constrained.states[4, :];
-    #     label="s4_constrained", color=plt.gca().lines[1].get_color(), ls="dashdot"
-    # )
-    # plt.plot(
-    #     collocation.times, collocation_constrained.states[5, :];
-    #     label="s5_constrained", color=plt.gca().lines[2].get_color(), ls="dashdot"
-    # )
-    # plt.legend()
-    # plt.show()
-
-    # plt.figure()
-    # plt.plot(collocation.times, collocation.controls[1, :]; label="c1")
-    # plt.plot(collocation.times, collocation.controls[2, :]; label="c2")
-    # plt.plot(
-    #     collocation.times, collocation_constrained.controls[1, :];
-    #     label="c1_constrained", color=plt.gca().lines[1].get_color(), ls="dashdot"
-    # )
-    # plt.plot(
-    #     collocation.times, collocation_constrained.controls[2, :];
-    #     label="c2_constrained", color=plt.gca().lines[2].get_color(), ls="dashdot"
-    # )
-    # plt.legend()
-    # plt.show()
-
-    reference_controller = interpolant_controller(collocation; plot=nothing)
+    reference_controller = interpolant_controller(collocation_results; plot=nothing)
 
     θ = initial_params(controlODE.controller)
     θ = preconditioner(

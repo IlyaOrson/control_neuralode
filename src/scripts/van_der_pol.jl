@@ -23,14 +23,15 @@ function van_der_pol(; store_results::Bool=false)
         title="Initial policy",
     )
 
-    collocation = van_der_pol_collocation(
+    collocation_model = van_der_pol_collocation(
         controlODE.u0,
         controlODE.tspan;
         num_supports=length(controlODE.tsteps),
         nodes_per_element=2,
         constrain_states=false,
     )
-    reference_controller = interpolant_controller(collocation; plot=nothing)
+    collocation_results = extract_infopt_results(collocation_model)
+    reference_controller = interpolant_controller(collocation_results; plot=nothing)
 
     θ = preconditioner(
         controlODE,

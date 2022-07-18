@@ -437,7 +437,7 @@ function constrained_training(
             :control_penalty => control_penalty,
             :regularization_cost => regularization,
             :num_params => length(initial_params(controlODE.controller)),
-            :layers => controller_shape(controlODE.controller),
+            # :layers => controller_shape(controlODE.controller),
             :tspan => controlODE.tspan,
         )
         metadata = merge(metadata, local_metadata)
