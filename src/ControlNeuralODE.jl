@@ -130,13 +130,9 @@ include("collocation/classic/van_der_pol.jl")
 include("collocation/classic/bioreactor.jl")
 include("collocation/classic/semibatch_reactor.jl")
 
-# neural collocation
-include("collocation/neural/van_der_pol.jl")
-
 # training
 include("scripts/batch_reactor.jl")
 include("scripts/van_der_pol.jl")
-include("scripts/van_der_pol_direct.jl")
 include("scripts/bioreactor.jl")
 include("scripts/semibatch_reactor.jl")
 

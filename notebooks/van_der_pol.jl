@@ -36,7 +36,7 @@ begin
     nodes_per_element = 3
     time_supports = 50
 
-    layer_sizes = (16, 16, 1)
+    layer_sizes = (8, 8, 1)
     activations = (tanh, tanh, x -> (tanh.(x) * 1.3 / 2) .+ 0.3)
 end
 
@@ -87,7 +87,7 @@ grad!(grad_container, params) = ReverseDiff.gradient!(grad_container, ctape, par
 function build_model()
 	optimizer = optimizer_with_attributes(
 		Ipopt.Optimizer,
-		"print_level" => 4,
+		"print_level" => 5,
 		"tol" => 1e-2,
         "max_iter" => 10_000,
 		"hessian_approximation" => "limited-memory",
@@ -137,7 +137,7 @@ function build_model()
 end
 
 # ╔═╡ ebf28370-a122-46bd-84b9-e1bc6cd4ff98
-infopt_model = build_model();
+@time infopt_model = build_model();
 
 # ╔═╡ 732b8e45-fb51-454b-81d2-2d084c12df73
 InfiniteOpt.optimize!(infopt_model)
@@ -281,7 +281,7 @@ function losses(controlODE, params; α, δ, ρ)
 	control_penalty *= Δt
 
 	# fault = min.(sol[1, 1:end] .+ 0.4f0, 0.0f0)
-	state_fault = map(x -> cn.relaxed_log_barrier(x - -0.4f0; δ), sol[1, 1:end-1])
+	state_fault = map(x -> cn.relaxed_log_barrier(x - -0.2f0; δ), sol[1, 1:end-1])
 	# penalty = α * sum(fault .^ 2)  # quadratic penalty
 	state_penalty = Δt * α * sum(state_fault)
 	regularization = ρ * sum(abs2, params)

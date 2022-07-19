@@ -5,8 +5,8 @@
 # objective: maximize C_qc
 
 # state constraints
-# C_N(t) - 250 ≥ 0              t = T
-# C_N(t) − 400 ≤ 0              ∀t
+# C_N(t) - 250 ≥ 0      t = T
+# C_N(t) − 400 ≤ 0      ∀t
 
 function bioreactor(; store_results::Bool=false)
 

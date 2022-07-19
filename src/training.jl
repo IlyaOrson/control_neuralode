@@ -411,7 +411,7 @@ function constrained_training(
             minimizer = optimize_ipopt(θ, loss, grad!)
             # minimizer = optimize_optim(θ, loss, grad!)
         end
-        @info string("Optimizer output", "\n", optimizer_output)
+        @info optimizer_output
 
         objective, state_penalty, control_penalty, regularization = lost(minimizer)
 
