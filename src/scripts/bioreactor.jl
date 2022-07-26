@@ -28,8 +28,8 @@ function bioreactor(; store_results::Bool=false)
         controlODE.tspan;
         constrain_states=true,
     )
-    collocation_results = extract_infopt_results(model)
-    reference_controller = interpolant_controller(collocation; plot=:unicode)
+    collocation_results = extract_infopt_results(collocation_model)
+    reference_controller = interpolant_controller(collocation_results; plot=:unicode)
 
     θ = initial_params(controlODE.controller)
     θ = preconditioner(
@@ -63,8 +63,7 @@ function bioreactor(; store_results::Bool=false)
 
         # https://diffeqflux.sciml.ai/dev/examples/divergence/
         # Zygote.@ignore @infiltrate sol_raw.retcode != :Success
-        if sol_raw.t[end] != controlODE.tspan[end]
-            # Zygote.@ignore @infiltrate
+        Zygote.@ignore if sol_raw.t[end] != controlODE.tspan[end]
             return Inf
         end
 
@@ -84,31 +83,29 @@ function bioreactor(; store_results::Bool=false)
 
         regularization = ρ * sum(abs2, params)
 
-        # Zygote.@ignore @infiltrate abs(regularization) > 1.0f2 &&
-        #     abs(regularization) >
-        #                            1.0f1 * (abs(objective) + abs(state_penalty))
         return objective, state_penalty, control_penalty, regularization
     end
 
-    # α: penalty coefficient
-    # δ: barrier relaxation coefficient
-    α = 1f-3
-    ρ = 1f-2
-    θ, δ_progression = constrained_training(
+    ρ = 1f-3
+    θ, barrier_progression = constrained_training(
         losses,
         controlODE,
         θ;
-        α,
         ρ,
-        show_progressbar=true,
+        show_progressbar=false,
         datadir,
     )
 
-    @info "Delta progression" δ_progression
+    @info "Alpha progression" barrier_progression.α
+    lineplot(log.(barrier_progression.α))
 
-    δ_final = δ_progression[end]
+    @info "Delta progression" barrier_progression.δ
+    lineplot(log.(barrier_progression.δ))
+
+    δ_final = barrier_progression.δ[end]
+    α_final = barrier_progression.α[end]
     objective, state_penalty, control_penalty, regularization = losses(
-        controlODE, θ; δ = δ_final, α, ρ
+        controlODE, θ; δ = δ_final, α = α_final, ρ
     )
 
     @info "Final states"
@@ -118,18 +115,26 @@ function bioreactor(; store_results::Bool=false)
     plot_simulation(controlODE, θ; only=:controls, vars=[1])
     plot_simulation(controlODE, θ; only=:controls, vars=[2])
 
-    @info "Final losses" losses(controlODE, θ; δ = δ_final, α, ρ)
+    @info "Final losses" objective state_penalty control_penalty regularization
 
     @info "Collocation comparison"
     collocation_model = bioreactor_collocation(
         controlODE.u0,
         controlODE.tspan;
-        # num_supports=length(controlODE.tsteps),
-        # nodes_per_element=2,
         constrain_states=true,
     )
     collocation_results = extract_infopt_results(collocation_model)
-    interpolant_controller(collocation_results; plot=:unicode)
+    interpolant_controller(collocation_results)
+
+    @info "Collocation states"
+    for states in eachrow(collocation_results.states)
+        lineplot(states) |> display
+    end
+
+    @info "Collocation controls"
+    for controls in eachrow(collocation_results.controls)
+        lineplot(controls) |> display
+    end
 
     # perturbation_specs = [
     #     (variable=1, type=:centered, scale=1.0f0, samples=3, percentage=5.0f-2)

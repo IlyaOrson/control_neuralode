@@ -126,7 +126,7 @@ function plot_penalization_rounds(
         ls="--",
     )
     # plt.legend(; fontsize="x-small", loc="center left", bbox_to_anchor=(1.02, 0.5))
-    # @infiltrate
+
     local norm
     if colorant == "iter"
         norm = matplotlib.colors.Normalize(; vmin=iters[begin], vmax=iters[end])

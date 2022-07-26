@@ -71,7 +71,6 @@ function van_der_pol(; store_results::Bool=false)
     @info "Training..."
     grad!(g, params) = g .= Zygote.gradient(loss, params)[1]
     # θ = optimize_optim(θ, loss, grad!)
-    @infiltrate
     θ = optimize_ipopt(θ, loss, grad!)
 
     _, states_raw, _ = run_simulation(controlODE, θ)
@@ -121,7 +120,7 @@ function van_der_pol(; store_results::Bool=false)
     # δ: barrier relaxation coefficient
     α = 1f-1
     ρ = 0f0
-    θ, δ_progression = constrained_training(
+    θ, barrier_progression = constrained_training(
         losses,
         controlODE,
         θ;
@@ -131,8 +130,11 @@ function van_der_pol(; store_results::Bool=false)
         datadir,
     )
 
-    @info "Delta progression" δ_progression
-    δ_final = δ_progression[end]
+    @info "Alpha progression" barrier_progression.α
+    @info "Delta progression" barrier_progression.δ
+
+    δ_final = barrier_progression.δ[end]
+
     # penalty_loss(result.minimizer, constrained_prob, tsteps; α=penalty_coefficients[end])
     plot_simulation(controlODE, θ; only=:controls)
 

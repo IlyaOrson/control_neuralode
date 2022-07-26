@@ -96,19 +96,27 @@ function semibatch_reactor(; store_results::Bool=false)
     # α: penalty coefficient
     # ρ: regularization coefficient
     # δ: barrier relaxation coefficient
-    α = 1f-3
     ρ = 1f-3
-    θ, δ_progression = constrained_training(
+    θ, barrier_progression = constrained_training(
         losses,
         controlODE,
         θ;
-        α,
         ρ,
         show_progressbar=true,
         datadir,
     )
-    @info "Delta progression" δ_progression
-    δ_final = δ_progression[end]
+    @info "Alpha progression" barrier_progression.α
+    lineplot(log.(barrier_progression.α))
+
+    @info "Delta progression" barrier_progression.δ
+    lineplot(log.(barrier_progression.δ))
+
+    δ_final = barrier_progression.δ[end]
+    α_final = barrier_progression.α[end]
+    objective, state_penalty, control_penalty, regularization = losses(
+        controlODE, θ; δ = δ_final, α = α_final, ρ
+    )
+
     @info "Final states"
     plot_simulation(controlODE, θ; only=:states, vars=[1, 2, 3])
     plot_simulation(
@@ -118,6 +126,25 @@ function semibatch_reactor(; store_results::Bool=false)
     @info "Final controls"
     plot_simulation(controlODE, θ; only=:controls)#  only=:states, vars=[1,2,3])
 
-    @info "Final loss" losses(controlODE, θ; δ = δ_final, α, ρ)
+    @info "Final losses" objective state_penalty control_penalty regularization
+
+    @info "Collocation comparison"
+    collocation_model = semibatch_reactor_collocation(
+        controlODE.u0,
+        controlODE.tspan;
+        constrain_states=true,
+    )
+    collocation_results = extract_infopt_results(collocation_model)
+    interpolant_controller(collocation_results)
+
+    @info "Collocation states"
+    for states in eachrow(collocation_results.states)
+        lineplot(states) |> display
+    end
+
+    @info "Collocation controls"
+    for controls in eachrow(collocation_results.controls)
+        lineplot(controls) |> display
+    end
 
 end  # function wrapper

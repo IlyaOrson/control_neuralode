@@ -1,7 +1,7 @@
 function semibatch_reactor_collocation(
-    u0=controlODE.u0,
-    tspan=controlODE.tspan;
-    num_supports::Integer=length(controlODE.tsteps),
+    u0,
+    tspan;
+    num_supports::Integer=20,
     nodes_per_element::Integer=3,
     constrain_states::Bool=false,
 )

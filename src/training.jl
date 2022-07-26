@@ -64,19 +64,23 @@ function optimize_flux(
 
         if !isnothing(x_tol) && x_diff < x_tol
             desc = "Space rate threshold reached: $x_diff < $x_tol tolerance"
-            ProgressMeter.finish!(prog; desc)
+            @debug desc
+            # ProgressMeter.finish!(prog; desc)
             return params
         elseif !isnothing(f_tol) && f_diff < f_tol
             desc = "Objective rate threshold reached: $f_diff < $f_tol tolerance"
-            ProgressMeter.finish!(prog; desc)
+            @debug desc
+            # ProgressMeter.finish!(prog; desc)
             return params
         elseif !isnothing(g_tol) && g_norm < g_tol
             desc = "Gradient norm threshold reached: $g_norm < $g_tol tolerance"
-            ProgressMeter.finish!(prog; desc)
+            @debug desc
+            # ProgressMeter.finish!(prog; desc)
             return params
         elseif iter > maxiters
             desc = "Iteration bound reached: $iter > $maxiters tolerance"
-            ProgressMeter.finish!(prog; desc)
+            @debug desc
+            # ProgressMeter.finish!(prog; desc)
             return params
         end
         iter += 1
@@ -86,7 +90,7 @@ end
 function optimize_lbfgsb(θ, loss, grad!)
     # LBFGSB
     # https://github.com/Gnimuc/LBFGSB.jl/blob/master/test/wrapper.jl
-    param_size = length(θ)
+    params_size = length(θ)
     lbfgsb = LBFGSB.L_BFGS_B(params_size, 10)
     bounds = zeros(3, params_size)
     for i in 1:params_size
@@ -120,7 +124,7 @@ function optimize_optim(θ, loss, grad!)
     return optim_result.minimizer
 end
 
-function optimize_ipopt(θ, loss, grad!)
+function optimize_ipopt(θ, loss, grad!; maxiters::Int=1_000, tolerance::Float64=1e-2, verbosity::Int=3)
     # IPOPT
     # https://github.com/jump-dev/Ipopt.jl/blob/master/test/C_wrapper.jl
     eval_g(x, g) = g[:] = zero(x)
@@ -146,9 +150,9 @@ function optimize_ipopt(θ, loss, grad!)
         nothing,
     )
     ipopt.x = Float64.(θ)
-    Ipopt.AddIpoptIntOption(ipopt, "print_level", 3)  # default is 5
-    Ipopt.AddIpoptNumOption(ipopt, "tol", 1e-2)
-    Ipopt.AddIpoptIntOption(ipopt, "max_iter", 100)  # FIXME
+    Ipopt.AddIpoptIntOption(ipopt, "print_level", verbosity)  # default is 5
+    Ipopt.AddIpoptNumOption(ipopt, "tol", tolerance)
+    Ipopt.AddIpoptIntOption(ipopt, "max_iter", maxiters)
     Ipopt.AddIpoptNumOption(ipopt, "acceptable_tol", 1e-1)  # default is 1e-6
     Ipopt.AddIpoptIntOption(ipopt, "acceptable_iter", 5)  # default is 15
     Ipopt.AddIpoptStrOption(ipopt, "check_derivatives_for_naninf", "yes")
@@ -156,10 +160,10 @@ function optimize_ipopt(θ, loss, grad!)
     Ipopt.AddIpoptStrOption(ipopt, "hessian_approximation", "limited-memory")
     Ipopt.AddIpoptStrOption(ipopt, "mu_strategy", "adaptive")
 
-    # https://github.com/jump-dev/Ipopt.jl/blob/d9e9176620a9b527a08991a3d41062fa948867f7/src/Ipopt.jl#L113
+    # https://github.com/jump-dev/Ipopt.jl/blob/master/src/MOI_wrapper.jl#L1261
     solve_status = Ipopt.IpoptSolve(ipopt)
-    ipopt_minimizer = ipopt.x
-    return ipopt_minimizer
+    @info "Ipopt result" status=Ipopt._STATUS_CODES[solve_status]
+    return ipopt.x  # ipopt_minimizer
 end
 
 function preconditioner(
@@ -168,7 +172,7 @@ function preconditioner(
     θ,
     ρ=nothing,
     saveat=(),
-    progressbar=true,
+    progressbar=false,
     plot_final=true,
     integrator=INTEGRATOR,
     kwargs...,
@@ -286,7 +290,7 @@ function preconditioner(
 end
 
 function increase_by_percentage(x, per)
-    @argcheck 0 < per < 100
+    @argcheck 0 < per
     return (1f0 + 1f-2 * per) * x
 end
 
@@ -304,6 +308,7 @@ function evaluate_barrier(
     ρ,
     penalty_ratio_upper_bound=1f1,
     penalty_ratio_lower_bound=1f-1,
+    verbose=false,
     )
     objective, state_penalty, control_penalty, regularization = losses(controlODE, θ; α, δ, ρ)
     if isinf(state_penalty)
@@ -313,6 +318,7 @@ function evaluate_barrier(
     other_penalties_size = abs(objective)
     # other_penalties_size = max(abs(objective), abs(control_penalty), abs(regularization))
     state_penalty_ratio = state_penalty_size / other_penalties_size
+    verbose && @info "Penalty ratios" α δ objective state_penalty state_penalty_ratio
     if state_penalty_ratio > penalty_ratio_upper_bound
         return :overtight
     elseif state_penalty_ratio < penalty_ratio_lower_bound
@@ -329,28 +335,43 @@ function tune_barrier(
     α,
     ρ,
     δ,
-    δ_percentage_reduction=20f0,
-    max_iters=10000,
-    kwargs...
+    δ_percentage_change=10f0,
+    α_percentage_change=25f0,
+    max_iters=100,
+    increase_alpha=true,
+    verbose=false,
 )
+    previous_evaluation = :reasonable
     counter=0
+
     while true
         counter+=1
         if counter > max_iters
-            return δ
+            return α, δ
         end
-        evaluation = evaluate_barrier(losses, controlODE, θ; α, δ, ρ, kwargs...)
-        if evaluation == :reasonable
-            return decrease_by_percentage(δ, δ_percentage_reduction)
-        elseif evaluation == :inf
-            δ = increase_by_percentage(δ, δ_percentage_reduction)
-        elseif evaluation == :overtight
-            δ = increase_by_percentage(δ, δ_percentage_reduction)
-        elseif evaluation == :overlax
-            δ = decrease_by_percentage(δ, δ_percentage_reduction)
+
+        evaluation = evaluate_barrier(losses, controlODE, θ; α, δ, ρ, verbose)
+
+        if evaluation == :overlax
+            δ = decrease_by_percentage(δ, δ_percentage_change)
+
+        elseif evaluation in [:overtight, :inf]
+            δ = increase_by_percentage(δ, δ_percentage_change)
+
+        elseif evaluation == :reasonable
+            if previous_evaluation in [:overtight, :inf]
+                if increase_alpha
+                    α = increase_by_percentage(α, α_percentage_change)
+                end
+            else
+                δ = decrease_by_percentage(δ, δ_percentage_change)
+            end
+            return α, δ
         else
             @check evaluation in [:inf, :overtight, :overlax, :reasonable]
         end
+
+        previous_evaluation = evaluation
     end
 end
 
@@ -358,10 +379,9 @@ function constrained_training(
     losses,
     controlODE,
     θ;
-    α,
     ρ,
+    α0=1f-2,
     δ0=1f1,
-    δ_percentage_reduction=10f0,
     max_barrier_iterations=50,
     show_progressbar=false,
     datadir=nothing,
@@ -376,16 +396,20 @@ function constrained_training(
         showspeed=true,
     )
 
-    δ = tune_barrier(
+    α, δ = tune_barrier(
         losses,
         controlODE,
         θ;
-        α,
         ρ,
-        δ = δ0,
-        δ_percentage_reduction,
+        α=α0,
+        δ=δ0,
+        increase_alpha=false,
     )
 
+    # initial_α = α
+    # initial_δ = δ
+
+    α_progression = [α]
     δ_progression = [δ]
     barrier_iteration = 0
     while barrier_iteration < max_barrier_iterations
@@ -411,7 +435,8 @@ function constrained_training(
             minimizer = optimize_ipopt(θ, loss, grad!)
             # minimizer = optimize_optim(θ, loss, grad!)
         end
-        @info optimizer_output
+        # needs to be print to format the output as originally intended
+        # println(optimizer_output)
 
         objective, state_penalty, control_penalty, regularization = lost(minimizer)
 
@@ -444,34 +469,37 @@ function constrained_training(
         name = name_interpolation(δ, barrier_iteration)
         store_simulation(name, controlODE, θ; metadata, datadir)
 
-        local new_δ
-        for tuning_percentage in [δ_percentage_reduction * (1/2^i) for i in 0:4]
-            new_δ = tune_barrier(
+        # local tuned_α, tuned_δ
+        # for tuning_percentage in [δ_percentage_change * (1/2^i) for i in 0:4]
+            tuned_α, tuned_δ = tune_barrier(
                 losses,
                 controlODE,
                 minimizer;
                 α,
                 ρ,
                 δ,
-                δ_percentage_reduction=tuning_percentage,
+                increase_alpha=true,
             )
-            if new_δ < δ
-                break
+            if tuned_α > α
+                @show α, δ, tuned_α, tuned_δ
+                @show losses(controlODE, minimizer; α, δ, ρ)
+                @show losses(controlODE, minimizer; α=tuned_α, δ=tuned_δ, ρ)
             end
-        end
+        #     if tuned_δ < δ
+        #         break
+        #     end
+        # end
 
-        if new_δ >= δ || new_δ < 1f-2 * δ_progression[begin]
-            ProgressMeter.finish!(prog)
-            return θ, δ_progression
-        end
+        α, δ = tuned_α, tuned_δ
+        push!(α_progression, α)
+        push!(δ_progression, δ)
 
         # add some noise to avoid local minima
         # θ += 1.0f-1 * std(θ) * randn(Float32, length(θ))
 
         θ = minimizer
-        δ = new_δ
-        push!(δ_progression, δ)
     end
     ProgressMeter.finish!(prog)
-    return θ, δ_progression
+    barriers_progression = (; α=α_progression, δ=δ_progression)
+    return θ, barriers_progression
 end

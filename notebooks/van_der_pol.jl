@@ -84,10 +84,10 @@ end
 grad!(grad_container, params) = ReverseDiff.gradient!(grad_container, ctape, params)
 
 # ╔═╡ d8888d92-71df-4c0e-bdc1-1249e3da23d0
-function build_model()
+function build_model(constrain_states::Bool=true)
 	optimizer = optimizer_with_attributes(
 		Ipopt.Optimizer,
-		"print_level" => 5,
+		"print_level" => 4,
 		"tol" => 1e-2,
         "max_iter" => 10_000,
 		"hessian_approximation" => "limited-memory",
@@ -116,7 +116,12 @@ function build_model()
 		end
 	)
 
+    # initial conditions
 	@constraint(model, [i = 1:2], x[i](0) == u0[i])
+
+    if constrain_states
+        @constraint(model, -0.4 <= x[1])
+    end
 
 	# https://github.com/jump-dev/MathOptInterface.jl/pull/1819
 	# JuMP.register(optimizer_model(model), :scalar_fun, length(cat_params), scalar_fun; autodiff=true)  # forward mode
@@ -181,6 +186,7 @@ function loss_continuous(controlODE, params; kwargs...)
 	integral, error = quadgk(
 		(t)-> sum(abs2, vcat(sol(t), controlODE.controller(sol(t), params))), controlODE.tspan...
 	)
+    return integral
 end
 
 # ╔═╡ 42f26a4c-ac76-4212-80f9-82858ce2959c
@@ -190,10 +196,13 @@ loss_continuous(controlODE, result.params)
 cn.histogram(result.params)
 
 # ╔═╡ a5496bf2-adb3-4036-9d02-c0fdcec95ea1
-begin
-	times, states, controls = cn.run_simulation(controlODE, result.params)
-	cn.unicode_plotter(states, controls; only=:states)
-end
+times, states, controls = cn.run_simulation(controlODE, result.params)
+
+# ╔═╡ a0a456a0-cb5e-4866-95f6-7861d97c208c
+cn.unicode_plotter(states, controls; only=:states)
+
+# ╔═╡ 291cd17c-dad6-4d6b-a4ae-5fdfd1501833
+cn.unicode_plotter(states, controls; only=:controls)
 
 # ╔═╡ ab404ab0-1f0c-48f1-97c8-c3d1e7ec68df
 function with_pyplot(f::Function)
@@ -205,6 +214,8 @@ function with_pyplot(f::Function)
 end
 
 # ╔═╡ 92fe3d1d-9c83-4350-ae87-5e1140ec3efa
+# ╠═╡ disabled = true
+#=╠═╡
 with_pyplot() do
 	cn.phase_portrait(
 		controlODE,
@@ -214,6 +225,7 @@ with_pyplot() do
 		markers=cn.states_markers(result.states),
 	)
 end
+  ╠═╡ =#
 
 # ╔═╡ 10529d5d-486e-4455-9876-5ac46768ce8a
 md"# Collocation without policy"
@@ -224,8 +236,8 @@ begin
 	collocation_model = cn.van_der_pol_collocation(
 		controlODE.u0,
 		controlODE.tspan;
-		num_supports=100,
-		nodes_per_element=10,
+		num_supports=60,
+		nodes_per_element=2,
 		constrain_states=true,
 	)
 	collocation_results = cn.extract_infopt_results(collocation_model)
@@ -236,17 +248,19 @@ end
 # ╔═╡ 2d7c7563-89c2-4807-a152-341511502e0d
 cn.unicode_plotter(states_c, controls_c; only=:controls)
 
+# ╔═╡ a567af15-e5c0-43d8-9cc6-46b53ea75d83
+# ╠═╡ show_logs = false
+θ_precondition = cn.preconditioner(
+	controlODE,
+	reference_controller;
+	θ = xavier_weights,
+	x_tol=1f-7,
+	g_tol=1f-2,
+)
+
 # ╔═╡ 23e2fcd7-08bb-4cbf-a2ac-badd78a29e75
 # ╠═╡ show_logs = false
 begin
-    θ_precondition = cn.preconditioner(
-        controlODE,
-        reference_controller;
-        θ = xavier_weights,
-        x_tol=1f-7,
-        g_tol=1f-2,
-    )
-
 	loss_discrete(params) = loss_discrete(controlODE, params)
 
     @info "Training..."
@@ -258,8 +272,20 @@ end
 # ╔═╡ 6704374c-70de-4e4d-9523-e516c1072348
 loss_discrete(controlODE, result.params)
 
+# ╔═╡ 9a186cb8-aca4-4124-8fed-1fcce3cc8f31
+ReverseDiff.gradient(loss_discrete, xavier_weights) |> x -> sum(abs2, x)
+
+# ╔═╡ 08def6a5-388a-481a-8073-44597d45519d
+ReverseDiff.gradient(loss_discrete, θ_precondition) |> x -> sum(abs2, x)
+
+# ╔═╡ debda675-0fc5-4a86-b9ee-9ec20f92d5f0
+ReverseDiff.gradient(loss_discrete, θ_unconstrained) |> x -> sum(abs2, x)
+
 # ╔═╡ 4e60f25b-b76d-4f16-a2aa-f8f52c425102
 times_unconstrained, states_unconstrained, controls_unconstrained = cn.run_simulation(controlODE, θ_unconstrained);
+
+# ╔═╡ 4ec2fd98-9951-475e-83ca-1e8a298c47d7
+cn.unicode_plotter(states_unconstrained, controls_unconstrained; only=:controls)
 
 # ╔═╡ 1c567a1c-7d59-4818-903d-39d1475a2bef
 loss_continuous(controlODE, θ_unconstrained)
@@ -281,7 +307,7 @@ function losses(controlODE, params; α, δ, ρ)
 	control_penalty *= Δt
 
 	# fault = min.(sol[1, 1:end] .+ 0.4f0, 0.0f0)
-	state_fault = map(x -> cn.relaxed_log_barrier(x - -0.2f0; δ), sol[1, 1:end-1])
+	state_fault = map(x -> cn.relaxed_log_barrier(x - -0.4f0; δ), sol[1, 1:end-1])
 	# penalty = α * sum(fault .^ 2)  # quadratic penalty
 	state_penalty = Δt * α * sum(state_fault)
 	regularization = ρ * sum(abs2, params)
@@ -291,18 +317,22 @@ end
 # ╔═╡ cf67ae98-a86a-49f0-8a51-67fd42f7146c
 # ╠═╡ show_logs = false
 begin
-	α = 1f-1
 	ρ = 0f0
-	θ_constrained, δ_progression = cn.constrained_training(
+	@time θ_constrained, barrier_progression = cn.constrained_training(
 		losses,
 		controlODE,
 		θ_unconstrained;
-		α,
 		ρ,
-		show_progressbar=true,
+		show_progressbar=false,
 		datadir=nothing,
 	)
 end
+
+# ╔═╡ 55cafd78-4dd4-4378-82d1-f716a6c4e704
+lineplot(log.(barrier_progression.δ))
+
+# ╔═╡ 9eb753d3-af33-48a9-bb45-3494c2e138bf
+lineplot(log.(barrier_progression.α))
 
 # ╔═╡ 9a866765-7a3b-402c-8563-f3f1bbbd1c57
 loss_continuous(controlODE, θ_constrained)
@@ -311,9 +341,11 @@ loss_continuous(controlODE, θ_constrained)
 times_constrained, states_constrained, controls_constrained = cn.run_simulation(controlODE, θ_constrained);
 
 # ╔═╡ ea8d4204-09e3-4355-881f-17b55f9cdcde
-cn.unicode_plotter(states_constrained, controls_constrained; only=:controls)
+cn.unicode_plotter(states_constrained, controls_constrained; only=:states)
 
 # ╔═╡ 3f393aa5-49ca-4627-a174-30dac174d79a
+# ╠═╡ disabled = true
+#=╠═╡
 with_pyplot() do
 	cn.phase_portrait(
 		controlODE,
@@ -323,6 +355,27 @@ with_pyplot() do
 		markers=cn.states_markers(states_constrained),
 		title="Preconditioned policy",
 	)
+end
+  ╠═╡ =#
+
+# ╔═╡ 2fcb5c4e-a5bf-4f26-bede-d0c53db9256d
+with_pyplot() do
+    function indicator(coords...)
+        if coords[1] > -0.4
+            return true
+        end
+        return false
+    end
+    shader = cn.ShadeConf(; indicator)
+    cn.phase_portrait(
+        controlODE,
+        θ_constrained,
+        cn.square_bounds(controlODE.u0, 7);
+        shader=cn.ShadeConf(; indicator),
+        projection=[1, 2],
+        markers=cn.states_markers(states_constrained),
+        title="Optimized policy with constraints",
+    )
 end
 
 # ╔═╡ Cell order:
@@ -351,17 +404,27 @@ end
 # ╠═42f26a4c-ac76-4212-80f9-82858ce2959c
 # ╠═5f43bf8f-5f85-4604-8cc3-2d5e8e4f9c56
 # ╠═a5496bf2-adb3-4036-9d02-c0fdcec95ea1
+# ╠═a0a456a0-cb5e-4866-95f6-7861d97c208c
+# ╠═291cd17c-dad6-4d6b-a4ae-5fdfd1501833
 # ╟─ab404ab0-1f0c-48f1-97c8-c3d1e7ec68df
 # ╠═92fe3d1d-9c83-4350-ae87-5e1140ec3efa
 # ╟─10529d5d-486e-4455-9876-5ac46768ce8a
 # ╠═1a9bcfe7-23f5-4c89-946c-0a97194778f0
 # ╠═2d7c7563-89c2-4807-a152-341511502e0d
+# ╠═a567af15-e5c0-43d8-9cc6-46b53ea75d83
 # ╠═23e2fcd7-08bb-4cbf-a2ac-badd78a29e75
+# ╠═9a186cb8-aca4-4124-8fed-1fcce3cc8f31
+# ╠═08def6a5-388a-481a-8073-44597d45519d
+# ╠═debda675-0fc5-4a86-b9ee-9ec20f92d5f0
 # ╠═4e60f25b-b76d-4f16-a2aa-f8f52c425102
+# ╠═4ec2fd98-9951-475e-83ca-1e8a298c47d7
 # ╠═1c567a1c-7d59-4818-903d-39d1475a2bef
 # ╠═517d33dc-f9bc-4c8d-b1b3-3d173c9eefdb
 # ╠═cf67ae98-a86a-49f0-8a51-67fd42f7146c
+# ╠═55cafd78-4dd4-4378-82d1-f716a6c4e704
+# ╠═9eb753d3-af33-48a9-bb45-3494c2e138bf
 # ╠═9a866765-7a3b-402c-8563-f3f1bbbd1c57
 # ╠═bb9bc3cb-c6ea-41a7-87de-eb2a52fc5b5e
 # ╠═ea8d4204-09e3-4355-881f-17b55f9cdcde
 # ╠═3f393aa5-49ca-4627-a174-30dac174d79a
+# ╠═2fcb5c4e-a5bf-4f26-bede-d0c53db9256d
