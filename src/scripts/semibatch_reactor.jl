@@ -106,16 +106,17 @@ function semibatch_reactor(; store_results::Bool=false)
         datadir,
     )
     @info "Alpha progression" barrier_progression.α
-    lineplot(log.(barrier_progression.α))
+    lineplot(log.(barrier_progression.α)) |> display
 
     @info "Delta progression" barrier_progression.δ
-    lineplot(log.(barrier_progression.δ))
+    lineplot(log.(barrier_progression.δ)) |> display
 
     δ_final = barrier_progression.δ[end]
     α_final = barrier_progression.α[end]
     objective, state_penalty, control_penalty, regularization = losses(
         controlODE, θ; δ = δ_final, α = α_final, ρ
     )
+    final_loss = objective + state_penalty + control_penalty + regularization
 
     @info "Final states"
     plot_simulation(controlODE, θ; only=:states, vars=[1, 2, 3])
@@ -126,7 +127,7 @@ function semibatch_reactor(; store_results::Bool=false)
     @info "Final controls"
     plot_simulation(controlODE, θ; only=:controls)#  only=:states, vars=[1,2,3])
 
-    @info "Final losses" objective state_penalty control_penalty regularization
+    @info "Final losses" objective state_penalty control_penalty regularization final_loss
 
     @info "Collocation comparison"
     collocation_model = semibatch_reactor_collocation(

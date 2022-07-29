@@ -4,6 +4,7 @@ function van_der_pol_collocation(
     num_supports::Integer=10,
     nodes_per_element::Integer=2,
     constrain_states::Bool=false,
+    verbose=false,
 )
     optimizer = optimizer_with_attributes(
         Ipopt.Optimizer,
@@ -46,7 +47,7 @@ function van_der_pol_collocation(
 
     @objective(model, Min, integral(x[1]^2 + x[2]^2 + c[1]^2, t))
 
-    optimize_infopt!(model)
+    optimize_infopt!(model; verbose)
 
     jump_model = optimizer_model(model)
     solution_summary(jump_model; verbose=false)

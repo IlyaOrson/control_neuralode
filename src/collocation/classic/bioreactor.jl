@@ -4,6 +4,7 @@ function bioreactor_collocation(
     num_supports::Integer=25,
     nodes_per_element::Integer=2,
     constrain_states::Bool=false,
+    verbose=false,
 )
     t0, tf = tspan
     optimizer = optimizer_with_attributes(
@@ -78,7 +79,7 @@ function bioreactor_collocation(
 
     @objective(model, Max, x[3](tf))
 
-    optimize_infopt!(model)
+    optimize_infopt!(model; verbose)
 
     jump_model = optimizer_model(model)
     solution_summary(jump_model; verbose=false)

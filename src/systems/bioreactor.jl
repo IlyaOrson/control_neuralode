@@ -63,9 +63,9 @@ function ControlODE(system::BioReactor)
     # weights initializer reference https://pytorch.org/docs/stable/nn.init.html
     controller = FastChain(
         (x, p) -> [x[1], x[2] / 100.0, x[3] * 10.0],  # input scaling
-        FastDense(3, 8, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
-        FastDense(8, 8, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
-        FastDense(8, 2; initW=(x, y) -> glorot_uniform(x, y)),
+        FastDense(3, 32, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
+        FastDense(32, 32, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
+        FastDense(32, 2; initW=(x, y) -> glorot_uniform(x, y)),
         # I ∈ [120, 400] & F ∈ [0, 40] in Bradford 2020
         # (x, p) -> [280f0 * sigmoid(x[1]) + 120f0, 40f0 * sigmoid(x[2])],
         scaled_sigmoids(control_constraints),

@@ -124,7 +124,14 @@ function optimize_optim(θ, loss, grad!)
     return optim_result.minimizer
 end
 
-function optimize_ipopt(θ, loss, grad!; maxiters::Int=1_000, tolerance::Float64=1e-2, verbosity::Int=3)
+function optimize_ipopt(
+    θ,
+    loss,
+    grad!;
+    maxiters::Int=1_000,
+    tolerance::Float64=1e-2,
+    verbosity::Union{Int, Nothing}=3
+)
     # IPOPT
     # https://github.com/jump-dev/Ipopt.jl/blob/master/test/C_wrapper.jl
     eval_g(x, g) = g[:] = zero(x)
@@ -150,7 +157,9 @@ function optimize_ipopt(θ, loss, grad!; maxiters::Int=1_000, tolerance::Float64
         nothing,
     )
     ipopt.x = Float64.(θ)
-    Ipopt.AddIpoptIntOption(ipopt, "print_level", verbosity)  # default is 5
+    if !isnothing(verbosity)
+        Ipopt.AddIpoptIntOption(ipopt, "print_level", verbosity)  # default is 5
+    end
     Ipopt.AddIpoptNumOption(ipopt, "tol", tolerance)
     Ipopt.AddIpoptIntOption(ipopt, "max_iter", maxiters)
     Ipopt.AddIpoptNumOption(ipopt, "acceptable_tol", 1e-1)  # default is 1e-6
@@ -161,8 +170,15 @@ function optimize_ipopt(θ, loss, grad!; maxiters::Int=1_000, tolerance::Float64
     Ipopt.AddIpoptStrOption(ipopt, "mu_strategy", "adaptive")
 
     # https://github.com/jump-dev/Ipopt.jl/blob/master/src/MOI_wrapper.jl#L1261
-    solve_status = Ipopt.IpoptSolve(ipopt)
-    @info "Ipopt result" status=Ipopt._STATUS_CODES[solve_status]
+    local solve_status
+    optimizer_output = @capture_out begin
+        solve_status = Ipopt.IpoptSolve(ipopt)
+    end
+    if !isnothing(verbosity)
+        println(optimizer_output)
+    else
+        @info "Ipopt result" status=Ipopt._STATUS_CODES[solve_status]
+    end
     return ipopt.x  # ipopt_minimizer
 end
 
@@ -429,14 +445,9 @@ function constrained_training(
         grad(params) = Zygote.gradient(loss, params)[1]
         grad!(g, params) = g .= Zygote.gradient(loss, params)[1]
 
-        local minimizer
-        optimizer_output = @capture_out begin
-            # minimizer = optimize_flux(θ, loss)
-            minimizer = optimize_ipopt(θ, loss, grad!)
-            # minimizer = optimize_optim(θ, loss, grad!)
-        end
-        # needs to be print to format the output as originally intended
-        # println(optimizer_output)
+        # minimizer = optimize_flux(θ, loss)
+        minimizer = optimize_ipopt(θ, loss, grad!)
+        # minimizer = optimize_optim(θ, loss, grad!)
 
         objective, state_penalty, control_penalty, regularization = lost(minimizer)
 
@@ -483,7 +494,10 @@ function constrained_training(
             if tuned_α > α
                 @show α, δ, tuned_α, tuned_δ
                 @show losses(controlODE, minimizer; α, δ, ρ)
+                @show losses(controlODE, minimizer; α, δ, ρ) |> sum
                 @show losses(controlODE, minimizer; α=tuned_α, δ=tuned_δ, ρ)
+                @show losses(controlODE, minimizer; α=tuned_α, δ=tuned_δ, ρ) |> sum
+                @infiltrate
             end
         #     if tuned_δ < δ
         #         break

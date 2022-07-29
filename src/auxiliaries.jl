@@ -71,7 +71,7 @@ function scaled_sigmoids(control_ranges)
     ]
 end
 
-function optimize_infopt!(infopt_model::InfiniteModel)
+function optimize_infopt!(infopt_model::InfiniteModel; verbose=false)
     InfiniteOpt.optimize!(infopt_model)
 
     # list possible termination status: model |> termination_status |> typeof
@@ -81,7 +81,7 @@ function optimize_infopt!(infopt_model::InfiniteModel)
         @error raw_status(jump_model) termination_status(jump_model)
         error("The collocation optimization failed.")
     else
-        @info "Solver summary" solution_summary(jump_model; verbose=false)
+        @info "Solver summary" solution_summary(jump_model; verbose)
         # @info "Objective value" objective_value(infopt_model)
     end
     return infopt_model

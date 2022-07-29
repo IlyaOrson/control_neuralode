@@ -97,16 +97,17 @@ function bioreactor(; store_results::Bool=false)
     )
 
     @info "Alpha progression" barrier_progression.α
-    lineplot(log.(barrier_progression.α))
+    lineplot(log.(barrier_progression.α)) |> display
 
     @info "Delta progression" barrier_progression.δ
-    lineplot(log.(barrier_progression.δ))
+    lineplot(log.(barrier_progression.δ)) |> display
 
     δ_final = barrier_progression.δ[end]
     α_final = barrier_progression.α[end]
     objective, state_penalty, control_penalty, regularization = losses(
         controlODE, θ; δ = δ_final, α = α_final, ρ
     )
+    final_loss = objective + state_penalty + control_penalty + regularization
 
     @info "Final states"
     plot_state_constraints(θ)
@@ -115,7 +116,7 @@ function bioreactor(; store_results::Bool=false)
     plot_simulation(controlODE, θ; only=:controls, vars=[1])
     plot_simulation(controlODE, θ; only=:controls, vars=[2])
 
-    @info "Final losses" objective state_penalty control_penalty regularization
+    @info "Final losses" objective state_penalty control_penalty regularization final_loss
 
     @info "Collocation comparison"
     collocation_model = bioreactor_collocation(

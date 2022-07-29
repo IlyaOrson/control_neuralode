@@ -145,13 +145,7 @@ end
 @time infopt_model = build_model();
 
 # ╔═╡ 732b8e45-fb51-454b-81d2-2d084c12df73
-InfiniteOpt.optimize!(infopt_model)
-
-# ╔═╡ 91058b27-c98d-4ed0-8697-8c2812aebc01
-begin
-	jump_model = optimizer_model(infopt_model)
-	solution_summary(jump_model; verbose=false)
-end
+cn.optimize_infopt!(infopt_model; verbose=false)
 
 # ╔═╡ a9ee1497-b0a3-447c-a989-04013d53d56c
 infopt_model |> objective_value
@@ -394,7 +388,6 @@ end
 # ╠═d8888d92-71df-4c0e-bdc1-1249e3da23d0
 # ╠═ebf28370-a122-46bd-84b9-e1bc6cd4ff98
 # ╠═732b8e45-fb51-454b-81d2-2d084c12df73
-# ╠═91058b27-c98d-4ed0-8697-8c2812aebc01
 # ╠═a9ee1497-b0a3-447c-a989-04013d53d56c
 # ╠═edd395e2-58b7-41af-85ae-6af612154df5
 # ╠═1772d71a-1f7f-43cd-a4ad-0f7f54c960d0

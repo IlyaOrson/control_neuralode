@@ -4,6 +4,7 @@ function semibatch_reactor_collocation(
     num_supports::Integer=20,
     nodes_per_element::Integer=3,
     constrain_states::Bool=false,
+    verbose=false,
 )
     optimizer = optimizer_with_attributes(
         Ipopt.Optimizer,
@@ -125,7 +126,7 @@ function semibatch_reactor_collocation(
 
     @objective(model, Max, x[2](tf))
 
-    optimize_infopt!(model)
+    optimize_infopt!(model; verbose)
 
     jump_model = optimizer_model(model)
     solution_summary(jump_model; verbose=false)
