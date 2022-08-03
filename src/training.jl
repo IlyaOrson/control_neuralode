@@ -162,7 +162,7 @@ function optimize_ipopt(
     end
     Ipopt.AddIpoptNumOption(ipopt, "tol", tolerance)
     Ipopt.AddIpoptIntOption(ipopt, "max_iter", maxiters)
-    Ipopt.AddIpoptNumOption(ipopt, "acceptable_tol", 1e-1)  # default is 1e-6
+    Ipopt.AddIpoptNumOption(ipopt, "acceptable_tol", 0.1*tolerance)  # default is 1e-6
     Ipopt.AddIpoptIntOption(ipopt, "acceptable_iter", 5)  # default is 15
     Ipopt.AddIpoptStrOption(ipopt, "check_derivatives_for_naninf", "yes")
     Ipopt.AddIpoptStrOption(ipopt, "print_info_string", "yes")
@@ -175,9 +175,10 @@ function optimize_ipopt(
         solve_status = Ipopt.IpoptSolve(ipopt)
     end
     if !isnothing(verbosity)
-        println(optimizer_output)
+        # only first entry of logger gets formatted as a string
+        @info "Ipopt report (verbosity=${verbosity})\n" * optimizer_output
     else
-        @info "Ipopt result" status=Ipopt._STATUS_CODES[solve_status]
+        @info "Ipopt report" status=Ipopt._STATUS_CODES[solve_status]
     end
     return ipopt.x  # ipopt_minimizer
 end
@@ -294,8 +295,8 @@ function preconditioner(
         end
 
         grad!(g, params) = g .= Zygote.gradient(precondition_loss, params)[1]
-        θ = optimize_flux(θ, precondition_loss; kwargs...)
-        # θ = optimize_ipopt(θ, precondition_loss, grad!)
+        # θ = optimize_flux(θ, precondition_loss; kwargs...)
+        θ = optimize_ipopt(θ, precondition_loss, grad!; tolerance=1e-1, maxiters=100)
 
         ProgressMeter.next!(prog)
         if partial_time == controlODE.tsteps[end] && plot_final
@@ -396,9 +397,11 @@ function constrained_training(
     controlODE,
     θ;
     ρ,
-    α0=1f-2,
+    α0=1f-3,
     δ0=1f1,
-    max_barrier_iterations=50,
+    max_barrier_iterations=30,
+    max_increase_α = 1e2,
+    max_decrease_δ = 1e4,
     show_progressbar=false,
     datadir=nothing,
     metadata=Dict(),  # metadata is added to this dict always
@@ -446,7 +449,13 @@ function constrained_training(
         grad!(g, params) = g .= Zygote.gradient(loss, params)[1]
 
         # minimizer = optimize_flux(θ, loss)
-        minimizer = optimize_ipopt(θ, loss, grad!)
+        local minimizer
+        try
+            minimizer = optimize_ipopt(θ, loss, grad!; maxiters=100, verbosity=5)
+        catch
+            @error "Optimization failed!"
+            @infiltrate
+        end
         # minimizer = optimize_optim(θ, loss, grad!)
 
         objective, state_penalty, control_penalty, regularization = lost(minimizer)
@@ -480,29 +489,25 @@ function constrained_training(
         name = name_interpolation(δ, barrier_iteration)
         store_simulation(name, controlODE, θ; metadata, datadir)
 
-        # local tuned_α, tuned_δ
-        # for tuning_percentage in [δ_percentage_change * (1/2^i) for i in 0:4]
-            tuned_α, tuned_δ = tune_barrier(
-                losses,
-                controlODE,
-                minimizer;
-                α,
-                ρ,
-                δ,
-                increase_alpha=true,
-            )
-            if tuned_α > α
-                @show α, δ, tuned_α, tuned_δ
-                @show losses(controlODE, minimizer; α, δ, ρ)
-                @show losses(controlODE, minimizer; α, δ, ρ) |> sum
-                @show losses(controlODE, minimizer; α=tuned_α, δ=tuned_δ, ρ)
-                @show losses(controlODE, minimizer; α=tuned_α, δ=tuned_δ, ρ) |> sum
-                @infiltrate
-            end
-        #     if tuned_δ < δ
-        #         break
-        #     end
-        # end
+        tuned_α, tuned_δ = tune_barrier(
+            losses,
+            controlODE,
+            minimizer;
+            α,
+            ρ,
+            δ,
+            increase_alpha=true,
+        )
+        if tuned_α > α
+            prev_losses = losses(controlODE, minimizer; α, δ, ρ)
+            tuned_losses = losses(controlODE, minimizer; α=tuned_α, δ=tuned_δ, ρ)
+            @info "Increased alpha" α δ tuned_α tuned_δ prev_losses sum(prev_losses) tuned_losses sum(tuned_losses)
+        end
+        if (δ0 > tuned_δ * max_decrease_δ) || (tuned_α > α0 * max_increase_α)
+            @info "Max barrier parameter reached." barrier_iteration tuned_δ/δ0 tuned_α/α0
+            θ = minimizer
+            break
+        end
 
         α, δ = tuned_α, tuned_δ
         push!(α_progression, α)

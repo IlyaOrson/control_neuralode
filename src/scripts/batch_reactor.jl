@@ -67,7 +67,7 @@ function batch_reactor(; store_results::Bool=false)
     plot_simulation(controlODE, θ; only=:controls)
 
     _, states_raw, _ = run_simulation(controlODE, θ)
-    return phase_portrait(
+    phase_portrait(
         controlODE,
         θ,
         coord_lims;
@@ -76,4 +76,5 @@ function batch_reactor(; store_results::Bool=false)
         # start_points=reshape(u0 .+ (-1e-4, 0), 1, 2),
         title="Optimized policy",
     )
+    return
 end  # script wrapper

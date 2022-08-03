@@ -215,6 +215,7 @@ function phase_portrait(
     start_points_y=nothing,
     title=nothing,
     shader=nothing,
+    show=true,
     kwargs...,
 )
     dimension = length(controlODE.prob.u0)
@@ -349,7 +350,8 @@ function phase_portrait(
 
     plt.tight_layout()
 
-    return plt.show()
+    show && plt.show()
+    return fig
 end
 
 function transparecy_scaler_abs(noise, perturbations; top=1, low=0.2)

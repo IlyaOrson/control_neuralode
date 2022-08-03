@@ -112,19 +112,15 @@ function van_der_pol(; store_results::Bool=false)
         # penalty = α * sum(fault .^ 2)  # quadratic penalty
         state_penalty = Δt * α * sum(state_fault)
         regularization = ρ * sum(abs2, params)
-        return objective, state_penalty, control_penalty, regularization
+        return (; objective, state_penalty, control_penalty, regularization)
     end
 
     @info "Enforcing constraints..."
-    # α: penalty coefficient
-    # δ: barrier relaxation coefficient
-    α = 1f-1
     ρ = 0f0
     θ, barrier_progression = constrained_training(
         losses,
         controlODE,
         θ;
-        α,
         ρ,
         show_progressbar=true,
         datadir,

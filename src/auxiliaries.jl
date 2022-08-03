@@ -71,8 +71,9 @@ function scaled_sigmoids(control_ranges)
     ]
 end
 
-function optimize_infopt!(infopt_model::InfiniteModel; verbose=false)
-    InfiniteOpt.optimize!(infopt_model)
+function optimize_infopt!(infopt_model::InfiniteModel; verbose=false, solver_report=false)
+
+    solver_output = @capture_out InfiniteOpt.optimize!(infopt_model)
 
     # list possible termination status: model |> termination_status |> typeof
     jump_model = optimizer_model(infopt_model)
@@ -83,6 +84,7 @@ function optimize_infopt!(infopt_model::InfiniteModel; verbose=false)
     else
         @info "Solver summary" solution_summary(jump_model; verbose)
         # @info "Objective value" objective_value(infopt_model)
+        solver_report && @info "Solver report" solver_output
     end
     return infopt_model
 end

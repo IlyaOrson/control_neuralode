@@ -1,5 +1,5 @@
 ### A Pluto.jl notebook ###
-# v0.19.9
+# v0.19.11
 
 using Markdown
 using InteractiveUtils
@@ -15,12 +15,13 @@ end
 
 # ╔═╡ 07b1f884-6179-483a-8a0b-1771da59799f
 begin
+	using Revise, PlutoLinks
 	using InfiniteOpt, Ipopt
-	using ReverseDiff, ForwardDiff, Enzyme, Zygote
+	using ReverseDiff, ForwardDiff, Zygote
 	using QuadGK
 	using BenchmarkTools
 	using UnicodePlots
-	import ControlNeuralODE as cn
+	@revise import ControlNeuralODE as cn
 	cn.plt.ion()
 	# cn.plt.style.use("fast")
 end
@@ -84,7 +85,7 @@ end
 grad!(grad_container, params) = ReverseDiff.gradient!(grad_container, ctape, params)
 
 # ╔═╡ d8888d92-71df-4c0e-bdc1-1249e3da23d0
-function build_model(constrain_states::Bool=true)
+function build_model(; constrain_states::Bool=true)
 	optimizer = optimizer_with_attributes(
 		Ipopt.Optimizer,
 		"print_level" => 4,
@@ -217,6 +218,7 @@ with_pyplot() do
 		# randn(length(result.params)),
 		cn.square_bounds(u0, 7);
 		markers=cn.states_markers(result.states),
+        show=false,
 	)
 end
   ╠═╡ =#
@@ -300,7 +302,7 @@ function losses(controlODE, params; α, δ, ρ)
 	objective *= Δt
 	control_penalty *= Δt
 
-	# fault = min.(sol[1, 1:end] .+ 0.4f0, 0.0f0)
+	# state_fault = min.(sol[1, 1:end] .+ 0.4f0, 0.0f0)
 	state_fault = map(x -> cn.relaxed_log_barrier(x - -0.4f0; δ), sol[1, 1:end-1])
 	# penalty = α * sum(fault .^ 2)  # quadratic penalty
 	state_penalty = Δt * α * sum(state_fault)
@@ -311,16 +313,26 @@ end
 # ╔═╡ cf67ae98-a86a-49f0-8a51-67fd42f7146c
 # ╠═╡ show_logs = false
 begin
-	ρ = 0f0
+	ρ = 0.1f0
 	@time θ_constrained, barrier_progression = cn.constrained_training(
 		losses,
 		controlODE,
+		# xavier_weights;
 		θ_unconstrained;
 		ρ,
 		show_progressbar=false,
 		datadir=nothing,
 	)
 end
+
+# ╔═╡ bd88a4d0-18ed-4bfd-b0d8-8534be7b356d
+losses(controlODE, xavier_weights; α=barrier_progression.α[end], δ=barrier_progression.δ[end], ρ)
+
+# ╔═╡ 4412d9e1-478b-416f-a4a3-e277d32ed56d
+losses(controlODE, θ_unconstrained; α=barrier_progression.α[end], δ=barrier_progression.δ[end], ρ)
+
+# ╔═╡ 97c150f6-0593-4ded-afae-bb8817d133a6
+losses(controlODE, θ_constrained; α=barrier_progression.α[end], δ=barrier_progression.δ[end], ρ)
 
 # ╔═╡ 55cafd78-4dd4-4378-82d1-f716a6c4e704
 lineplot(log.(barrier_progression.δ))
@@ -348,6 +360,7 @@ with_pyplot() do
 		projection=[1, 2],
 		markers=cn.states_markers(states_constrained),
 		title="Preconditioned policy",
+        show=false,
 	)
 end
   ╠═╡ =#
@@ -369,6 +382,7 @@ with_pyplot() do
         projection=[1, 2],
         markers=cn.states_markers(states_constrained),
         title="Optimized policy with constraints",
+        show=false,
     )
 end
 
@@ -414,6 +428,9 @@ end
 # ╠═1c567a1c-7d59-4818-903d-39d1475a2bef
 # ╠═517d33dc-f9bc-4c8d-b1b3-3d173c9eefdb
 # ╠═cf67ae98-a86a-49f0-8a51-67fd42f7146c
+# ╠═bd88a4d0-18ed-4bfd-b0d8-8534be7b356d
+# ╠═4412d9e1-478b-416f-a4a3-e277d32ed56d
+# ╠═97c150f6-0593-4ded-afae-bb8817d133a6
 # ╠═55cafd78-4dd4-4378-82d1-f716a6c4e704
 # ╠═9eb753d3-af33-48a9-bb45-3494c2e138bf
 # ╠═9a866765-7a3b-402c-8563-f3f1bbbd1c57

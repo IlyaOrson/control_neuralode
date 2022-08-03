@@ -83,7 +83,7 @@ function bioreactor(; store_results::Bool=false)
 
         regularization = ρ * sum(abs2, params)
 
-        return objective, state_penalty, control_penalty, regularization
+        return (; objective, state_penalty, control_penalty, regularization)
     end
 
     ρ = 1f-3
