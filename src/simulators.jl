@@ -81,8 +81,7 @@ function store_simulation(
 
     if !isnothing(metadata)
         open(joinpath(datadir, filename * "_meta.json"), "w") do f
-            JSON3.pretty(f, JSON3.write(metadata))
-            println(f)
+            JSON3.pretty(f, metadata)
         end
     end
 end

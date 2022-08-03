@@ -83,8 +83,8 @@ using LaTeXStrings: @L_str
 
 import CommonSolve: solve
 
-export batch_reactor, bioreactor, semibatch_reactor
-export van_der_pol, van_der_pol_direct_phase_plot
+# scripts as functions
+export batch_reactor, bioreactor, semibatch_reactor, van_der_pol
 
 # TODO: mark the variables that work as constants (avoid constants for Revise.jl)
 @show INTEGRATOR = Tsit5()

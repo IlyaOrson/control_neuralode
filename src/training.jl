@@ -176,7 +176,7 @@ function optimize_ipopt(
     end
     if !isnothing(verbosity)
         # only first entry of logger gets formatted as a string
-        @info "Ipopt report (verbosity=${verbosity})\n" * optimizer_output
+        @info "Ipopt report (verbosity=$(verbosity))\n" * optimizer_output
     else
         @info "Ipopt report" status=Ipopt._STATUS_CODES[solve_status]
     end
@@ -296,7 +296,7 @@ function preconditioner(
 
         grad!(g, params) = g .= Zygote.gradient(precondition_loss, params)[1]
         # θ = optimize_flux(θ, precondition_loss; kwargs...)
-        θ = optimize_ipopt(θ, precondition_loss, grad!; tolerance=1e-1, maxiters=100)
+        θ = optimize_ipopt(θ, precondition_loss, grad!; tolerance=1e-1, maxiters=10)
 
         ProgressMeter.next!(prog)
         if partial_time == controlODE.tsteps[end] && plot_final
@@ -451,7 +451,7 @@ function constrained_training(
         # minimizer = optimize_flux(θ, loss)
         local minimizer
         try
-            minimizer = optimize_ipopt(θ, loss, grad!; maxiters=100, verbosity=5)
+            minimizer = optimize_ipopt(θ, loss, grad!; maxiters=100)
         catch
             @error "Optimization failed!"
             @infiltrate
@@ -481,12 +481,11 @@ function constrained_training(
             :state_penalty => state_penalty,
             :control_penalty => control_penalty,
             :regularization_cost => regularization,
-            :num_params => length(initial_params(controlODE.controller)),
-            # :layers => controller_shape(controlODE.controller),
+            :initial_condition => controlODE.u0,
             :tspan => controlODE.tspan,
         )
         metadata = merge(metadata, local_metadata)
-        name = name_interpolation(δ, barrier_iteration)
+        name = name_interpolation(barrier_iteration)
         store_simulation(name, controlODE, θ; metadata, datadir)
 
         tuned_α, tuned_δ = tune_barrier(

@@ -31,3 +31,5 @@ function (S::BatchReactor)(du, u, p, t, controller; input=:state)
     end
     return nothing
 end
+
+# TODO ControlODE(system::BatchReactor)

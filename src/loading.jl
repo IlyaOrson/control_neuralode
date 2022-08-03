@@ -1,18 +1,19 @@
-RESULTS_REGEX = r"delta_(\d+\.\d+)_iter_(\d+)"
+const RESULTS_REGEX = r"iter_(\d+)"
+const WEIGHTS_EXT = ".jls"
+const METADATA_EXT = ".json"
 
-function name_interpolation(delta, iter)
-    return "delta_$(round(delta, digits=3))_iter_$iter"
-end
+# this simple function centralizes the naming convention between saving and loading
+name_interpolation(iter) = "iter_$iter"
 
-function extract_name_values(filename; re=RESULTS_REGEX)
+function extract_name_value(filename; re=RESULTS_REGEX)
     matcher = match(re, filename)
     if isnothing(matcher)
         return nothing
     else
-        delta_s, iter_s = matcher
+        @check length(matcher) == 1 "Pattern $re matched more than one number in $filename."
+        iter_s = matcher.captures[begin]
         iter = parse(Int, iter_s)
-        delta = parse(Float64, delta_s)
-        return iter, delta
+        return iter
     end
 end
 
@@ -29,23 +30,31 @@ function filter_matching_filepath(filepaths, re; extension=nothing)
     end
 end
 
-function extract_all_name_values(dirpath)
-    iter_delta_dict = SortedDict{Int,Float64}()
+function extract_values_per_iter(dirpath)
     filepaths = readdir(dirpath; join=true, sort=true)
+    if isempty(filepaths)
+        error("The directory is empty.")
+    end
+    # iter_values_dict = SortedDict{Int, Dict}()
+    iter_values_dict = SortedDict()
+
 
     for filepath in filepaths
-        vals = extract_name_values(filepath)
-        isnothing(vals) && continue
-        iter, delta = vals
-        iter_delta_dict[iter] = delta
+        _, ext = splitext(filepath)
+        ext !== METADATA_EXT && continue
+        iter = extract_name_value(filepath)
+        isnothing(iter) && continue
+        open(filepath, "r") do io
+            iter_values_dict[iter] = JSON3.read(io)
+        end
     end
-    return iter_delta_dict
+    return iter_values_dict
 end
 
-function load_penalization_round(dirpath, system; iter, delta)  # system = BioReactor(), VanDerPol() ...
+function load_penalization_round(dirpath, system; iter)  # system = BioReactor(), VanDerPol() ...
     filepaths = readdir(dirpath; join=true, sort=true)
 
-    name = name_interpolation(delta, iter)
+    name = name_interpolation(iter)
     filepath = filter_matching_filepath(filepaths, Regex(name); extension="params.jls")
 
     controlODE = ControlODE(system)
@@ -66,43 +75,47 @@ function plot_penalization_rounds(
     ref_color="orange",
     transparency=0.7,
     saveto=nothing,
-    colorant="delta",
     )
-    @argcheck colorant in ["delta", "iter"]
     @argcheck !all(map(x -> isnothing(x), (state_var, control_var)))  "Please specify either state_var or control_var."
     @argcheck !all(map(x -> !isnothing(x), (state_var, control_var)))  "Please specify just one of state_var or control_var."
 
-    iter_delta_dict = extract_all_name_values(dirpath)
-    pprint(iter_delta_dict)
-    iters = collect(keys(iter_delta_dict))
-    deltas = collect(values(iter_delta_dict)) |> sort
-    color_range = range(0.2, 1, length(iter_delta_dict))
+    iter_values_dict = extract_values_per_iter(dirpath)
+    if isempty(iter_values_dict)
+        @error "No files matched the expected pattern: $(RESULTS_REGEX)"
+        return
+    end
+    # pprint(iter_values_dict)
+    iters = collect(keys(iter_values_dict))
+    color_range = range(0.2, 1, length(iter_values_dict))
     cmap = ColorMap(palette)
     cmap_range = ColorMap(palette)(color_range)
     fig, ax = plt.subplots()
+
     local times
-    for (i, (iter, delta)) in enumerate(iter_delta_dict)
-        controlODE, weights = load_penalization_round(
-            dirpath, system; iter, delta
-        )
+    for (iter, meta) in iter_values_dict
+
+        controlODE, weights = load_penalization_round(dirpath, system; iter)
         span = controlODE.tspan[end] - controlODE.tspan[begin]
         times, states, controls = run_simulation(controlODE, weights; saveat=span / timesteps)
+
+        α = meta[:α]
+        δ = meta[:δ]
 
         if !isnothing(state_var)
             ax.plot(
                 times,
                 states[state_var,:];
-                color=cmap_range[i, :],
-                label="δ=$delta",
-            alpha=transparency,
+                color=cmap_range[iter, :],
+                label="α=$α δ=$δ",
+                alpha=transparency,
             )
             plt.ylabel("x_$state_var")
         elseif !isnothing(control_var)
             ax.plot(
                 times,
                 controls[control_var,:];
-                color=cmap_range[i, :],
-                label="δ=$delta",
+                color=cmap_range[iter, :],
+                label="α=$α δ=$δ",
                 alpha=transparency,
             )
             plt.ylabel("c_$control_var")
@@ -127,12 +140,7 @@ function plot_penalization_rounds(
     )
     # plt.legend(; fontsize="x-small", loc="center left", bbox_to_anchor=(1.02, 0.5))
 
-    local norm
-    if colorant == "iter"
-        norm = matplotlib.colors.Normalize(; vmin=iters[begin], vmax=iters[end])
-    elseif colorant == "delta"
-        norm = matplotlib.colors.Normalize(; vmin=deltas[end], vmax=deltas[begin])
-    end
+    norm = matplotlib.colors.Normalize(; vmin=iters[begin], vmax=iters[end])
     fig.colorbar(
         matplotlib.cm.ScalarMappable(; norm=norm, cmap=cmap);
         # cax=ax,
@@ -144,5 +152,5 @@ function plot_penalization_rounds(
     plt.title("Constraint enforcement with Fiacco-McCormick iterations")
 
     !isnothing(saveto) && plt.savefig(saveto)
-    return plt.show()
+    return fig
 end
