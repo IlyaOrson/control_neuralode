@@ -32,4 +32,20 @@ function (S::BatchReactor)(du, u, p, t, controller; input=:state)
     return nothing
 end
 
-# TODO ControlODE(system::BatchReactor)
+function ControlODE(system::BatchReactor)
+    # initial conditions and timepoints
+    t0 = 0.0f0
+    tf = 1.0f0
+    Δt = 1f-2
+    tspan = (t0, tf)
+    u0 = [1.0f0, 0.0f0]
+
+    # weights initializer reference https://pytorch.org/docs/stable/nn.init.html
+    controller = FastChain(
+        FastDense(2, 12, tanh_fast),
+        FastDense(12, 12, tanh_fast),
+        FastDense(12, 2),
+        (x, p) -> 5 * sigmoid_fast.(x),  # controllers ∈ (0, 5)
+    )
+    return ControlODE(controller, system, u0, tspan; Δt)
+end

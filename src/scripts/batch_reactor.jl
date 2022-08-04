@@ -10,26 +10,12 @@ function batch_reactor(; store_results::Bool=false)
         return -Array(sol)[2, end]  # second variable, last value, maximize
     end
 
-    # initial conditions and timepoints
-    u0 = [1.0f0, 0.0f0]
-    tspan = (0.0f0, 1.0f0)
-    Δt = 1f-2
-
-    # set arquitecture of neural network controller
-    controller = FastChain(
-        FastDense(2, 12, tanh_fast),
-        FastDense(12, 12, tanh_fast),
-        FastDense(12, 2),
-        (x, p) -> 5 * sigmoid_fast.(x),  # controllers ∈ (0, 5)
-    )
-
     system = BatchReactor()
-    controlODE = ControlODE(controller, system, u0, tspan; Δt)
+    controlODE = ControlODE(system)
 
-    θ = initial_params(controller)
+    θ = initial_params(controlODE.controller)
 
     # variables for streamplots
-    phase_time = 0.0f0
     xlims, ylims = (0.0f0, 1.5f0), (0.0f0, 0.8f0)
     coord_lims = [xlims, ylims]
     # xwidth = xlims[end] - xlims[1]
