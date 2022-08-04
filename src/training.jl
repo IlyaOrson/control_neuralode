@@ -174,12 +174,13 @@ function optimize_ipopt(
     optimizer_output = @capture_out begin
         solve_status = Ipopt.IpoptSolve(ipopt)
     end
-    if !isnothing(verbosity)
+    if isnothing(verbosity)
         # only first entry of logger gets formatted as a string
-        @info "Ipopt report (verbosity=$(verbosity))\n" * optimizer_output
-    else
         @info "Ipopt report" status=Ipopt._STATUS_CODES[solve_status]
+    elseif verbosity != 0
+        @info "Ipopt report (verbosity=$(verbosity))\n" * optimizer_output
     end
+    @infiltrate !in(solve_status, [0, 1, -1, -3])   # debugging
     return ipopt.x  # ipopt_minimizer
 end
 
@@ -192,6 +193,7 @@ function preconditioner(
     progressbar=false,
     plot_final=true,
     integrator=INTEGRATOR,
+    max_solver_iterations=10,  # per step
     kwargs...,
 )
     @info "Preconditioning..."
@@ -204,6 +206,7 @@ function preconditioner(
         enabled=progressbar,
     )
     # skip spurious ends from collocation
+    # @withprogress name="Pretraining in subintervals t ∈ $(controlODE.tspan)" begin
     for partial_time in controlODE.tsteps[2:(end - 1)]
         partial_tspan = (controlODE.tspan[1], partial_time)
 
@@ -296,13 +299,16 @@ function preconditioner(
 
         grad!(g, params) = g .= Zygote.gradient(precondition_loss, params)[1]
         # θ = optimize_flux(θ, precondition_loss; kwargs...)
-        θ = optimize_ipopt(θ, precondition_loss, grad!; tolerance=1e-1, maxiters=10)
+        θ = optimize_ipopt(θ, precondition_loss, grad!; tolerance=1e-1, maxiters=max_solver_iterations, verbosity=3)
 
         ProgressMeter.next!(prog)
+        @info "Progress $(100*partial_time/controlODE.tsteps[(end - 1)])%" partial_time final_time=controlODE.tsteps[(end - 1)]
+        # @logprogress partial_time/controlODE.tsteps[(end - 1)]
         if partial_time == controlODE.tsteps[end] && plot_final
             precondition_loss(θ; plot=:pyplot)
         end
     end
+    # end # @withprogress
     return θ
 end
 
@@ -354,21 +360,19 @@ function tune_barrier(
     δ,
     δ_percentage_change=10f0,
     α_percentage_change=25f0,
-    max_iters=100,
+    max_iters=10,
     increase_alpha=true,
     verbose=false,
 )
     previous_evaluation = :reasonable
     counter=0
 
-    while true
+    # @withprogress name="Tuning barrier parameters" begin
+    while counter < max_iters
         counter+=1
-        if counter > max_iters
-            return α, δ
-        end
 
         evaluation = evaluate_barrier(losses, controlODE, θ; α, δ, ρ, verbose)
-
+        @info counter evaluation
         if evaluation == :overlax
             δ = decrease_by_percentage(δ, δ_percentage_change)
 
@@ -389,7 +393,25 @@ function tune_barrier(
         end
 
         previous_evaluation = evaluation
+        # @logprogress counter/max_iters
     end
+    # end # @withprogress
+    return α, δ
+end
+
+# avoid closures over barrier parameters with a callable struct
+# https://discourse.julialang.org/t/function-factories-or-callable-structs/52987
+# https://discourse.julialang.org/t/why-is-closure-slower-than-handmade-callable-struct/80361
+struct BarrierLosses{T<:Real}
+    losses::Function
+    controlODE::ControlODE
+    α::T
+    δ::T
+    ρ::T
+end
+
+function (l::BarrierLosses)(params)
+    l.losses(l.controlODE, params; α=l.α, δ=l.δ, ρ=l.ρ)
 end
 
 function constrained_training(
@@ -399,9 +421,11 @@ function constrained_training(
     ρ,
     α0=1f-3,
     δ0=1f1,
-    max_barrier_iterations=30,
-    max_increase_α = 1e2,
-    max_decrease_δ = 1e4,
+    max_solver_iterations=20,  # per step
+    max_barrier_iterations=50,
+    max_α = 1e2 * α0,
+    min_δ = 1e-2 * δ0,
+    max_δ = 1e4 * δ0,
     show_progressbar=false,
     datadir=nothing,
     metadata=Dict(),  # metadata is added to this dict always
@@ -425,55 +449,45 @@ function constrained_training(
         increase_alpha=false,
     )
 
-    # initial_α = α
-    # initial_δ = δ
-
     α_progression = [α]
     δ_progression = [δ]
     barrier_iteration = 0
+    # @withprogress name="Fiacco-McCormick barrier iterations" begin
     while barrier_iteration < max_barrier_iterations
         barrier_iteration += 1
 
+        @infiltrate any(isinf, (α, δ, ρ))
+
         # for debugging convenience
-        lost(params) = losses(controlODE, params; α, δ, ρ)
+        lost = BarrierLosses(losses, controlODE, α, δ, ρ)
+        # lost(params) = losses(controlODE, params; α, δ, ρ)
         # objective_grad = sum(abs2, Zygote.gradient(x -> lost(x)[1], θ)[1])
-        # state_penalty_grad = sum(abs2, Zygote.gradient(x -> lost(x)[2], θ)[1])
-        # regularization_grad = sum(abs2, Zygote.gradient(x -> lost(x)[4], θ)[1])
         # @info "Objective grad" objective_grad
-        # @info "State penalty grad" state_penalty_grad
+        state_penalty_grad = sum(abs2, Zygote.gradient(x -> lost(x)[2], θ)[1])
+        @info "State penalty grad" state_penalty_grad
+        # regularization_grad = sum(abs2, Zygote.gradient(x -> lost(x)[4], θ)[1])
         # @info "Regularization grad" regularization_grad
 
-        # closures to comply with optimization interface
-        loss(params) = sum(losses(controlODE, params; α, δ, ρ))
+        # comply with optimization interface using closures
+        loss(params) = sum(lost(params))
+        # loss(params) = sum(losses(controlODE, params; α, δ, ρ))
         grad(params) = Zygote.gradient(loss, params)[1]
         grad!(g, params) = g .= Zygote.gradient(loss, params)[1]
 
-        # minimizer = optimize_flux(θ, loss)
         local minimizer
         try
-            minimizer = optimize_ipopt(θ, loss, grad!; maxiters=100)
+            minimizer = optimize_ipopt(θ, loss, grad!; maxiters=max_solver_iterations)
+            # minimizer = optimize_flux(θ, loss)
+            # minimizer = optimize_optim(θ, loss, grad!)
         catch
             @error "Optimization failed!"
             @infiltrate
         end
-        # minimizer = optimize_optim(θ, loss, grad!)
 
         objective, state_penalty, control_penalty, regularization = lost(minimizer)
 
-        current_values = [
-            (:iter, barrier_iteration),
-            (:α, α),
-            (:δ, δ),
-            (:ρ, ρ),
-            (:objective, objective),
-            (:state_penalty, state_penalty),
-            (:control_penalty, control_penalty),
-            (:regularization, regularization),
-        ]
-        # @info "Barrier iterations" current_values
-        ProgressMeter.next!(prog; showvalues=current_values)
-
         local_metadata = Dict(
+            :iter => barrier_iteration,
             :δ => δ,
             :α => α,
             :ρ => ρ,
@@ -484,6 +498,11 @@ function constrained_training(
             :initial_condition => controlODE.u0,
             :tspan => controlODE.tspan,
         )
+
+        !show_progressbar && @info "Barrier iterations" local_metadata
+        ProgressMeter.next!(prog; showvalues=[(el.first, el.second) for el in local_metadata])
+        # @logprogress barrier_iteration/max_barrier_iterations
+
         metadata = merge(metadata, local_metadata)
         name = name_interpolation(barrier_iteration)
         store_simulation(name, controlODE, θ; metadata, datadir)
@@ -502,8 +521,8 @@ function constrained_training(
             tuned_losses = losses(controlODE, minimizer; α=tuned_α, δ=tuned_δ, ρ)
             @info "Increased alpha" α δ tuned_α tuned_δ prev_losses sum(prev_losses) tuned_losses sum(tuned_losses)
         end
-        if (δ0 > tuned_δ * max_decrease_δ) || (tuned_α > α0 * max_increase_α)
-            @info "Max barrier parameter reached." barrier_iteration tuned_δ/δ0 tuned_α/α0
+        if (min_δ > tuned_δ > max_δ) || (tuned_α >  max_α)
+            @info "Barrier parameter reached bounds." min_δ tuned_δ max_δ tuned_α max_α
             θ = minimizer
             break
         end
@@ -517,6 +536,7 @@ function constrained_training(
 
         θ = minimizer
     end
+    # end # @withprogress
     ProgressMeter.finish!(prog)
     barriers_progression = (; α=α_progression, δ=δ_progression)
     return θ, barriers_progression

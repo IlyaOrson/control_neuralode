@@ -37,6 +37,7 @@ function bioreactor(; store_results::Bool=false)
         reference_controller;
         θ,
         x_tol=1e-4,
+        # progressbar=true,
     )
 
     plot_state_constraints(θ)
