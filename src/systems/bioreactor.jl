@@ -53,19 +53,19 @@ end
 
 function ControlODE(system::BioReactor)
     # initial conditions and timepoints
-    t0 = 0.0
-    tf = 240.0
-    Δt = 2.0
+    t0 = 0f0
+    tf = 240.0f0
+    Δt = 2f0
     tspan = (t0, tf)
-    u0 = [1.0, 150.0, 0.0]  # C_X₀, C_N₀, C_qc₀
-    control_constraints = [(80.0, 180.0), (0.0, 20.0)]
+    u0 = [1f0, 150f0, 0f0]  # C_X₀, C_N₀, C_qc₀
+    control_constraints = [(80f0, 180f0), (0f0, 20f0)]
 
     # weights initializer reference https://pytorch.org/docs/stable/nn.init.html
     controller = FastChain(
-        (x, p) -> [x[1], x[2] / 100.0, x[3] * 10.0],  # input scaling
-        FastDense(3, 8, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
-        FastDense(8, 8, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
-        FastDense(8, 2; initW=(x, y) -> glorot_uniform(x, y)),
+        (x, p) -> [x[1], x[2] / 100f0, x[3] * 10f0],  # input scaling
+        FastDense(3, 16, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
+        FastDense(16, 16, tanh_fast; initW=(x, y) -> Float32(5 / 3) * glorot_uniform(x, y)),
+        FastDense(16, 2; initW=(x, y) -> glorot_uniform(x, y)),
         # I ∈ [120, 400] & F ∈ [0, 40] in Bradford 2020
         # (x, p) -> [280f0 * sigmoid(x[1]) + 120f0, 40f0 * sigmoid(x[2])],
         scaled_sigmoids(control_constraints),

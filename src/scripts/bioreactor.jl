@@ -48,8 +48,8 @@ function bioreactor(; store_results::Bool=false)
         # state constraints
         # C_N(t) - 250 ≥ 0              t = T
         # C_N(t) − 400 ≤ 0              ∀t
-        C_N_over_running = map(y -> relaxed_log_barrier(400.0 - y; δ), solution_array[2, 1:end-1])
-        C_N_over_last = relaxed_log_barrier(solution_array[2, end] - 250.0; δ)
+        C_N_over_running = map(y -> relaxed_log_barrier(400f0 - y; δ), solution_array[2, 1:end-1])
+        C_N_over_last = relaxed_log_barrier(solution_array[2, end] - 250f0; δ)
 
         # Δt = Float32(controlODE.tsteps.step)
         # return Δt * sum(C_N_over_running) + C_N_over_last
@@ -96,11 +96,11 @@ function bioreactor(; store_results::Bool=false)
         datadir,
     )
 
-    @info "Alpha progression" barrier_progression.α
-    lineplot(log.(barrier_progression.α)) |> display
+    # @info "Alpha progression" barrier_progression.α
+    lineplot(log.(barrier_progression.α); title="Alpha progression") |> display
 
-    @info "Delta progression" barrier_progression.δ
-    lineplot(log.(barrier_progression.δ)) |> display
+    # @info "Delta progression" barrier_progression.δ
+    lineplot(log.(barrier_progression.δ); title="Delta progression") |> display
 
     δ_final = barrier_progression.δ[end]
     α_final = barrier_progression.α[end]
