@@ -168,6 +168,9 @@ function optimize_ipopt(
     Ipopt.AddIpoptStrOption(ipopt, "print_info_string", "yes")
     Ipopt.AddIpoptStrOption(ipopt, "hessian_approximation", "limited-memory")
     Ipopt.AddIpoptStrOption(ipopt, "mu_strategy", "adaptive")
+    # A (slow!) derivative test will be performed before the optimization.
+    # The test is performed at the user provided starting point and marks derivative values that seem suspicious
+    Ipopt.AddIpoptStrOption(ipopt, "derivative_test", "first-order")
 
     # https://github.com/jump-dev/Ipopt.jl/blob/master/src/MOI_wrapper.jl#L1261
     local solve_status
@@ -359,7 +362,7 @@ function tune_barrier(
     ρ,
     δ,
     δ_percentage_change=10f0,
-    α_percentage_change=25f0,
+    α_percentage_change=50f0,
     max_iters=10,
     increase_alpha=true,
     verbose=false,
@@ -372,12 +375,13 @@ function tune_barrier(
         counter+=1
 
         evaluation = evaluate_barrier(losses, controlODE, θ; α, δ, ρ, verbose)
-        @info counter evaluation
+        @info "Barrier tuning" counter evaluation
         if evaluation == :overlax
             δ = decrease_by_percentage(δ, δ_percentage_change)
 
         elseif evaluation in [:overtight, :inf]
             δ = increase_by_percentage(δ, δ_percentage_change)
+            @infiltrate counter == max_iters
 
         elseif evaluation == :reasonable
             if previous_evaluation in [:overtight, :inf]
@@ -423,7 +427,7 @@ function constrained_training(
     δ0=1f1,
     max_solver_iterations=20,  # per step
     max_barrier_iterations=50,
-    max_α = 1e2 * α0,
+    max_α = 1e3 * α0,
     min_δ = 1e-2 * δ0,
     max_δ = 1e4 * δ0,
     show_progressbar=false,
@@ -446,6 +450,7 @@ function constrained_training(
         ρ,
         α=α0,
         δ=δ0,
+        max_iters=100,
         increase_alpha=false,
     )
 
@@ -476,12 +481,27 @@ function constrained_training(
 
         local minimizer
         try
-            minimizer = optimize_ipopt(θ, loss, grad!; maxiters=max_solver_iterations)
-            # minimizer = optimize_flux(θ, loss)
-            # minimizer = optimize_optim(θ, loss, grad!)
+            for _ in 1:5
+                try
+                    # minimizer = optimize_ipopt(θ, loss, grad!; maxiters=max_solver_iterations)
+                    # minimizer = optimize_lbfgsb(θ, loss, grad!)
+                    # minimizer = optimize_optim(θ, loss, grad!)
+                    break
+                catch
+                    # not the smartest workaround
+                    @error "Optimization failed! Retrying with added noise..."
+                    θ += 1.0f-1 * std(θ) * randn(eltype(θ), length(θ))
+                end
+            end
         catch
-            @error "Optimization failed!"
-            @infiltrate
+            @error "Optimization failed! Last try with another solver..."
+            try
+                minimizer = optimize_ipopt(θ, loss, grad!; maxiters=max_solver_iterations)
+                # minimizer = optimize_lbfgsb(θ, loss, grad!)
+            catch
+                @error "Optimization failed!"
+                @infiltrate
+            end
         end
 
         objective, state_penalty, control_penalty, regularization = lost(minimizer)
@@ -530,9 +550,6 @@ function constrained_training(
         α, δ = tuned_α, tuned_δ
         push!(α_progression, α)
         push!(δ_progression, δ)
-
-        # add some noise to avoid local minima
-        # θ += 1.0f-1 * std(θ) * randn(Float32, length(θ))
 
         θ = minimizer
     end

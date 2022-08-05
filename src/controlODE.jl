@@ -72,6 +72,8 @@ function solve(code::ControlODE, params; kwargs...)
         p=params,
         saveat=code.tsteps,  # this should not be necessary
         sensealg=code.sensealg,
+        abstol=1e-2,
+        reltol=1e-3,
         kwargs...,
     )
 end
