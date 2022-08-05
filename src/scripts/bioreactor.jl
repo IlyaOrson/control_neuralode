@@ -97,10 +97,10 @@ function bioreactor(; store_results::Bool=false)
         datadir,
     )
 
-    # @info "Alpha progression" barrier_progression.α
+    @info "Alpha progression" barrier_progression.α
     lineplot(log.(barrier_progression.α); title="Alpha progression") |> display
 
-    # @info "Delta progression" barrier_progression.δ
+    @info "Delta progression" barrier_progression.δ
     lineplot(log.(barrier_progression.δ); title="Delta progression") |> display
 
     δ_final = barrier_progression.δ[end]

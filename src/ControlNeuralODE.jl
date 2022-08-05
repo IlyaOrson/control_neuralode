@@ -87,8 +87,8 @@ import CommonSolve: solve
 # scripts as functions
 export batch_reactor, bioreactor, semibatch_reactor, van_der_pol
 
-# TODO: mark the variables that work as constants (avoid constants for Revise.jl)
-@show INTEGRATOR = Tsit5()
+# NOTE : mark the variables that work as constants (avoid constants for Revise.jl)
+@show const INTEGRATOR = Tsit5()
 
 # https://diffeq.sciml.ai/stable/analysis/sensitivity/#Choosing-a-Sensitivity-Algorithm
 
@@ -100,7 +100,7 @@ export batch_reactor, bioreactor, semibatch_reactor, van_der_pol
 
 # Continuous sensitivity analysis
 # SENSEALG = ForwardDiffSensitivity()
-SENSEALG = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
+const SENSEALG = QuadratureAdjoint(; autojacvec=ReverseDiffVJP())
 # SENSEALG = QuadratureAdjoint(; autojacvec=ZygoteVJP())
 # SENSEALG = QuadratureAdjoint(; autojacvec=TrackerVJP())
 # SENSEALG = QuadratureAdjoint(; autojacvec=EnzymeVJP())
