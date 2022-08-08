@@ -24,7 +24,7 @@ function semibatch_reactor_collocation(
     # T ∈ (0, 420]
     # Vol ∈ (0, 200]
     T_up = 380.0f0
-    V_up = 100.0f0
+    V_up = 200.0f0
 
     t0, tf = tspan
     @infinite_parameter(

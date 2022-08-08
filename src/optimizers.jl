@@ -144,7 +144,7 @@ function optimize_nlopt(θ, loss, grad!; algorithm=:LD_MMA, xtol_rel=1e-2)
     (minf, minx, ret) = NLopt.optimize(opt, θ)
     if ret ∈ [:FORCED_STOP, :ROUNDOFF_LIMITED, :OUT_OF_MEMORY, :INVALID_ARGS, :FAILURE]
         @error "Optimization failed with status $ret"
-        @infiltrate
+        return nothing
     else
         @info "Found minimum $minf after $(opt.numevals) iterations (returned $ret)."
     end

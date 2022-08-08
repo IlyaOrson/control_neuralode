@@ -187,7 +187,7 @@ function tune_barrier(
 
         evaluation = evaluate_barrier(losses, controlODE, θ; α, δ, ρ, verbose)
         @info "Barrier tuning" counter evaluation
-        increase_alpha && counter == 1 && evaluation == :overtight && @infiltrate
+        # increase_alpha && counter == 1 && evaluation == :overtight && @infiltrate
         if evaluation == :overlax
             δ = decrease_by_percentage(δ, δ_percentage_change)
 
@@ -237,8 +237,8 @@ function constrained_training(
     ρ,
     α0=1f-3,
     δ0=1f1,
-    max_solver_iterations=20,  # per step
-    max_barrier_iterations=50,
+    max_solver_iterations=10,  # per step
+    max_barrier_iterations=100,
     max_α = 1e3 * α0,
     min_δ = 1e-2 * δ0,
     max_δ = 1e4 * δ0,
@@ -276,43 +276,48 @@ function constrained_training(
         @infiltrate any(isinf, (α, δ, ρ))
 
         # for debugging convenience
+        # callable struct to avoid a closure
         lost = BarrierLosses(losses, controlODE, α, δ, ρ)
         # lost(params) = losses(controlODE, params; α, δ, ρ)
-        # objective_grad = sum(abs2, Zygote.gradient(x -> lost(x)[1], θ)[1])
+        # objective_grad = norm(Zygote.gradient(x -> lost(x)[1], θ)[1])
         # @info "Objective grad" objective_grad
-        state_penalty_grad_norm = sum(abs2, Zygote.gradient(x -> lost(x)[2], θ)[1]) |> sqrt
-        @info "State penalty grad norm" state_penalty_grad_norm
-        # regularization_grad = sum(abs2, Zygote.gradient(x -> lost(x)[4], θ)[1])
+        state_penalty_grad_norm = norm(Zygote.gradient(x -> lost(x)[2], θ)[1])
+        @info "State penalty grad norm" state_penalty_grad_norm / norm(θ)
+        # regularization_grad = norm(Zygote.gradient(x -> lost(x)[4], θ)[1])
         # @info "Regularization grad" regularization_grad
 
         # comply with optimization interface using closures
         loss(params) = sum(lost(params))
         # loss(params) = sum(losses(controlODE, params; α, δ, ρ))
-        grad(params) = Zygote.gradient(loss, params)[1]
-        grad!(g, params) = g .= Zygote.gradient(loss, params)[1]
+        function grad(params)
+            try
+                return Zygote.gradient(loss, params)[1]
+            catch e
+                if isa(e, DomainError)
+                    return zeros(eltype(params), length(params))
+                else
+                    @infiltrate
+                    rethrow(e)
+                end
+            end
+        end
+        grad!(g, params) = g .= grad(params)
 
         local minimizer
-        try
-            for _ in 1:5
+        let trials = 5, iters = max_solver_iterations
+            for trial in 1:trials
                 try
-                    minimizer = optimize_ipopt(θ, loss, grad!; maxiters=max_solver_iterations)
+                    minimizer = optimize_ipopt(θ, loss, grad!; maxiters=iters)
                     # minimizer = optimize_lbfgsb(θ, loss, grad!)
                     # minimizer = optimize_optim(θ, loss, grad!)
                     break
                 catch
-                    # not the smartest workaround
-                    @error "Optimization failed! Retrying with added noise..."
+                    trial == trials && error("Optimization failed!")
+                    # not the smartest workaround...
+                    @error "Optimization failed! Retrying with less iterations and added noise... ($trial / $trials)"
                     θ += 1.0f-1 * std(θ) * randn(eltype(θ), length(θ))
+                    iters = iters ÷ 2
                 end
-            end
-        catch
-            @error "Optimization failed! Last try with another solver..."
-            try
-                minimizer = optimize_ipopt(θ, loss, grad!; maxiters=max_solver_iterations)
-                # minimizer = optimize_lbfgsb(θ, loss, grad!)
-            catch
-                @error "Optimization failed!"
-                @infiltrate
             end
         end
 

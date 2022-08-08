@@ -16,7 +16,7 @@ function semibatch_reactor(; store_results::Bool=false)
     # T ∈ (0, 420]
     # Vol ∈ (0, 200]
     T_up = 380.0f0
-    V_up = 100.0f0
+    V_up = 200.0f0
 
     system = SemibatchReactor()
     controlODE = ControlODE(system)
@@ -49,7 +49,7 @@ function semibatch_reactor(; store_results::Bool=false)
     )
     collocation_results = extract_infopt_results(collocation_model)
 
-    reference_controller = interpolant_controller(collocation_results; plot=nothing)
+    reference_controller = interpolant_controller(collocation_results; plot=:unicode)
 
     θ = initial_params(controlODE.controller)
     θ = preconditioner(
@@ -110,7 +110,7 @@ function semibatch_reactor(; store_results::Bool=false)
 
     @info "Delta progression" barrier_progression.δ
     lineplot(log.(barrier_progression.δ); title="Delta progression") |> display
-    @infiltrate
+
     δ_final = barrier_progression.δ[end]
     α_final = barrier_progression.α[end]
     objective, state_penalty, control_penalty, regularization = losses(

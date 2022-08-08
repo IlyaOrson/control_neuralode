@@ -42,6 +42,7 @@ function interpolant_controller(collocation; plot=nothing)
                         collocation.times[begin+1],
                         collocation.times[end-1];
                         xlim=(collocation.times[begin], collocation.times[end]),
+                        title="Collocation result",
                     ),
                 )
             else

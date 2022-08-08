@@ -31,7 +31,7 @@ function van_der_pol(; store_results::Bool=false)
         constrain_states=false,
     )
     collocation_results = extract_infopt_results(collocation_model)
-    reference_controller = interpolant_controller(collocation_results; plot=nothing)
+    reference_controller = interpolant_controller(collocation_results; plot=:unicode)
 
     θ = preconditioner(
         controlODE,

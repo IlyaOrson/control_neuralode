@@ -115,7 +115,7 @@ end
 
 function plot_collocation(controls_collocation, interpol, tsteps)
     plt.figure()
-    finer_tsteps = range(tsteps[1], tsteps[end]; length=1000)
+    finer_tsteps = range(tsteps[begin+1], tsteps[end-1]; length=1000)
     plt.plot(finer_tsteps, [interpol(t) for t in finer_tsteps]; label="interpolation")
     plt.plot(tsteps, controls_collocation, "xg"; label="collocation")
     plt.title("Control collocation")

@@ -3,6 +3,7 @@ module ControlNeuralODE
 using Base: @kwdef, ifelse
 using Base.Filesystem: mkpath
 using DelimitedFiles: readdlm, writedlm
+using LinearAlgebra: norm
 
 using Dates: now
 using DataStructures: SortedDict
