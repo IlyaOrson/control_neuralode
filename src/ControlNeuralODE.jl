@@ -39,6 +39,7 @@ using InfiniteOpt:
     value,
     ∂
 using Ipopt: Ipopt
+using NLopt: NLopt
 using LBFGSB: LBFGSB
 using Optim: Optim, LBFGS, BFGS
 using DataInterpolations: LinearInterpolation
@@ -116,6 +117,7 @@ include("nn.jl")
 include("penalties.jl")
 include("interpolation.jl")
 include("simulators.jl")
+include("optimizers.jl")
 include("training.jl")
 include("plotting.jl")
 include("loading.jl")
