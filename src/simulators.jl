@@ -1,6 +1,7 @@
 function run_simulation(
-    controlODE,
+    controlODE::ControlODE,
     params;
+    control_input=:state,
     noise::Union{Nothing,Real}=nothing,
     vars::Union{Nothing,AbstractArray{<:Integer}}=nothing,
     callback::Union{Nothing,DECallback}=nothing,
@@ -33,13 +34,24 @@ function run_simulation(
     states = Array(solution)
     total_steps = size(states, 2)
     # state_dimension = size(states, 1)
-    control_dimension = length(controlODE.controller(solution.u[1], params))
 
     # regenerate controls from controlODE.controller
-    controls = zeros(elements_type, control_dimension, total_steps)
-    for (step, state) in enumerate(solution.u)
-        controls[:, step] = controlODE.controller(state, params)
+    if control_input == :state
+        control_dimension = length(controlODE.controller(solution.u[begin], params))
+        controls = zeros(elements_type, control_dimension, total_steps)
+        for (step, state) in enumerate(solution.u)
+            controls[:, step] = controlODE.controller(state, params)
+        end
+    elseif control_input == :time
+        control_dimension = length(controlODE.controller(solution.t[begin], params))
+        controls = zeros(elements_type, control_dimension, total_steps)
+        for (step, time) in enumerate(solution.t)
+            controls[:, step] = controlODE.controller(time, params)
+        end
+    else
+        @check control_input in [:state, :time]
     end
+
     return solution.t, states, controls
 end
 
