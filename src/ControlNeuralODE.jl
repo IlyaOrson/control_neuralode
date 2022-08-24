@@ -13,7 +13,7 @@ using Formatting: format, sprintf1
 using Suppressor: @capture_out
 using ProgressMeter: ProgressMeter, Progress, ProgressUnknown
 # using ProgressLogging: @withprogress, @logprogress
-using Infiltrator: @infiltrate
+# using Infiltrator: @infiltrate
 using Statistics: mean, std
 using LineSearches: BackTracking
 using InfiniteOpt:

@@ -210,6 +210,6 @@ function optimize_ipopt(
     elseif verbosity != 0
         @info "Ipopt report (verbosity=$(verbosity))\n" * optimizer_output
     end
-    @infiltrate !in(solve_status, [0, 1, -1, -3])   # debugging
+    # @infiltrate !in(solve_status, [0, 1, -1, -3])   # debugging
     return ipopt.x  # ipopt_minimizer
 end

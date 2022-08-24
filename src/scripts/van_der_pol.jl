@@ -132,12 +132,13 @@ function van_der_pol(; store_results::Bool=false)
     @info "Delta progression" barrier_progression.δ
     lineplot(log.(barrier_progression.δ); title="Delta progression") |> display
 
+    α_final = barrier_progression.α[end]
     δ_final = barrier_progression.δ[end]
 
     # penalty_loss(result.minimizer, constrained_prob, tsteps; α=penalty_coefficients[end])
     plot_simulation(controlODE, θ; only=:controls)
 
-    objective, state_penalty, control_penalty, regularization = losses(controlODE, θ; α, δ = δ_final, ρ)
+    objective, state_penalty, control_penalty, regularization = losses(controlODE, θ; α=α_final, δ=δ_final, ρ)
     store_simulation(
         "constrained",
         controlODE,

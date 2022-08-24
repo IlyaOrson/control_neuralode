@@ -193,7 +193,7 @@ function tune_barrier(
 
         elseif evaluation in [:overtight, :inf]
             δ = increase_by_percentage(δ, δ_percentage_change)
-            @infiltrate counter == max_iters
+            # @infiltrate counter == max_iters
 
         elseif evaluation == :reasonable
             if previous_evaluation in [:overtight, :inf]
@@ -273,7 +273,7 @@ function constrained_training(
     while barrier_iteration < max_barrier_iterations
         barrier_iteration += 1
 
-        @infiltrate any(isinf, (α, δ, ρ))
+        # @infiltrate any(isinf, (α, δ, ρ))
 
         # for debugging convenience
         # callable struct to avoid a closure
@@ -296,7 +296,7 @@ function constrained_training(
                 if isa(e, DomainError)
                     return zeros(eltype(params), length(params))
                 else
-                    @infiltrate
+                    # @infiltrate
                     rethrow(e)
                 end
             end

@@ -1,4 +1,5 @@
 let  # avoid namespace pollution
+    plt.ion()
     plt.style.use("seaborn-colorblind")  # "ggplot"
     palette = plt.cm.Dark2.colors
 
@@ -114,14 +115,14 @@ function histogram_weights_per_layer(controlODE::ControlODE, params)
 end
 
 function plot_collocation(controls_collocation, interpol, tsteps)
-    plt.figure()
+    fig = plt.figure()
     finer_tsteps = range(tsteps[begin+1], tsteps[end-1]; length=1000)
     plt.plot(finer_tsteps, [interpol(t) for t in finer_tsteps]; label="interpolation")
     plt.plot(tsteps, controls_collocation, "xg"; label="collocation")
     plt.title("Control collocation")
     plt.xlabel("time")
     plt.legend()
-    return plt.show()
+    return fig
 end
 
 abstract type PhasePlotMarkers end
@@ -215,7 +216,6 @@ function phase_portrait(
     start_points_y=nothing,
     title=nothing,
     shader=nothing,
-    show=true,
     kwargs...,
 )
     dimension = length(controlODE.prob.u0)
@@ -350,7 +350,6 @@ function phase_portrait(
 
     plt.tight_layout()
 
-    show && plt.show()
     return fig
 end
 
@@ -427,7 +426,7 @@ function set_state_control_subplots(
     return fig_states, axs_states, fig_controls, axs_controls
 end
 
-function plot_initial_perturbations(controlODE, θ, specs; refs=nothing, funcs=nothing)
+function plot_initial_perturbations(controlODE, θ, specs; refs=nothing, funcs=nothing, storedir=nothing)
     u0 = controlODE.u0
     state_size = size(u0, 1)
     control_size = size(controlODE.controller(u0, θ), 1)
@@ -503,13 +502,16 @@ function plot_initial_perturbations(controlODE, θ, specs; refs=nothing, funcs=n
             title="Perturbation",
         )
 
-        fig_states.show()
-        fig_controls.show()
-
-        # tight_layout alternative that considers the legend (or other artists)
-        # bbox_extra_artists must be an iterable
-        # fig.savefig("states_noise", bbox_extra_artists=(legend_states,), bbox_inches="tight")
-        # fig.savefig("controls_noise", bbox_extra_artists=(legend_controls,), bbox_inches="tight")
+        if !isnothing(storedir)
+            # tight_layout alternative that considers the legend (or other artists)
+            # bbox_extra_artists must be an iterable
+            filename = "u0_$(spec.variable)_" * sprintf1("%04d", tag)
+            fig.savefig(joinpath(storedir, filename * "states_noise.pdf"), bbox_extra_artists=(legend_states,), bbox_inches="tight")
+            fig.savefig(joinpath(storedir, filename * "controls_noise.pdf"), bbox_extra_artists=(legend_controls,), bbox_inches="tight")
+        else
+            fig_states.show()
+            fig_controls.show()
+        end
     end
 end
 
