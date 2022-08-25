@@ -12,7 +12,7 @@ pkg_list = [Symbol(x.name) for x in direct_deps]
 
 create_sysimage(
     # pkg_list;
-    ["OrdinaryDiffEq", "Enzyme", "ReverseDiff", "PyPlot", "Zygote", "SciMLSensitivity", "UnicodePlots", "DiffEqFlux"];
+    ["OrdinaryDiffEq", "Enzyme", "ReverseDiff", "PyPlot", "Zygote", "SciMLSensitivity", "UnicodePlots", "DiffEqFlux", "InfiniteOpt"];
     sysimage_path="cnode.so",
     precompile_execution_file="sysimage_tracing.jl",
 )

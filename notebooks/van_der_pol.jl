@@ -25,10 +25,6 @@ end
 # ╔═╡ b1756d83-125d-4eb1-af1e-9ddecb969d49
 import ControlNeuralODE as cn
 
-# ╔═╡ 028c8bc2-0106-4690-bec9-03e0ca28bdd6
-cn.plt.ion()  # already done within the package
-# cn.plt.style.use("fast")
-
 # ╔═╡ 62626cd0-c55b-4c29-94c2-9d736f335349
 md"# Collocation with policy"
 
@@ -390,7 +386,6 @@ end
 # ╠═31b5c73e-9641-11ec-2b0b-cbd62716cc97
 # ╠═07b1f884-6179-483a-8a0b-1771da59799f
 # ╠═b1756d83-125d-4eb1-af1e-9ddecb969d49
-# ╠═028c8bc2-0106-4690-bec9-03e0ca28bdd6
 # ╟─62626cd0-c55b-4c29-94c2-9d736f335349
 # ╠═253458ec-12d1-4228-b57a-73c02b3b2c49
 # ╠═89f5b7e3-caec-4706-b818-fa49626084b4

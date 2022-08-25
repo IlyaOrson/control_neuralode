@@ -44,7 +44,6 @@ using NLopt: NLopt
 using LBFGSB: LBFGSB
 using Optim: Optim, LBFGS, BFGS
 using DataInterpolations: LinearInterpolation
-using ApproxFun: Chebyshev, Fun, Interval  # https://github.com/stevengj/FastChebInterp.jl
 using ForwardDiff: ForwardDiff
 using ReverseDiff: ReverseDiff
 using Zygote: Zygote, pullback

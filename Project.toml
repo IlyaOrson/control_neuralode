@@ -4,7 +4,6 @@ authors = ["Ilya Orson Sandoval <ilya.orson@gmail.com>"]
 version = "0.1.0"
 
 [deps]
-ApproxFun = "28f2ccd6-bb30-5033-b560-165f7b14dc2f"
 ArgCheck = "dce04be8-c92d-5529-be00-80e4d2c0e197"
 CommonSolve = "38540f10-b2f7-11e9-35d8-d573e4eb0ff2"
 DataInterpolations = "82cc6244-b520-54b8-b5a6-8a565e85f1d0"
