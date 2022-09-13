@@ -31,7 +31,6 @@ NLopt = "76087f3c-5699-56af-9a33-bf431cd00edd"
 NNlib = "872c559c-99b0-510c-b3b7-b6c96a88d5cd"
 Optim = "429524aa-4258-5aef-a3af-852621145aeb"
 OrdinaryDiffEq = "1dea7af3-3e70-54e6-95c3-0bf5283fa5ed"
-Pluto = "c3e4b0f8-55cb-11ea-2926-15256bba5781"
 ProgressMeter = "92933f4c-e287-5a05-a399-4b506db050ca"
 PyPlot = "d330b81b-6aea-500a-939a-2ce795aea3ee"
 QuadGK = "1fd47b50-473d-5c70-9696-f719f8f3bcdc"
@@ -46,7 +45,7 @@ UnicodePlots = "b8865327-cd53-5732-bb35-84acbb429228"
 Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
 
 [compat]
-julia = "1.7"
+julia = "1.8"
 
 [extras]
 CPUSummary = "2a0fbf3d-bb9c-48f3-b0a9-814d99fd7ab9"
