@@ -79,11 +79,14 @@ example of [DiffEqFlux](https://github.com/SciML/DiffEqFlux.jl). A similar idea 
 
 If you find this work helpful please consider citing the following paper:
 ```bibtex
-@article{sandoval2022NODEpolicies,
-  title    = {Neural ODEs as Feedback Policies for Nonlinear Optimal Control},
-  author   = {Sandoval, Ilya Orson and Petsagkourakis, Panagiotis and del Rio-Chanona, Ehecatl Antonio},
-  date     = {2022},
-  pubstate = {submitted},
-  note     = {submitted},
+@misc{https://doi.org/10.48550/arxiv.2210.11245,
+  doi = {10.48550/ARXIV.2210.11245},
+  url = {https://arxiv.org/abs/2210.11245},
+  author = {Sandoval, Ilya Orson and Petsagkourakis, Panagiotis and del Rio-Chanona, Ehecatl Antonio},
+  keywords = {Optimization and Control (math.OC), Artificial Intelligence (cs.AI), Systems and Control (eess.SY), FOS: Mathematics, FOS: Mathematics, FOS: Computer and information sciences, FOS: Computer and information sciences, FOS: Electrical engineering, electronic engineering, information engineering, FOS: Electrical engineering, electronic engineering, information engineering},
+  title = {Neural ODEs as Feedback Policies for Nonlinear Optimal Control},
+  publisher = {arXiv},
+  year = {2022},
+  copyright = {arXiv.org perpetual, non-exclusive license}
 }
 ```
