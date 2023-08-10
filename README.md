@@ -3,6 +3,28 @@
 This code showcases how a state-feedback neural policy, as commonly used in reinforcement
 learning, may be used similarly in an optimal control problem while enforcing state and control constraints.
 
+## Constrained Van der Pol problem
+$$\begin{equation}
+    \begin{aligned}
+        \min_{\theta} \quad & J = \int_0^5 x_1^2 + x_2^2 + u^2 \,dt, \\
+                           & \\
+        \textrm{s.t.} \quad & \dot x_1(t) = x_1(1-x_2^2) - x_2 + u, \\
+                            & \dot x_2(t) = x_1, \\
+                            & u(t) = \pi_\theta^2(x_1, x_2) \\
+                            & \\
+                            & x(t_0) = (0, 1), \\
+                            & \\
+                            & x_1(t) + 0.4 \geq 0, \\
+                            & -0.3 \leq u(t) \leq 1, \\
+    \end{aligned}
+\end{equation}$$
+
+### Phase Space with embedded policy (before and after optimization)
+
+![vdp_initial](https://github.com/IlyaOrson/control_neuralode/assets/12092488/1cbe6b23-71bd-4f5d-8f5a-7090ab4b4cd8)
+![vdp_constrained](https://github.com/IlyaOrson/control_neuralode/assets/12092488/3d86f7a7-3b92-4495-9940-7dbc4813037d)
+
+## JuliaCon 2021
 The main ideas where presented in [this talk](https://www.youtube.com/watch?v=omS3ZngEygw) of JuliaCon2021.
 
 [![Watch the video](https://img.youtube.com/vi/omS3ZngEygw/maxresdefault.jpg)](https://www.youtube.com/watch?v=omS3ZngEygw)
@@ -25,7 +47,7 @@ julia> van_der_pol(store_results=true)
 
 This will generate plots while the optimization runs and store result data in `data/`.
 
-## Methodology
+## Methodology (Control Vector Iteration for the Neural Policy parameters)
 By substituting the control function of the problem by the output of the policy, the
 weights of the controller become the new unconstrained controls of the system.
 The problem becomes a parameter estimation problem where the Neural ODE adjoint method may be used
@@ -38,38 +60,7 @@ literature, where it shares the not so great reputation of indirect methods.
 
 Its modern implementation depends crucially on automatic differentiation to avoid the manual
 derivations; one of the features that made the original versions unattractive.
-This is where `DiffEqFlux.jl` and similar software shine.
-
-## Control Vector Iteration
-We consider optimal control problems in the Bolza form, with a running cost and a terminal cost.
-The objective is to minimize this functional cost given a ODE system with initial condition by
-finding an optimal control policy.
-
-Following variational calculus, the Euler-Lagrange system of equations define the optimality
-conditions as a set of boundary value problems:
-* First equation is just the original ODE with initial condition.
-    * This is solved forward in time since its final value is required. It may be stored, checkpointed and interpolated, or recalculated backwards. (controlled by sensitivity algorithm in DiffEqFlux.jl)
-* Second equation defines the adjoint (Lagrange multiplier) evolution with a final condition.
-    * This equation is defined through automatic differentiated quantities from the first ODE
-* Third equation defines optimal control parameters.
-    * This equation defines the gradient of the functional, and should be zero in optimality.
-    * In Control Vector Iteration, it is reduced iteratively by gradient-based optimization.
-
-The control box-constraints are hardly enforced through the last nonlinearity of the neural controller.
-
-The state constraints are softly enforced through successive iterations of a functional relaxed barrier penalty. This avoids the formulation of constraints as sequences of arcs where different constraints are active, which require a distinct problem formulation per arc.
-
-## Differences from other methods
-
-### Indirect shooting
-It is important to emphasize that this method does not guess the missing initial condition
-of the adjoint equation, as is commonly done in indirect shooting methods.
-Instead, the original system is integrated forward initially to later calculate the adjoint
-equation backwards, as in CVI and the adjoint sensitivity analysis.
-
-### Direct single shooting
-Commonly the control is seed as a function of time and is split in predefined intervals, where a
-polynomial parametrizes the control profile. This converts the problem into a discrete NLP problem.
+This is where `DiffEqFlux.jl` and similar software shine. See the publication for a clear explanation of the technical details.
 
 # Acknowledgements
 The idea was inspired heavily by the trebuchet demo of Flux and the differentiable control
